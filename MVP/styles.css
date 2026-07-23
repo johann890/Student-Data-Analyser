@@ -91,7 +91,13 @@ body {
   flex-direction: column;
   align-items: center;
   width: 220px; /* matches config panel width so shape centering is predictable */
+  /* The wrapper is 220px wide but the shape inside is only ~100px, leaving wide
+     transparent gutters. Without this those gutters swallow pointer events meant
+     for the connection arrows painted underneath. Only the visible children —
+     the shape and the config panel — capture input. */
+  pointer-events: none;
 }
+.node > * { pointer-events: auto; }
 
 /* SHAPES */
 /* Source Circle */
@@ -345,6 +351,33 @@ select:focus, input:focus { outline: none; border-color: #2a5aaa; }
 ::-webkit-scrollbar { width: 4px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: #1e1e1e; border-radius: 2px; }
+
+/* CONNECTION HOVER + DELETE */
+/* Invisible wide stroke that makes the thin arrow easy to hover.
+   The parent <svg> has pointer-events:none, so these opt back in explicitly. */
+.conn-hit {
+  stroke: transparent;
+  stroke-width: 20;
+  fill: none;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+.conn-delete { pointer-events: all; cursor: pointer; }
+.conn-delete circle {
+  fill: #1a1010;
+  stroke: #c05050;
+  stroke-width: 1.2;
+  transition: fill 0.12s;
+}
+.conn-delete line {
+  stroke: #e06060;
+  stroke-width: 1.6;
+  stroke-linecap: round;
+}
+.conn-delete:hover circle { fill: #3a0f0f; stroke: #e06060; }
+.conn-delete:hover line { stroke: #ff8a8a; }
 
 /* Ghost connection preview */
 .ghost-line {

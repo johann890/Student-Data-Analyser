@@ -29,6 +29,7 @@ var idCtr = 0;
 var drag = null;
 var lastResults = {}; // nodeId -> {count, avg, etc} for inline display
 var SNAP_DIST = 160; // px proximity threshold — measured between shape edges
+var hoverConn = null; // connKey() of the connection currently hovered, or null
 
 function uid() { return ++idCtr; }
 
@@ -402,7 +403,11 @@ function resolveColor(node, chain) {
   return EDGE_PALETTE[0];
 }
 
-function drawArrow(svg, p0, tip, color, opacity, isGhost) {
+function svgEl(tag) {
+  return document.createElementNS('http://www.w3.org/2000/svg', tag);
+}
+
+function drawArrow(parent, p0, tip, color, opacity, isGhost) {
   var ah = 14; // bigger arrowhead
   var pathEndX = tip.x - ah;
   var pathEndY = tip.y;
@@ -430,8 +435,66 @@ function drawArrow(svg, p0, tip, color, opacity, isGhost) {
   arrowEl.setAttribute('fill', color);
   arrowEl.setAttribute('opacity', isGhost ? opacity : Math.min(1, parseFloat(opacity)+0.2));
 
-  svg.appendChild(pathEl);
-  svg.appendChild(arrowEl);
+  // Cubic bezier at t=0.5 → (P0 + 3P1 + 3P2 + P3) / 8. Used as a fallback
+  // midpoint if getPointAtLength is unavailable.
+  pathEl._mid = {
+    x: (p0.x + 3 * p1x + 3 * p2x + pathEndX) / 8,
+    y: (p0.y + 3 * p1y + 3 * p2y + pathEndY) / 8
+  };
+
+  parent.appendChild(pathEl);
+  parent.appendChild(arrowEl);
+  return pathEl;
+}
+
+/* CONNECTION REMOVAL */
+function connKey(c) { return c.from + '->' + c.to; }
+
+function removeConnection(from, to) {
+  connections = connections.filter(function(c) {
+    return !(c.from === from && c.to === to);
+  });
+  hoverConn = null;
+  render();
+}
+
+// Builds the little red "x" badge that sits at the midpoint of a hovered connection
+function buildDeleteBadge(conn, pathEl) {
+  var mid;
+  try {
+    mid = pathEl.getPointAtLength(pathEl.getTotalLength() / 2);
+  } catch (err) {
+    mid = pathEl._mid; // geometric fallback
+  }
+  if (!mid) return null;
+
+  var g = svgEl('g');
+  g.setAttribute('class', 'conn-delete');
+  g.setAttribute('transform', 'translate(' + mid.x + ',' + mid.y + ')');
+
+  var circle = svgEl('circle');
+  circle.setAttribute('r', '9');
+  g.appendChild(circle);
+
+  var r = 3.6;
+  [[-r, -r, r, r], [-r, r, r, -r]].forEach(function(pts) {
+    var line = svgEl('line');
+    line.setAttribute('x1', pts[0]); line.setAttribute('y1', pts[1]);
+    line.setAttribute('x2', pts[2]); line.setAttribute('y2', pts[3]);
+    g.appendChild(line);
+  });
+
+  var title = svgEl('title');
+  title.textContent = 'Remove this connection';
+  g.appendChild(title);
+
+  g.addEventListener('mousedown', function(e) { e.stopPropagation(); });
+  g.addEventListener('click', function(e) {
+    e.stopPropagation();
+    removeConnection(conn.from, conn.to);
+  });
+
+  return g;
 }
 
 function drawArrows() {
@@ -444,7 +507,43 @@ function drawArrows() {
     if (!a || !b) return;
     var p0 = shapeExit(a);
     var tip = shapeEntry(b);
-    drawArrow(svg, p0, tip, conn.color, '0.9', false);
+
+    var g = svgEl('g');
+    svg.appendChild(g);
+    var pathEl = drawArrow(g, p0, tip, conn.color, '0.9', false);
+
+    // No hover affordances mid-drag — the pointer is busy moving a node
+    if (drag) return;
+
+    // Invisible fat stroke so the thin 2px line is comfortably hoverable.
+    // Extended to the true tip so the arrowhead counts as part of the line —
+    // the drawn path stops short of it to make room for the polygon.
+    var hit = svgEl('path');
+    hit.setAttribute('d', pathEl.getAttribute('d') + ' L ' + tip.x + ' ' + tip.y);
+    hit.setAttribute('class', 'conn-hit');
+    g.appendChild(hit);
+
+    var badge = null, hovered = false;
+    function setHover(on) {
+      if (on === hovered) return;
+      hovered = on;
+      if (on) {
+        badge = buildDeleteBadge(conn, pathEl);
+        if (badge) g.appendChild(badge);
+      } else {
+        if (badge && badge.parentNode) badge.parentNode.removeChild(badge);
+        badge = null;
+      }
+      hoverConn = on ? connKey(conn) : null;
+    }
+
+    // mousemove (not just mouseenter) so hover still engages if the SVG was
+    // rebuilt underneath a stationary cursor — mouseenter would never fire there
+    hit.addEventListener('mousemove', function() { setHover(true); });
+    g.addEventListener('mouseleave', function() { setHover(false); });
+
+    // Restore the badge after a re-render that happened while hovering
+    if (hoverConn === connKey(conn)) setHover(true);
   });
 
   // Draw ghost connection preview while dragging
