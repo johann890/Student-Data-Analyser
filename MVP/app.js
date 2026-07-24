@@ -584,6 +584,145 @@ function topoSort() {
   return order.map(function(id){ return findNode(id); }).filter(Boolean);
 }
 
+/* GRAPH EVALUATION
+   Every node computes its own dataset from its own inputs, so parallel
+   branches stay independent. A node fed by several inputs merges them
+   (union, deduplicated by student id).
+   Previously every filter in the graph was applied to one shared dataset,
+   so sibling branches contradicted each other and both collapsed to zero. */
+
+function inputsOf(nodeId) {
+  return connections
+    .filter(function(c){ return c.to === nodeId; })
+    .map(function(c){ return c.from; });
+}
+
+function unionOf(lists) {
+  var seen = {}, out = [];
+  lists.forEach(function(list) {
+    list.forEach(function(s) {
+      if (!seen[s.id]) { seen[s.id] = true; out.push(s); }
+    });
+  });
+  return out;
+}
+
+function sourceData(node, log) {
+  var pop = node._pop || 'all';
+  if (pop === '2022' || pop === '2023') {
+    var yr = parseInt(pop, 10);
+    log.push('<span class="kw">SOURCE</span>  year <span class="op">=</span> <span class="val">'+yr+'</span>');
+    return STUDENTS.filter(function(s){ return s.year === yr; });
+  }
+  log.push('<span class="kw">SOURCE</span>  all_students');
+  return STUDENTS.slice();
+}
+
+// Applies one filter node's criteria. Returns {data:[...]} or {error:'msg'}.
+function applyFilter(node, data, log) {
+  for (var ci = 0; ci < node.criteria.length; ci++) {
+    var c = node.criteria[ci];
+    var ft = c.ft || 'gradeAvg';
+
+    if (ft === 'gradeAvg') {
+      var num = parseFloat(c.val);
+      if (isNaN(num)) return { error: 'Grade value must be a number.' };
+      var fn = OP_FNS[c.op] || OP_FNS.gt;
+      data = data.filter(function(s){ return fn(s.gradeAvg, num); });
+      log.push('<span class="kw">FILTER</span>  gradeAvg <span class="op">'+(OP_SYM[c.op]||'>')+'</span> <span class="val">'+num+'</span>');
+
+    } else if (ft === 'year') {
+      var yr = parseInt(c.year, 10);
+      data = data.filter(function(s){ return s.year === yr; });
+      log.push('<span class="kw">FILTER</span>  year <span class="op">=</span> <span class="val">'+yr+'</span>');
+
+    } else if (ft === 'specialisation') {
+      var sp = c.spec;
+      data = data.filter(function(s){ return s.specialisation === sp; });
+      log.push('<span class="kw">FILTER</span>  spec <span class="op">=</span> <span class="val">"'+sp+'"</span>');
+
+    } else if (ft === 'gender') {
+      var gnd = c.gender;
+      data = data.filter(function(s){ return s.gender === gnd; });
+      log.push('<span class="kw">FILTER</span>  gender <span class="op">=</span> <span class="val">"'+gnd+'"</span>');
+    }
+  }
+  return { data: data };
+}
+
+// Walks the DAG in topological order. Returns {res:{nodeId:{data,log,hasSource}}}
+// or {error:'msg'}.
+function evaluateGraph() {
+  var order = topoSort();
+  if (order.length < nodes.length) {
+    return { error: 'Circular connection detected — remove an arrow that loops back on itself.' };
+  }
+
+  var res = {};
+  for (var i = 0; i < order.length; i++) {
+    var node = order[i];
+    var log = [], data, hasSource;
+
+    if (node.type === 'source') {
+      data = sourceData(node, log);
+      hasSource = true;
+    } else {
+      var ins = inputsOf(node.id)
+        .map(function(id){ return res[id]; })
+        .filter(Boolean);
+
+      ins.forEach(function(r){ log.push.apply(log, r.log); });
+      if (ins.length > 1) log.push('<span class="kw">MERGE</span>  '+ins.length+' inputs');
+
+      data = unionOf(ins.map(function(r){ return r.data; }));
+      hasSource = ins.some(function(r){ return r.hasSource; });
+
+      if (node.type === 'filter') {
+        var out = applyFilter(node, data, log);
+        if (out.error) return { error: out.error };
+        data = out.data;
+      }
+    }
+    res[node.id] = { data: data, log: log, hasSource: hasSource };
+  }
+  return { res: res };
+}
+
+function outputCardHTML(ot, data) {
+  if (ot === 'count') {
+    return '<div class="result-card">'+
+      '<div class="result-head">Count</div>'+
+      '<div class="result-big"><span class="big-num">'+data.length+'</span></div>'+
+    '</div>';
+  }
+  if (ot === 'average') {
+    var avg = data.length===0 ? 0 : (data.reduce(function(s,r){return s+r.gradeAvg;},0)/data.length);
+    return '<div class="result-card">'+
+      '<div class="result-head">Average</div>'+
+      '<div class="result-big"><span class="big-num">'+avg.toFixed(1)+'</span><span class="big-sub">/ 100 &nbsp;('+data.length+' records)</span></div>'+
+    '</div>';
+  }
+  var shown = data.slice(0,50);
+  var rows = shown.map(function(s){
+    return '<tr><td>'+s.id+'</td><td>'+s.gender+'</td><td>'+s.year+'</td><td>'+s.gradeAvg+'</td><td>'+s.letterGrade+'</td><td>'+s.specialisation+'</td></tr>';
+  }).join('');
+  var more = data.length>50?'<tr><td colspan="6" style="color:#282828;padding:5px 9px;font-size:10px">... '+(data.length-50)+' more</td></tr>':'';
+  return '<div class="result-card">'+
+    '<div class="result-head">List <span style="color:#444;font-size:9px">('+data.length+')</span></div>'+
+    '<div style="overflow-x:auto"><table class="rtable">'+
+    '<thead><tr><th>ID</th><th>Gen</th><th>Year</th><th>Avg</th><th>Grade</th><th>Specialisation</th></tr></thead>'+
+    '<tbody>'+rows+more+'</tbody></table></div>'+
+  '</div>';
+}
+
+function outputValue(ot, data) {
+  if (ot === 'average') {
+    var avg = data.length===0 ? 0 : (data.reduce(function(s,r){return s+r.gradeAvg;},0)/data.length);
+    return avg.toFixed(1);
+  }
+  return data.length;
+}
+
 function runQuery() {
   saveState();
   var srcNodes = nodes.filter(function(n){return n.type==='source';});
@@ -596,100 +735,33 @@ function runQuery() {
     return;
   }
 
-  // Apply source + all filters → shared filtered dataset
-  var data = STUDENTS.slice();
-  var log = [];
+  var ev = evaluateGraph();
+  if (ev.error) { showError(ev.error); return; }
+  var res = ev.res;
 
-  var chain = topoSort();
-
-  // Source
-  var srcNode = chain.filter(function(n){return n.type==='source';})[0] || srcNodes[0];
-  var pop = srcNode._pop || 'all';
-  if (pop==='2022') { data=data.filter(function(s){return s.year===2022;}); log.push('<span class="kw">SOURCE</span>  year = <span class="val">2022</span>'); }
-  else if (pop==='2023') { data=data.filter(function(s){return s.year===2023;}); log.push('<span class="kw">SOURCE</span>  all_students'); }
-  else log.push('<span class="kw">SOURCE</span>  all_students');
-
-  // All filter nodes in topo order
-  var fltNodes = chain.filter(function(n){return n.type==='filter';});
-  for (var fi=0; fi<fltNodes.length; fi++) {
-    var fnode = fltNodes[fi];
-    for (var ci=0; ci<fnode.criteria.length; ci++) {
-      var c = fnode.criteria[ci];
-      var ft = gvC(fnode.id,ci,'ft') || c.ft || 'gradeAvg';
-      c.ft = ft;
-      if (ft==='gradeAvg') {
-        c.op = gvC(fnode.id,ci,'op') || c.op || 'gt';
-        var rawVal = gvC(fnode.id,ci,'val'); if (rawVal!=='') c.val = rawVal;
-        var num = parseFloat(c.val);
-        if (isNaN(num)) { showError('Grade value must be a number.'); return; }
-        var fn = OP_FNS[c.op] || OP_FNS.gt;
-        data = data.filter(function(s){ return fn(s.gradeAvg, num); });
-        log.push('<span class="kw">FILTER</span>  gradeAvg <span class="op">'+(OP_SYM[c.op]||'>')+'</span> <span class="val">'+num+'</span>');
-      } else if (ft==='year') {
-        var rv = gvC(fnode.id,ci,'year'); if (rv) c.year=rv;
-        var yr = parseInt(c.year);
-        data = data.filter(function(s){ return s.year===yr; });
-        log.push('<span class="kw">FILTER</span>  year <span class="op">=</span> <span class="val">'+yr+'</span>');
-      } else if (ft==='specialisation') {
-        var rv2 = gvC(fnode.id,ci,'spec'); if (rv2) c.spec=rv2;
-        var sp = c.spec;
-        data = data.filter(function(s){ return s.specialisation===sp; });
-        log.push('<span class="kw">FILTER</span>  spec <span class="op">=</span> <span class="val">"'+sp+'"</span>');
-      } else if (ft==='gender') {
-        var rv3 = gvC(fnode.id,ci,'gender'); if (rv3) c.gender=rv3;
-        var gnd = c.gender;
-        data = data.filter(function(s){ return s.gender===gnd; });
-        log.push('<span class="kw">FILTER</span>  gender <span class="op">=</span> <span class="val">"'+gnd+'"</span>');
-      }
-    }
-  }
-
-  // Each output node produces its own result block
-  var allResults = '';
   lastResults = {};
+  var html = '';
 
   outNodes.forEach(function(onode, oi) {
-    var ot = onode._outputType || 'count';
-    log.push('<span class="kw">OUTPUT</span>  <span class="val">'+ot+'</span>');
+    var r = res[onode.id] || { data: [], log: [], hasSource: false };
+    var body;
 
-    var label = 'Output '+(oi+1);
-    var cardHTML = '';
-
-    if (ot==='count') {
-      lastResults[onode.id] = data.length;
-      cardHTML = '<div class="result-card">'+
-        '<div class="result-head">Count</div>'+
-        '<div class="result-big"><span class="big-num">'+data.length+'</span></div>'+
-      '</div>';
-    } else if (ot==='average') {
-      var avg = data.length===0 ? 0 : (data.reduce(function(s,r){return s+r.gradeAvg;},0)/data.length);
-      lastResults[onode.id] = avg.toFixed(1);
-      cardHTML = '<div class="result-card">'+
-        '<div class="result-head">Average</div>'+
-        '<div class="result-big"><span class="big-num">'+avg.toFixed(1)+'</span><span class="big-sub">/ 100 &nbsp;('+data.length+' records)</span></div>'+
-      '</div>';
+    if (!r.hasSource) {
+      body = '<div class="error-box">Not connected to a Source — this Output has no data path.</div>';
     } else {
-      var shown = data.slice(0,50);
-      var rows = shown.map(function(s){
-        return '<tr><td>'+s.id+'</td><td>'+s.gender+'</td><td>'+s.year+'</td><td>'+s.gradeAvg+'</td><td>'+s.letterGrade+'</td><td>'+s.specialisation+'</td></tr>';
-      }).join('');
-      var more = data.length>50?'<tr><td colspan="6" style="color:#282828;padding:5px 9px;font-size:10px">... '+(data.length-50)+' more</td></tr>':'';
-      cardHTML = '<div class="result-card">'+
-        '<div class="result-head">List <span style="color:#444;font-size:9px">('+data.length+')</span></div>'+
-        '<div style="overflow-x:auto"><table class="rtable">'+
-        '<thead><tr><th>ID</th><th>Gen</th><th>Year</th><th>Avg</th><th>Grade</th><th>Specialisation</th></tr></thead>'+
-        '<tbody>'+rows+more+'</tbody></table></div>'+
-      '</div>';
+      var ot = onode._outputType || 'count';
+      lastResults[onode.id] = outputValue(ot, r.data);
+      var log = r.log.concat('<span class="kw">OUTPUT</span>  <span class="val">'+ot+'</span>');
+      body = '<div class="query-log">'+log.join('\n')+'</div>' + outputCardHTML(ot, r.data);
     }
 
-    allResults += '<div class="result-block">'+
-      (outNodes.length>1?'<div class="result-block-label">'+label+'</div>':'')+
-      cardHTML+
+    html += '<div class="result-block">'+
+      (outNodes.length>1 ? '<div class="result-block-label">Output '+(oi+1)+'</div>' : '')+
+      body+
     '</div>';
   });
 
-  var finalLog = '<div class="query-log">'+log.join('\n')+'</div>';
-  setOutput(finalLog + allResults);
+  setOutput(html);
   render();
 }
 
