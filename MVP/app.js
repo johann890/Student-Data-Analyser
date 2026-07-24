@@ -30,6 +30,8 @@ var drag = null;
 var lastResults = {}; // nodeId -> {count, avg, etc} for inline display
 var SNAP_DIST = 160; // px proximity threshold — measured between shape edges
 var hoverConn = null; // connKey() of the connection currently hovered, or null
+var exportData = {};  // outputNodeId -> {index, ot, log:[plain lines], data:[...]}
+var resultsFresh = false; // false once the graph changes after a run — blocks export
 
 function uid() { return ++idCtr; }
 
@@ -64,6 +66,7 @@ function addNode(type) {
   // Each source gets a unique edge colour; others start with first palette colour, override when connected
   var color = EDGE_PALETTE[edgeColorIndex++ % EDGE_PALETTE.length];
   nodes.push({ id:uid(), type:type, x:Math.round(x), y:Math.round(y), color:color, criteria:type==='filter'?[{ft:'gradeAvg',op:'gt',val:'70',spec:'Software Engineering',gender:'M',year:'2022'}]:[] });
+  markStale();
   render();
 }
 
@@ -71,11 +74,13 @@ function removeNode(id) {
   nodes = nodes.filter(function(n){ return n.id!==id; });
   connections = connections.filter(function(c){ return c.from!==id && c.to!==id; });
   delete lastResults[id];
+  markStale();
   render();
 }
 
 function clearAll() {
   nodes = []; connections = []; lastResults = {}; edgeColorIndex = 0;
+  exportData = {}; resultsFresh = false;
   render();
   setOutput('<div class="placeholder">Run a query to see results</div>');
 }
@@ -85,12 +90,14 @@ function addCriterion(nodeId) {
   var n = findNode(nodeId);
   if (!n) return;
   n.criteria.push({ft:'gradeAvg',op:'gt',val:'70',spec:'Software Engineering',gender:'M',year:'2022'});
+  markStale();
   render();
 }
 function removeCriterion(nodeId, idx) {
   var n = findNode(nodeId);
   if (!n) return;
   n.criteria.splice(idx,1);
+  markStale();
   render();
 }
 
@@ -191,6 +198,7 @@ function onUp() {
         }
       }
       connections.push({ from: fromNode.id, to: toNode.id, color: edgeColor });
+      markStale();
     }
     ghostTarget = null;
   }
@@ -268,6 +276,12 @@ function render() {
     var ftSels = el.querySelectorAll('.ft-sel');
     ftSels.forEach(function(sel) {
       sel.addEventListener('change', function() { render(); });
+    });
+
+    // Any config edit invalidates the displayed results
+    el.querySelectorAll('.node-config select, .node-config input').forEach(function(ctrl) {
+      ctrl.addEventListener('change', markStale);
+      ctrl.addEventListener('input', markStale);
     });
   });
 
@@ -455,6 +469,7 @@ function removeConnection(from, to) {
     return !(c.from === from && c.to === to);
   });
   hoverConn = null;
+  markStale();
   render();
 }
 
@@ -607,14 +622,39 @@ function unionOf(lists) {
   return out;
 }
 
+
+/* QUERY LOG
+   Entries are structured, not pre-baked HTML, so the same entry can render as
+   markup for the panel and as plain text for export. Building HTML first and
+   stripping tags later loses operators like "<" — they are indistinguishable
+   from markup once concatenated. */
+
+function logEntry(kw, parts) { return { kw: kw, parts: parts }; }
+
+function esc(s) {
+  return String(s)
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function logHTML(e) {
+  return '<span class="kw">' + esc(e.kw) + '</span>  ' + e.parts.map(function(p) {
+    return p.c ? '<span class="' + p.c + '">' + esc(p.s) + '</span>' : esc(p.s);
+  }).join(' ');
+}
+
+function logText(e) {
+  return e.kw + '  ' + e.parts.map(function(p) { return p.s; }).join(' ');
+}
+
 function sourceData(node, log) {
   var pop = node._pop || 'all';
   if (pop === '2022' || pop === '2023') {
     var yr = parseInt(pop, 10);
-    log.push('<span class="kw">SOURCE</span>  year <span class="op">=</span> <span class="val">'+yr+'</span>');
+    log.push(logEntry('SOURCE', [{s:'year'}, {c:'op', s:'='}, {c:'val', s:yr}]));
     return STUDENTS.filter(function(s){ return s.year === yr; });
   }
-  log.push('<span class="kw">SOURCE</span>  all_students');
+  log.push(logEntry('SOURCE', [{s:'all_students'}]));
   return STUDENTS.slice();
 }
 
@@ -629,22 +669,22 @@ function applyFilter(node, data, log) {
       if (isNaN(num)) return { error: 'Grade value must be a number.' };
       var fn = OP_FNS[c.op] || OP_FNS.gt;
       data = data.filter(function(s){ return fn(s.gradeAvg, num); });
-      log.push('<span class="kw">FILTER</span>  gradeAvg <span class="op">'+(OP_SYM[c.op]||'>')+'</span> <span class="val">'+num+'</span>');
+      log.push(logEntry('FILTER', [{s:'gradeAvg'}, {c:'op', s:(OP_SYM[c.op]||'>')}, {c:'val', s:num}]));
 
     } else if (ft === 'year') {
       var yr = parseInt(c.year, 10);
       data = data.filter(function(s){ return s.year === yr; });
-      log.push('<span class="kw">FILTER</span>  year <span class="op">=</span> <span class="val">'+yr+'</span>');
+      log.push(logEntry('FILTER', [{s:'year'}, {c:'op', s:'='}, {c:'val', s:yr}]));
 
     } else if (ft === 'specialisation') {
       var sp = c.spec;
       data = data.filter(function(s){ return s.specialisation === sp; });
-      log.push('<span class="kw">FILTER</span>  spec <span class="op">=</span> <span class="val">"'+sp+'"</span>');
+      log.push(logEntry('FILTER', [{s:'spec'}, {c:'op', s:'='}, {c:'val', s:'"'+sp+'"'}]));
 
     } else if (ft === 'gender') {
       var gnd = c.gender;
       data = data.filter(function(s){ return s.gender === gnd; });
-      log.push('<span class="kw">FILTER</span>  gender <span class="op">=</span> <span class="val">"'+gnd+'"</span>');
+      log.push(logEntry('FILTER', [{s:'gender'}, {c:'op', s:'='}, {c:'val', s:'"'+gnd+'"'}]));
     }
   }
   return { data: data };
@@ -672,7 +712,7 @@ function evaluateGraph() {
         .filter(Boolean);
 
       ins.forEach(function(r){ log.push.apply(log, r.log); });
-      if (ins.length > 1) log.push('<span class="kw">MERGE</span>  '+ins.length+' inputs');
+      if (ins.length > 1) log.push(logEntry('MERGE', [{s:ins.length + ' inputs'}]));
 
       data = unionOf(ins.map(function(r){ return r.data; }));
       hasSource = ins.some(function(r){ return r.hasSource; });
@@ -740,6 +780,7 @@ function runQuery() {
   var res = ev.res;
 
   lastResults = {};
+  exportData = {};
   var html = '';
 
   outNodes.forEach(function(onode, oi) {
@@ -751,25 +792,216 @@ function runQuery() {
     } else {
       var ot = onode._outputType || 'count';
       lastResults[onode.id] = outputValue(ot, r.data);
-      var log = r.log.concat('<span class="kw">OUTPUT</span>  <span class="val">'+ot+'</span>');
-      body = '<div class="query-log">'+log.join('\n')+'</div>' + outputCardHTML(ot, r.data);
+      var log = r.log.concat(logEntry('OUTPUT', [{c:'val', s:ot}]));
+      exportData[onode.id] = {
+        index: oi + 1,
+        ot: ot,
+        log: log.map(logText),
+        data: r.data
+      };
+      body = '<div class="query-log">'+log.map(logHTML).join('\n')+'</div>' + outputCardHTML(ot, r.data);
     }
 
-    html += '<div class="result-block">'+
-      (outNodes.length>1 ? '<div class="result-block-label">Output '+(oi+1)+'</div>' : '')+
-      body+
-    '</div>';
+    // Export buttons only exist for blocks that actually hold a result.
+    // An empty result set is still a result and stays exportable.
+    var actions = r.hasSource
+      ? '<div class="result-actions">'+
+          '<button class="rbtn" onclick="copyOutput('+onode.id+',this)">Copy</button>'+
+          '<button class="rbtn" onclick="saveOutput('+onode.id+',this)">Save</button>'+
+        '</div>'
+      : '';
+    var showLabel = outNodes.length > 1;
+    var head = (showLabel || actions)
+      ? '<div class="result-block-head">'+
+          (showLabel ? '<div class="result-block-label">Output '+(oi+1)+'</div>' : '<div></div>')+
+          actions+
+        '</div>'
+      : '';
+
+    html += '<div class="result-block">'+ head + body +'</div>';
   });
 
   setOutput(html);
+  resultsFresh = true;
   render();
 }
 
+/* EXPORT: CLIPBOARD + FILE
+   Results are only exportable while they still match the graph that produced
+   them. Any structural or config change calls markStale(), which dims the
+   panel and hides the buttons until the query is re-run. */
+
+function markStale() {
+  if (!resultsFresh) return;
+  resultsFresh = false;
+  var pb = document.getElementById('panelBody');
+  if (!pb || !pb.querySelector('.result-block')) return;
+  pb.classList.add('stale');
+  if (!pb.querySelector('.stale-note')) {
+    var note = document.createElement('div');
+    note.className = 'stale-note';
+    note.textContent = 'Graph changed since this run — re-run the query to export.';
+    pb.insertBefore(note, pb.firstChild);
+  }
+}
+
+function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+function timeStamp(fileSafe) {
+  var d = new Date();
+  var date = d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
+  var time = pad2(d.getHours()) + (fileSafe ? '' : ':') + pad2(d.getMinutes());
+  return date + (fileSafe ? '-' : ' ') + time;
+}
+
+var EXPORT_COLS = ['ID','Gender','Year','GradeAvg','LetterGrade','Specialisation'];
+function rowOf(s) { return [s.id, s.gender, s.year, s.gradeAvg, s.letterGrade, s.specialisation]; }
+
+function csvCell(v) {
+  var s = String(v);
+  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+}
+
+// Tab-separated — pastes straight into Excel/Sheets as columns
+function tsvFor(e) {
+  return [EXPORT_COLS.join('\t')]
+    .concat(e.data.map(function(s){ return rowOf(s).join('\t'); }))
+    .join('\n');
+}
+
+// Clean data only — no provenance rows, so imports don't need cleaning up
+function csvFor(e) {
+  return [EXPORT_COLS.join(',')]
+    .concat(e.data.map(function(s){ return rowOf(s).map(csvCell).join(','); }))
+    .join('\n');
+}
+
+function resultLine(e) {
+  if (e.ot === 'average') {
+    var avg = e.data.length === 0 ? 0 : (e.data.reduce(function(a,r){return a+r.gradeAvg;},0)/e.data.length);
+    return 'Average: ' + avg.toFixed(1) + ' / 100  (' + e.data.length + ' records)';
+  }
+  if (e.ot === 'list') return 'Rows: ' + e.data.length;
+  return 'Count: ' + e.data.length;
+}
+
+// Readable text carrying the query that produced the number
+function scalarText(e) {
+  return [
+    'Student Data Analyser — Output ' + e.index,
+    'Generated: ' + timeStamp(false),
+    '',
+    'Query:',
+    e.log.map(function(l){ return '  ' + l; }).join('\n'),
+    '',
+    'Result:',
+    '  ' + resultLine(e)
+  ].join('\n');
+}
+
+// Returns {name, content, mime} for a Save action
+function fileFor(e) {
+  if (e.ot === 'list') {
+    return {
+      name: 'output' + e.index + '-list-' + timeStamp(true) + '.csv',
+      content: csvFor(e),
+      mime: 'text/csv'
+    };
+  }
+  return {
+    name: 'output' + e.index + '-' + e.ot + '-' + timeStamp(true) + '.txt',
+    content: scalarText(e),
+    mime: 'text/plain'
+  };
+}
+
+function flashBtn(btn, msg) {
+  if (!btn) return;
+  if (btn._orig === undefined) btn._orig = btn.textContent;
+  btn.textContent = msg;
+  btn.classList.add('rbtn-done');
+  clearTimeout(btn._t);
+  btn._t = setTimeout(function() {
+    btn.textContent = btn._orig;
+    btn.classList.remove('rbtn-done');
+  }, 1500);
+}
+
+// execCommand fallback — navigator.clipboard needs a secure context, which
+// isn't guaranteed when the page is opened straight off the filesystem
+function legacyCopy(text) {
+  try {
+    var ta = document.createElement('textarea');
+    ta.value = text;
+    ta.setAttribute('readonly', '');
+    ta.style.position = 'fixed';
+    ta.style.top = '-1000px';
+    ta.style.opacity = '0';
+    document.body.appendChild(ta);
+    ta.select();
+    ta.setSelectionRange(0, ta.value.length);
+    var ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return ok;
+  } catch (err) { return false; }
+}
+
+function writeClipboard(text, btn) {
+  function done(ok) { flashBtn(btn, ok ? 'Copied ✓' : 'Copy failed'); }
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(
+      function() { done(true); },
+      function() { done(legacyCopy(text)); }
+    );
+  } else {
+    done(legacyCopy(text));
+  }
+}
+
+function downloadFile(name, content, mime) {
+  try {
+    var blob = new Blob([content], { type: mime + ';charset=utf-8' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    return true;
+  } catch (err) { return false; }
+}
+
+// Guard shared by both actions: the payload must exist and still be current
+function exportEntry(id, btn) {
+  var e = exportData[id];
+  if (!e || !resultsFresh) { flashBtn(btn, 'Re-run first'); return null; }
+  return e;
+}
+
+function copyOutput(id, btn) {
+  var e = exportEntry(id, btn);
+  if (!e) return;
+  writeClipboard(e.ot === 'list' ? tsvFor(e) : scalarText(e), btn);
+}
+
+function saveOutput(id, btn) {
+  var e = exportEntry(id, btn);
+  if (!e) return;
+  var f = fileFor(e);
+  flashBtn(btn, downloadFile(f.name, f.content, f.mime) ? 'Saved ✓' : 'Save failed');
+}
+
 function showError(msg) {
+  exportData = {};
+  resultsFresh = false;
   setOutput('<div class="error-box">'+msg+'</div>');
 }
 function setOutput(html) {
-  document.getElementById('panelBody').innerHTML = html;
+  var pb = document.getElementById('panelBody');
+  pb.classList.remove('stale');
+  pb.innerHTML = html;
 }
 
 /* GLOBALS */
@@ -779,6 +1011,8 @@ window.addCriterion = addCriterion;
 window.removeCriterion = removeCriterion;
 window.clearAll = clearAll;
 window.runQuery = runQuery;
+window.copyOutput = copyOutput;
+window.saveOutput = saveOutput;
 
 render();
 })();
