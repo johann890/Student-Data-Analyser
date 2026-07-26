@@ -551,7 +551,11 @@ function hidePreview() {
 
 // The dataset on the wire = the from-node's emitted output. evaluateGraph()
 // computes this for every node; we just read the right one back.
+// saveState() first so an unsaved config edit (e.g. a criterion value typed but
+// not yet run) is reflected — only render()/runQuery persist otherwise, so
+// without this the preview would show pre-edit data until the next run.
 function edgeData(conn) {
+  saveState();
   var ev = evaluateGraph();
   if (ev.error) return { error: ev.error };
   var r = ev.res[conn.from];
