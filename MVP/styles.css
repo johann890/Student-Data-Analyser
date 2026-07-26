@@ -415,7 +415,32 @@ select:focus, input:focus { outline: none; border-color: #2a5aaa; }
 .conn-delete:hover circle { fill: #3a0f0f; stroke: #e06060; }
 .conn-delete:hover line { stroke: #ff8a8a; }
 
-/* Ghost connection preview */
+/* EDGE DATA PREVIEW (hover tooltip over a connection) */
+.edge-preview {
+  position: absolute;
+  z-index: 50;
+  pointer-events: none; /* never steals hover from the line beneath it */
+  width: 210px;
+  background: #0b0b0c;
+  border: 1px solid #2a2a2e;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+  padding: 8px 9px;
+  font-size: 10px;
+  color: #b8b8b8;
+}
+.ep-count { font-size: 10px; color: #6a6a6a; margin-bottom: 6px; letter-spacing: 0.03em; }
+.ep-num { color: #3db8ff; font-size: 14px; font-weight: 600; }
+.ep-table { width: 100%; border-collapse: collapse; }
+.ep-table th {
+  text-align: left; font-weight: 500; color: #4a4a4a;
+  border-bottom: 1px solid #1e1e1e; padding: 2px 5px; font-size: 9px;
+  text-transform: uppercase; letter-spacing: 0.05em;
+}
+.ep-table td { padding: 2px 5px; color: #9a9a9a; border-bottom: 1px solid #141414; }
+.ep-table tbody tr:last-child td { border-bottom: none; }
+.ep-foot { margin-top: 5px; color: #3a3a3a; font-size: 9px; font-style: italic; }
+.ep-note { color: #8a7a4a; line-height: 1.4; }
 .ghost-line {
   stroke: #555;
   stroke-width: 1.5px;

@@ -81,6 +81,7 @@ function removeNode(id) {
 function clearAll() {
   nodes = []; connections = []; lastResults = {}; edgeColorIndex = 0;
   exportData = {}; resultsFresh = false;
+  cancelPreviewTimer(); hidePreview();
   render();
   setOutput('<div class="placeholder">Run a query to see results</div>');
 }
@@ -512,9 +513,114 @@ function buildDeleteBadge(conn, pathEl) {
   return g;
 }
 
+/* EDGE DATA PREVIEW
+   After a deliberate dwell over a connection, show up to 5 rows of the dataset
+   flowing along it — the output of the edge's upstream (from) node, recomputed
+   live so it's always current, even mid-edit before any run. A plausibility
+   aid: the "of N" total is the real signal; the rows are dataset-ordered
+   texture, not a representative sample. */
+
+var PREVIEW_DELAY = 450; // ms of stillness before the preview appears
+var previewTimer = null;
+var previewEl = null;
+
+function cancelPreviewTimer() {
+  if (previewTimer) { clearTimeout(previewTimer); previewTimer = null; }
+}
+
+function armPreviewTimer(conn, pathEl) {
+  cancelPreviewTimer();
+  previewTimer = setTimeout(function() {
+    previewTimer = null;
+    showPreview(conn, pathEl);
+  }, PREVIEW_DELAY);
+}
+
+function ensurePreviewEl() {
+  if (previewEl) return previewEl;
+  previewEl = document.createElement('div');
+  previewEl.className = 'edge-preview';
+  previewEl.style.display = 'none';
+  document.getElementById('canvas').appendChild(previewEl);
+  return previewEl;
+}
+
+function hidePreview() {
+  if (previewEl) previewEl.style.display = 'none';
+}
+
+// The dataset on the wire = the from-node's emitted output. evaluateGraph()
+// computes this for every node; we just read the right one back.
+function edgeData(conn) {
+  var ev = evaluateGraph();
+  if (ev.error) return { error: ev.error };
+  var r = ev.res[conn.from];
+  if (!r) return { error: 'unresolved' };
+  if (!r.hasSource) return { incomplete: true };
+  return { data: r.data };
+}
+
+function previewTableHTML(data) {
+  var rows = data.slice(0, 5).map(function(s) {
+    return '<tr><td>'+s.id+'</td><td>'+s.gender+'</td><td>'+s.year+'</td><td>'+s.gradeAvg+'</td></tr>';
+  }).join('');
+  return '<table class="ep-table">'+
+    '<thead><tr><th>ID</th><th>Gen</th><th>Yr</th><th>Avg</th></tr></thead>'+
+    '<tbody>'+rows+'</tbody></table>';
+}
+
+function showPreview(conn, pathEl) {
+  var res = edgeData(conn);
+  var el = ensurePreviewEl();
+  var body;
+
+  if (res.error) {
+    body = '<div class="ep-note">Can\'t preview — '+
+      (res.error.indexOf('Circular') === 0 ? 'circular connection.' : 'graph unresolved.')+'</div>';
+  } else if (res.incomplete) {
+    body = '<div class="ep-note">No data on this edge yet — upstream isn\'t connected to a Source.</div>';
+  } else {
+    var n = res.data.length;
+    var shown = Math.min(5, n);
+    var count = '<div class="ep-count"><span class="ep-num">'+n+'</span> record'+(n===1?'':'s')+' on this edge</div>';
+    if (n === 0) {
+      body = count + '<div class="ep-note">Empty stream — nothing passes this point.</div>';
+    } else {
+      body = count + previewTableHTML(res.data) +
+        '<div class="ep-foot">showing '+shown+' of '+n+', in dataset order</div>';
+    }
+  }
+  el.innerHTML = body;
+
+  // Anchor to the curve midpoint, offset upward so the preview floats clear
+  // above the delete badge. Both reference the same point, so curvature is
+  // irrelevant — they stay stacked however the arrow bows.
+  var mid = pathEl._mid || { x: 0, y: 0 };
+  el.style.display = 'block';
+
+  var cw = document.getElementById('canvas').clientWidth;
+  var pw = el.offsetWidth, ph = el.offsetHeight;
+  var GAP = 26; // clears the ~9px badge radius plus breathing room
+
+  var left = mid.x - pw / 2;
+  left = Math.max(6, Math.min(left, cw - pw - 6)); // keep within canvas sides
+
+  var top = mid.y - ph - GAP; // preferred: above the badge
+  el.classList.remove('ep-below');
+  if (top < 6) {                // not enough room above → flip below
+    top = mid.y + GAP;
+    el.classList.add('ep-below');
+  }
+  el.style.left = Math.round(left) + 'px';
+  el.style.top = Math.round(top) + 'px';
+}
+
 function drawArrows() {
   var svg = document.getElementById('svg');
   while (svg.firstChild) svg.removeChild(svg.firstChild);
+
+  // A rebuild invalidates the path element the pending preview was armed on
+  cancelPreviewTimer();
 
   // Draw real connections
   connections.forEach(function(conn) {
@@ -555,7 +661,15 @@ function drawArrows() {
     // mousemove (not just mouseenter) so hover still engages if the SVG was
     // rebuilt underneath a stationary cursor — mouseenter would never fire there
     hit.addEventListener('mousemove', function() { setHover(true); });
-    g.addEventListener('mouseleave', function() { setHover(false); });
+    g.addEventListener('mouseleave', function() {
+      setHover(false);
+      cancelPreviewTimer();
+      hidePreview();
+    });
+
+    // Data preview after a deliberate dwell — a quick pass to reach the delete
+    // badge won't summon it. Anchored to the curve midpoint, not the cursor.
+    hit.addEventListener('mousemove', function() { armPreviewTimer(conn, pathEl); });
 
     // Restore the badge after a re-render that happened while hovering
     if (hoverConn === connKey(conn)) setHover(true);
