@@ -13,6 +13,23 @@
   <span class="tlabel">Add</span>
   <button class="add-btn source" onclick="addNode('source')">Source</button>
   <button class="add-btn filter" onclick="addNode('filter')">Filter</button>
+  <div class="proc-wrap">
+    <button class="add-btn processing" onclick="toggleProcMenu(event)">Processing <span class="caret">&#9662;</span></button>
+    <div class="proc-menu" id="procMenu" onclick="event.stopPropagation()">
+      <button class="proc-item" onclick="addProcNode('compare')">
+        <span class="proc-name">Compare</span>
+        <span class="proc-desc">Put branches side by side</span>
+      </button>
+      <div class="proc-item is-soon">
+        <span class="proc-name">Group by</span>
+        <span class="proc-desc">Not built yet</span>
+      </div>
+      <div class="proc-item is-soon">
+        <span class="proc-name">Derive field</span>
+        <span class="proc-desc">Not built yet</span>
+      </div>
+    </div>
+  </div>
   <button class="add-btn output" onclick="addNode('output')">Output</button>
   <div class="sep"></div>
   <button class="clear-btn" onclick="clearAll()">Clear</button>

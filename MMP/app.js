@@ -39,10 +39,29 @@ function uid() { return ++idCtr; }
 // Shape sizes (must match CSS). Node div is always 220px wide; shapes are centered inside it.
 var NODE_W = 220;
 var SHAPE = {
-  source: { w:100, h:100 },
-  filter: { w:106, h:84 },
-  output: { w:106, h:66 }
+  source:  { w:100, h:100 },
+  filter:  { w:106, h:84 },
+  compare: { w:112, h:78 },
+  output:  { w:106, h:66 }
 };
+
+/* CONNECTION RULES
+   Single source of truth for which node types may feed which. Previously these
+   pairs were spelled out inline in three places (drag hover, drop, ghost
+   arrow); they drifted apart easily and every new node type meant editing all
+   three. The entries for source/filter/output reproduce the original rules
+   exactly. Compare accepts row streams and emits a table, so it may feed an
+   Output but nothing else — a table can't be filtered or compared again. */
+var CONNECT_RULES = {
+  source:  ['filter', 'compare', 'output'],
+  filter:  ['filter', 'compare', 'output'],
+  compare: ['output'],
+  output:  []
+};
+
+function canConnect(fromType, toType) {
+  return (CONNECT_RULES[fromType] || []).indexOf(toType) !== -1;
+}
 
 // Right edge of the shape (horizontally centered in the 196px node div)
 function shapeExit(node) {
@@ -133,11 +152,9 @@ function onMove(e) {
   var best = null, bestDist = SNAP_DIST;
   nodes.forEach(function(n) {
     if (n.id === dn.id) return;
-    // Valid pairs: source→filter, source→output, filter→filter, filter→output
-    var validFrom = (dn.type==='source' && (n.type==='filter'||n.type==='output')) ||
-                    (dn.type==='filter' && (n.type==='filter'||n.type==='output'));
-    var validTo   = (n.type==='source'  && (dn.type==='filter'||dn.type==='output')) ||
-                    (n.type==='filter'  && (dn.type==='filter'||dn.type==='output'));
+    // Valid pairs come from CONNECT_RULES
+    var validFrom = canConnect(dn.type, n.type);
+    var validTo   = canConnect(n.type, dn.type);
     if (!validFrom && !validTo) return;
 
     // Measure distance between the two relevant ports:
@@ -171,8 +188,8 @@ function onUp() {
     var distFwd = Math.pow(en.x-ex.x,2)+Math.pow(en.y-ex.y,2);
     var distRev = Math.pow(en2.x-ex2.x,2)+Math.pow(en2.y-ex2.y,2);
     // Also respect type validity: source/filter can only be "from"
-    var dnCanBeFrom = (dn.type==='source'&&(gt.type==='filter'||gt.type==='output'))||(dn.type==='filter'&&(gt.type==='filter'||gt.type==='output'));
-    var gtCanBeFrom = (gt.type==='source'&&(dn.type==='filter'||dn.type==='output'))||(gt.type==='filter'&&(dn.type==='filter'||dn.type==='output'));
+    var dnCanBeFrom = canConnect(dn.type, gt.type);
+    var gtCanBeFrom = canConnect(gt.type, dn.type);
     if (dnCanBeFrom && (!gtCanBeFrom || distFwd <= distRev)) { fromNode = dn; toNode = gt; }
     else { fromNode = gt; toNode = dn; }
 
@@ -236,6 +253,18 @@ function saveState() {
     if (node.type==='output') {
       var v = gv(node.id,'outputType'); if (v) node._outputType = v;
     }
+    if (node.type==='compare') {
+      var m = gv(node.id,'metric'); if (m) node._metric = m;
+      var so = gv(node.id,'sort'); if (so) node._sort = so;
+      // Labels are keyed by upstream node id, so they survive re-ordering and
+      // stay attached to the right branch when another one is disconnected.
+      node._labels = node._labels || {};
+      var lbls = node._labels;
+      inputsOf(node.id).forEach(function(inId) {
+        var el = document.getElementById('f_'+node.id+'_lbl_'+inId);
+        if (el) lbls[inId] = el.value;
+      });
+    }
     if (node.type==='filter') {
       node.criteria.forEach(function(c,ci) {
         var ft = gvC(node.id,ci,'ft'); if (ft) c.ft = ft;
@@ -268,7 +297,7 @@ function render() {
     el.innerHTML = shapeHTML(node, inline) + configHTML(node);
     cv.appendChild(el);
 
-    var shape = el.querySelector('.shape-source') || el.querySelector('.shape-filter') || el.querySelector('.shape-output');
+    var shape = el.querySelector('.shape-source') || el.querySelector('.shape-filter') || el.querySelector('.shape-compare') || el.querySelector('.shape-output');
     (function(nid){
       shape.addEventListener('mousedown', function(e){ startDrag(e,nid); });
     })(node.id);
@@ -299,6 +328,14 @@ function shapeHTML(node, inline) {
   if (node.type==='filter') {
     return '<div class="shape-filter">'+removeBtn+'Filter'+inlineHTML+'</div>';
   }
+  if (node.type==='compare') {
+    // Stacked bars of unequal length read as "several series side by side" at a
+    // glance, which is what distinguishes this from the Filter rectangle.
+    var glyph = '<span class="cmp-glyph">'+
+      '<i style="width:26px"></i><i style="width:16px"></i><i style="width:21px"></i>'+
+    '</span>';
+    return '<div class="shape-compare">'+removeBtn+glyph+'Compare'+inlineHTML+'</div>';
+  }
   if (node.type==='output') {
     return '<div class="shape-output">'+removeBtn+'Output'+inlineHTML+'</div>';
   }
@@ -326,6 +363,47 @@ function configHTML(node) {
     });
     html += '</div>'+
       '<button class="add-criterion-btn" onclick="(function(){addCriterion('+id+')})()">+ add condition</button>';
+  }
+
+  if (node.type==='compare') {
+    var inIds = inputsOf(node.id);
+    var metric = node._metric || 'count';
+    var sortBy = node._sort || 'wired';
+    var labels = node._labels || {};
+
+    html += '<div class="cfg-label">Branches ('+inIds.length+')</div>';
+    if (inIds.length === 0) {
+      html += '<div class="cmp-hint">Drag a Source or Filter next to this node to add a branch.</div>';
+    } else {
+      if (inIds.length === 1) {
+        html += '<div class="cmp-hint">One branch connected — add another to compare against.</div>';
+      }
+      html += '<div class="cmp-branches">';
+      inIds.forEach(function(inId, i) {
+        var up = findNode(inId);
+        var swatch = up ? getNodeEdgeColor(up) : '#555';
+        html += '<div class="cmp-branch">'+
+          '<span class="cmp-swatch" style="background:'+swatch+'"></span>'+
+          '<input type="text" class="cmp-label-input" id="f_'+id+'_lbl_'+inId+'" '+
+            'value="'+esc(labels[inId] || '')+'" placeholder="Branch '+(i+1)+' (auto)">'+
+        '</div>';
+      });
+      html += '</div>';
+    }
+
+    html += '<div class="cfg-label">Measure</div>'+
+      '<select id="f_'+id+'_metric">'+
+        '<option value="count"'+(metric==='count'?' selected':'')+'>Student count</option>'+
+        '<option value="average"'+(metric==='average'?' selected':'')+'>Average grade</option>'+
+        '<option value="share"'+(metric==='share'?' selected':'')+'>Share of total (%)</option>'+
+      '</select>'+
+      '<div class="cfg-label">Order</div>'+
+      '<select id="f_'+id+'_sort">'+
+        '<option value="wired"'+(sortBy==='wired'?' selected':'')+'>As connected</option>'+
+        '<option value="desc"'+(sortBy==='desc'?' selected':'')+'>Highest first</option>'+
+        '<option value="asc"'+(sortBy==='asc'?' selected':'')+'>Lowest first</option>'+
+        '<option value="label"'+(sortBy==='label'?' selected':'')+'>Label A–Z</option>'+
+      '</select>';
   }
 
   if (node.type==='output') {
@@ -561,6 +639,7 @@ function edgeData(conn) {
   var r = ev.res[conn.from];
   if (!r) return { error: 'unresolved' };
   if (!r.hasSource) return { incomplete: true };
+  if (r.table) return { table: r.table };
   return { data: r.data };
 }
 
@@ -583,6 +662,18 @@ function showPreview(conn, pathEl) {
       (res.error.indexOf('Circular') === 0 ? 'circular connection.' : 'graph unresolved.')+'</div>';
   } else if (res.incomplete) {
     body = '<div class="ep-note">No data on this edge yet — upstream isn\'t connected to a Source.</div>';
+  } else if (res.table) {
+    var t = res.table;
+    var trows = t.series.slice(0, 5).map(function(s) {
+      return '<tr><td>'+esc(s.label)+'</td><td>'+esc(s.text)+'</td></tr>';
+    }).join('');
+    body = '<div class="ep-count"><span class="ep-num">'+t.series.length+'</span> branch'+
+      (t.series.length===1?'':'es')+' on this edge</div>'+
+      (t.series.length === 0
+        ? '<div class="ep-note">Nothing to compare yet.</div>'
+        : '<table class="ep-table"><thead><tr><th>'+esc(t.cols[0])+'</th><th>'+esc(t.cols[1])+'</th></tr></thead>'+
+          '<tbody>'+trows+'</tbody></table>'+
+          (t.series.length > 5 ? '<div class="ep-foot">showing 5 of '+t.series.length+'</div>' : ''));
   } else {
     var n = res.data.length;
     var shown = Math.min(5, n);
@@ -688,8 +779,8 @@ function drawArrows() {
       var ex2 = shapeExit(gt), en2 = shapeEntry(dn);
       var distFwd = Math.pow(en.x-ex.x,2)+Math.pow(en.y-ex.y,2);
       var distRev = Math.pow(en2.x-ex2.x,2)+Math.pow(en2.y-ex2.y,2);
-      var dnCanBeFrom = (dn.type==='source'&&(gt.type==='filter'||gt.type==='output'))||(dn.type==='filter'&&(gt.type==='filter'||gt.type==='output'));
-      var gtCanBeFrom = (gt.type==='source'&&(dn.type==='filter'||dn.type==='output'))||(gt.type==='filter'&&(dn.type==='filter'||dn.type==='output'));
+      var dnCanBeFrom = canConnect(dn.type, gt.type);
+      var gtCanBeFrom = canConnect(gt.type, dn.type);
       var p0g, tipg;
       if (dnCanBeFrom && (!gtCanBeFrom || distFwd <= distRev)) { p0g = ex; tipg = en; }
       else { p0g = ex2; tipg = en2; }
@@ -808,7 +899,86 @@ function applyFilter(node, data, log) {
   return { data: data };
 }
 
-// Walks the DAG in topological order. Returns {res:{nodeId:{data,log,hasSource}}}
+/* COMPARE
+   Every other node narrows or passes through one stream. Compare is the first
+   that treats its inputs as separate things: each incoming branch stays its own
+   series and becomes one labelled row of a table, instead of being unioned into
+   a single row set. That table is what travels on to the Output. */
+
+function stripQuotes(s) { return String(s).replace(/^"|"$/g, ''); }
+
+// A branch's label, derived from the query that produced it, so a user who
+// hasn't typed anything still gets something readable rather than "Branch 2".
+// Filters describe a branch far better than its source does, so they win.
+function autoLabel(r, idx) {
+  var filters = r.log.filter(function(e){ return e.kw === 'FILTER'; });
+  if (filters.length) {
+    return filters.map(function(e) {
+      return e.parts.map(function(p){ return stripQuotes(p.s); }).join(' ');
+    }).join(', ');
+  }
+  var src = r.log.filter(function(e){ return e.kw === 'SOURCE'; })[0];
+  if (src) {
+    var txt = src.parts.map(function(p){ return stripQuotes(p.s); }).join(' ');
+    return txt === 'all_students' ? 'All students' : txt;
+  }
+  return 'Branch ' + (idx + 1);
+}
+
+function meanGrade(d) {
+  if (!d.length) return 0;
+  return d.reduce(function(a, s){ return a + s.gradeAvg; }, 0) / d.length;
+}
+
+var COMPARE_HEADS = { count: 'Students', average: 'Avg grade', share: 'Share' };
+
+function buildCompareTable(node, inIds, res, log) {
+  var metric = node._metric || 'count';
+  var sortBy = node._sort || 'wired';
+  var labels = node._labels || {};
+
+  var series = [];
+  inIds.forEach(function(inId, i) {
+    var r = res[inId];
+    if (!r) return;
+    var manual = labels[inId];
+    series.push({
+      id: inId,
+      label: (manual && manual.trim()) ? manual.trim() : autoLabel(r, i),
+      count: r.data.length,
+      avg: meanGrade(r.data)
+    });
+  });
+
+  var total = series.reduce(function(a, s){ return a + s.count; }, 0);
+
+  series.forEach(function(s) {
+    if (metric === 'average') { s.value = s.avg; s.text = s.avg.toFixed(1); }
+    else if (metric === 'share') {
+      s.value = total ? (s.count / total) * 100 : 0;
+      s.text = s.value.toFixed(1) + '%';
+    }
+    else { s.value = s.count; s.text = String(s.count); }
+  });
+
+  if (sortBy === 'desc') series.sort(function(a,b){ return b.value - a.value; });
+  else if (sortBy === 'asc') series.sort(function(a,b){ return a.value - b.value; });
+  else if (sortBy === 'label') series.sort(function(a,b){ return a.label.localeCompare(b.label); });
+
+  log.push(logEntry('COMPARE', [
+    {s: series.length + (series.length === 1 ? ' branch by' : ' branches by')},
+    {c:'val', s: metric}
+  ]));
+
+  return {
+    cols: ['Branch', COMPARE_HEADS[metric] || 'Value'],
+    series: series,
+    metric: metric,
+    max: series.reduce(function(m, s){ return Math.max(m, s.value); }, 0)
+  };
+}
+
+// Walks the DAG in topological order. Returns {res:{nodeId:{data,log,hasSource,table}}}
 // or {error:'msg'}.
 function evaluateGraph() {
   var order = topoSort();
@@ -819,18 +989,22 @@ function evaluateGraph() {
   var res = {};
   for (var i = 0; i < order.length; i++) {
     var node = order[i];
-    var log = [], data, hasSource;
+    var log = [], data, hasSource, table = null;
 
     if (node.type === 'source') {
       data = sourceData(node, log);
       hasSource = true;
     } else {
-      var ins = inputsOf(node.id)
+      var inIds = inputsOf(node.id);
+      var ins = inIds
         .map(function(id){ return res[id]; })
         .filter(Boolean);
 
       ins.forEach(function(r){ log.push.apply(log, r.log); });
-      if (ins.length > 1) log.push(logEntry('MERGE', [{s:ins.length + ' inputs'}]));
+      // Compare keeps its branches apart, so a merge would misdescribe it
+      if (ins.length > 1 && node.type !== 'compare') {
+        log.push(logEntry('MERGE', [{s:ins.length + ' inputs'}]));
+      }
 
       data = unionOf(ins.map(function(r){ return r.data; }));
       hasSource = ins.some(function(r){ return r.hasSource; });
@@ -840,8 +1014,16 @@ function evaluateGraph() {
         if (out.error) return { error: out.error };
         data = out.data;
       }
+
+      if (node.type === 'compare') {
+        table = buildCompareTable(node, inIds, res, log);
+      } else {
+        // A table travels downstream unchanged. Only Compare builds one, and it
+        // may only feed an Output, so this just carries it the final hop.
+        ins.forEach(function(r){ if (r.table) table = r.table; });
+      }
     }
-    res[node.id] = { data: data, log: log, hasSource: hasSource };
+    res[node.id] = { data: data, log: log, hasSource: hasSource, table: table };
   }
   return { res: res };
 }
@@ -870,6 +1052,35 @@ function outputCardHTML(ot, data) {
     '<div style="overflow-x:auto"><table class="rtable">'+
     '<thead><tr><th>ID</th><th>Gen</th><th>Year</th><th>Avg</th><th>Grade</th><th>Specialisation</th></tr></thead>'+
     '<tbody>'+rows+more+'</tbody></table></div>'+
+  '</div>';
+}
+
+function compareCardHTML(t) {
+  if (t.series.length === 0) {
+    return '<div class="result-card">'+
+      '<div class="result-head">Comparison</div>'+
+      '<div class="cmp-empty">No branches connected to this Compare node.</div>'+
+    '</div>';
+  }
+  var rows = t.series.map(function(s) {
+    // Floor the width so a non-zero series is never an invisible sliver
+    var pct = t.max > 0 ? Math.max(2, (s.value / t.max) * 100) : 0;
+    return '<tr>'+
+      '<td class="cmp-cell-label" title="'+esc(s.label)+'">'+esc(s.label)+'</td>'+
+      '<td class="cmp-cell-bar"><span class="cmp-bar" style="width:'+pct.toFixed(1)+'%"></span></td>'+
+      '<td class="cmp-cell-val">'+esc(s.text)+'</td>'+
+    '</tr>';
+  }).join('');
+  var note = t.series.length === 1
+    ? '<div class="cmp-empty">Only one branch — connect another to compare.</div>'
+    : '';
+  return '<div class="result-card">'+
+    '<div class="result-head">Comparison <span class="result-badge">'+t.series.length+' branches</span></div>'+
+    '<table class="rtable cmp-table">'+
+      '<thead><tr><th>'+esc(t.cols[0])+'</th><th></th><th class="cmp-cell-val">'+esc(t.cols[1])+'</th></tr></thead>'+
+      '<tbody>'+rows+'</tbody>'+
+    '</table>'+
+    note+
   '</div>';
 }
 
@@ -907,6 +1118,19 @@ function runQuery() {
 
     if (!r.hasSource) {
       body = '<div class="error-box">Not connected to a Source — this Output has no data path.</div>';
+    } else if (r.table) {
+      // A table arrives already aggregated, so the Output's count/list/average
+      // selector has nothing left to decide and is bypassed.
+      lastResults[onode.id] = r.table.series.length;
+      var tlog = r.log.concat(logEntry('OUTPUT', [{c:'val', s:'comparison table'}]));
+      exportData[onode.id] = {
+        index: oi + 1,
+        ot: 'comparison',
+        log: tlog.map(logText),
+        data: r.data,
+        table: r.table
+      };
+      body = '<div class="query-log">'+tlog.map(logHTML).join('\n')+'</div>' + compareCardHTML(r.table);
     } else {
       var ot = onode._outputType || 'count';
       lastResults[onode.id] = outputValue(ot, r.data);
@@ -980,8 +1204,18 @@ function csvCell(v) {
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
+// A comparison exports as the table on screen — label and value per branch —
+// not the underlying rows, which is what makes it paste usefully into a chart.
+function compareDelim(t, sep, quote) {
+  var cell = quote ? csvCell : function(v){ return String(v); };
+  return [t.cols.map(cell).join(sep)]
+    .concat(t.series.map(function(s){ return [cell(s.label), cell(s.text)].join(sep); }))
+    .join('\n');
+}
+
 // Tab-separated — pastes straight into Excel/Sheets as columns
 function tsvFor(e) {
+  if (e.table) return compareDelim(e.table, '\t', false);
   return [EXPORT_COLS.join('\t')]
     .concat(e.data.map(function(s){ return rowOf(s).join('\t'); }))
     .join('\n');
@@ -989,6 +1223,7 @@ function tsvFor(e) {
 
 // Clean data only — no provenance rows, so imports don't need cleaning up
 function csvFor(e) {
+  if (e.table) return compareDelim(e.table, ',', true);
   return [EXPORT_COLS.join(',')]
     .concat(e.data.map(function(s){ return rowOf(s).map(csvCell).join(','); }))
     .join('\n');
@@ -1019,6 +1254,13 @@ function scalarText(e) {
 
 // Returns {name, content, mime} for a Save action
 function fileFor(e) {
+  if (e.table) {
+    return {
+      name: 'output' + e.index + '-comparison-' + timeStamp(true) + '.csv',
+      content: csvFor(e),
+      mime: 'text/csv'
+    };
+  }
   if (e.ot === 'list') {
     return {
       name: 'output' + e.index + '-list-' + timeStamp(true) + '.csv',
@@ -1101,7 +1343,7 @@ function exportEntry(id, btn) {
 function copyOutput(id, btn) {
   var e = exportEntry(id, btn);
   if (!e) return;
-  writeClipboard(e.ot === 'list' ? tsvFor(e) : scalarText(e), btn);
+  writeClipboard((e.table || e.ot === 'list') ? tsvFor(e) : scalarText(e), btn);
 }
 
 function saveOutput(id, btn) {
@@ -1122,8 +1364,40 @@ function setOutput(html) {
   pb.innerHTML = html;
 }
 
+/* PROCESSING MENU
+   The toolbar holds one button per pipeline stage. Processing nodes are a
+   growing family, so they live behind a single dropdown rather than adding a
+   button each — the toolbar stays readable as more are added. */
+
+function procMenuEl() { return document.getElementById('procMenu'); }
+
+function closeProcMenu() {
+  var m = procMenuEl();
+  if (m) m.classList.remove('open');
+}
+
+function toggleProcMenu(e) {
+  // Without this the document listener below sees the same click and closes
+  // the menu in the same tick it was opened.
+  if (e) e.stopPropagation();
+  var m = procMenuEl();
+  if (m) m.classList.toggle('open');
+}
+
+function addProcNode(type) {
+  closeProcMenu();
+  addNode(type);
+}
+
+document.addEventListener('click', closeProcMenu);
+document.addEventListener('keydown', function(e) {
+  if (e.key === 'Escape') closeProcMenu();
+});
+
 /* GLOBALS */
 window.addNode = addNode;
+window.toggleProcMenu = toggleProcMenu;
+window.addProcNode = addProcNode;
 window.removeNode = removeNode;
 window.addCriterion = addCriterion;
 window.removeCriterion = removeCriterion;

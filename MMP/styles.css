@@ -457,3 +457,129 @@ select:focus, input:focus { outline: none; border-color: #2a5aaa; }
   fill: #555;
   opacity: 0.7;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   PROCESSING FAMILY — toolbar dropdown + Compare node
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── PROCESSING DROPDOWN ─────────────────────────────────── */
+.proc-wrap { position: relative; display: inline-flex; }
+.add-btn.processing { border-color: #5a3a7a; color: #b48ce0; }
+.add-btn.processing:hover { background: #180e22; }
+.caret { font-size: 8px; opacity: 0.7; margin-left: 2px; }
+
+.proc-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 0;
+  min-width: 208px;
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 4px;
+  display: none;
+  z-index: 200;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.7);
+}
+.proc-menu.open { display: block; }
+
+.proc-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 7px 9px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.proc-item:hover { background: #1c1226; }
+.proc-name { font-size: 11px; color: #b48ce0; }
+.proc-desc { font-size: 10px; color: #4e4e4e; }
+
+.proc-item.is-soon { cursor: default; opacity: 0.4; }
+.proc-item.is-soon:hover { background: transparent; }
+.proc-item.is-soon .proc-name { color: #6a6a6a; }
+
+/* ── COMPARE SHAPE ───────────────────────────────────────── */
+.shape-compare {
+  width: 112px; height: 78px;
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 6px;
+}
+.shape-compare:active { cursor: grabbing; }
+
+/* Three unequal bars — reads as "several series" next to the Filter rectangle */
+.cmp-glyph { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.cmp-glyph i { display: block; height: 3px; border-radius: 1px; background: #b48ce0; opacity: 0.7; }
+
+/* ── COMPARE CONFIG PANEL ────────────────────────────────── */
+.cmp-hint {
+  font-size: 10px;
+  color: #5a5a5a;
+  line-height: 1.5;
+  padding: 2px 0 1px;
+}
+.cmp-branches { display: flex; flex-direction: column; gap: 4px; }
+.cmp-branch { display: flex; align-items: center; gap: 6px; }
+.cmp-swatch {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.cmp-label-input {
+  background: #141414;
+  border: 1px solid #282828;
+  border-radius: 4px;
+  color: #c8c8c8;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-family: inherit;
+  width: 100%;
+  min-width: 0;
+}
+.cmp-label-input::placeholder { color: #3e3e3e; }
+.cmp-label-input:focus { outline: none; border-color: #5a3a7a; }
+
+/* ── COMPARE RESULT TABLE ────────────────────────────────── */
+.cmp-table { table-layout: fixed; }
+.cmp-table th { background: #060606; }
+
+.cmp-cell-label {
+  color: #8a8a8a !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 118px;
+}
+.cmp-cell-bar { width: 40%; padding: 4px 6px !important; }
+.cmp-bar {
+  display: block;
+  height: 7px;
+  border-radius: 2px;
+  background: #5a3a7a;
+  min-width: 2px;
+}
+.cmp-cell-val {
+  text-align: right;
+  color: #b48ce0 !important;
+  white-space: nowrap;
+  width: 62px;
+}
+.cmp-empty {
+  padding: 8px 11px;
+  font-size: 10px;
+  color: #4a4a4a;
+  border-top: 1px solid #141414;
+}
