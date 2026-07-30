@@ -254,8 +254,17 @@ function saveState() {
       var v = gv(node.id,'outputType'); if (v) node._outputType = v;
     }
     if (node.type==='compare') {
-      var m = gv(node.id,'metric'); if (m) node._metric = m;
       var so = gv(node.id,'sort'); if (so) node._sort = so;
+      // Only overwrite when the checkboxes are actually on screen — an
+      // unrendered panel would otherwise read as "nothing ticked".
+      if (document.getElementById('f_'+node.id+'_m_count')) {
+        var picked = [];
+        MEASURES.forEach(function(m) {
+          var box = document.getElementById('f_'+node.id+'_m_'+m.key);
+          if (box && box.checked) picked.push(m.key);
+        });
+        node._measures = picked;
+      }
       // Labels are keyed by upstream node id, so they survive re-ordering and
       // stay attached to the right branch when another one is disconnected.
       node._labels = node._labels || {};
@@ -367,7 +376,6 @@ function configHTML(node) {
 
   if (node.type==='compare') {
     var inIds = inputsOf(node.id);
-    var metric = node._metric || 'count';
     var sortBy = node._sort || 'wired';
     var labels = node._labels || {};
 
@@ -391,29 +399,47 @@ function configHTML(node) {
       html += '</div>';
     }
 
-    html += '<div class="cfg-label">Measure</div>'+
-      '<select id="f_'+id+'_metric">'+
-        '<option value="count"'+(metric==='count'?' selected':'')+'>Student count</option>'+
-        '<option value="average"'+(metric==='average'?' selected':'')+'>Average grade</option>'+
-        '<option value="share"'+(metric==='share'?' selected':'')+'>Share of total (%)</option>'+
-      '</select>'+
+    var picked = measuresOf(node);
+    html += '<div class="cfg-label">Columns</div>'+
+      '<div class="cmp-measures">'+
+        MEASURES.map(function(m) {
+          return '<label class="cmp-measure">'+
+            '<input type="checkbox" id="f_'+id+'_m_'+m.key+'"'+
+              (picked.indexOf(m.key) !== -1 ? ' checked' : '')+'>'+
+            '<span>'+m.label+'</span>'+
+          '</label>';
+        }).join('')+
+      '</div>'+
       '<div class="cfg-label">Order</div>'+
       '<select id="f_'+id+'_sort">'+
         '<option value="wired"'+(sortBy==='wired'?' selected':'')+'>As connected</option>'+
         '<option value="desc"'+(sortBy==='desc'?' selected':'')+'>Highest first</option>'+
         '<option value="asc"'+(sortBy==='asc'?' selected':'')+'>Lowest first</option>'+
         '<option value="label"'+(sortBy==='label'?' selected':'')+'>Label A–Z</option>'+
-      '</select>';
+      '</select>'+
+      '<div class="cmp-hint">Highest and lowest use the first ticked column.</div>';
   }
 
   if (node.type==='output') {
-    var ot = node._outputType || 'count';
-    html += '<div class="cfg-label">Type</div>'+
-      '<select id="f_'+id+'_outputType">'+
-        '<option value="count"'+(ot==='count'?' selected':'')+'>Count</option>'+
-        '<option value="list"'+(ot==='list'?' selected':'')+'>List</option>'+
-        '<option value="average"'+(ot==='average'?' selected':'')+'>Average</option>'+
-      '</select>';
+    // Write the normalised value back so the node's stored state always matches
+    // the vocabulary its panel is currently showing.
+    var ot = normaliseOutputType(node);
+    node._outputType = ot;
+
+    if (compareFeedsOutput(node)) {
+      html += '<div class="cfg-label">Show</div>'+
+        '<select id="f_'+id+'_outputType">'+
+          '<option value="summary"'+(ot==='summary'?' selected':'')+'>Summary table</option>'+
+          '<option value="lists"'+(ot==='lists'?' selected':'')+'>Summary + student lists</option>'+
+        '</select>';
+    } else {
+      html += '<div class="cfg-label">Type</div>'+
+        '<select id="f_'+id+'_outputType">'+
+          '<option value="count"'+(ot==='count'?' selected':'')+'>Count</option>'+
+          '<option value="list"'+(ot==='list'?' selected':'')+'>List</option>'+
+          '<option value="average"'+(ot==='average'?' selected':'')+'>Average</option>'+
+        '</select>';
+    }
   }
 
   html += '</div>';
@@ -665,13 +691,13 @@ function showPreview(conn, pathEl) {
   } else if (res.table) {
     var t = res.table;
     var trows = t.series.slice(0, 5).map(function(s) {
-      return '<tr><td>'+esc(s.label)+'</td><td>'+esc(s.text)+'</td></tr>';
+      return '<tr><td>'+esc(s.label)+'</td><td>'+s.count+'</td></tr>';
     }).join('');
     body = '<div class="ep-count"><span class="ep-num">'+t.series.length+'</span> branch'+
       (t.series.length===1?'':'es')+' on this edge</div>'+
       (t.series.length === 0
         ? '<div class="ep-note">Nothing to compare yet.</div>'
-        : '<table class="ep-table"><thead><tr><th>'+esc(t.cols[0])+'</th><th>'+esc(t.cols[1])+'</th></tr></thead>'+
+        : '<table class="ep-table"><thead><tr><th>Branch</th><th>Students</th></tr></thead>'+
           '<tbody>'+trows+'</tbody></table>'+
           (t.series.length > 5 ? '<div class="ep-foot">showing 5 of '+t.series.length+'</div>' : ''));
   } else {
@@ -905,6 +931,46 @@ function applyFilter(node, data, log) {
    series and becomes one labelled row of a table, instead of being unioned into
    a single row set. That table is what travels on to the Output. */
 
+/* MEASURES
+   A comparison table has one row per branch and a column per measure, so this
+   is a multi-select rather than a single choice. Share is off by default: the
+   300px panel fits Branch plus two numeric columns comfortably, three is tight. */
+var MEASURES = [
+  { key:'count',   label:'Students',        head:'Students'  },
+  { key:'average', label:'Avg grade',       head:'Avg grade' },
+  { key:'share',   label:'Share of total',  head:'Share'     }
+];
+var DEFAULT_MEASURES = ['count', 'average'];
+
+function measuresOf(node) {
+  return node._measures || DEFAULT_MEASURES;
+}
+
+/* OUTPUT MODE
+   An Output fed by a Compare is choosing how much detail to show, not what to
+   measure — the Compare already decided that. So its selector switches
+   vocabulary. Values are mapped like-for-like when a wire changes, so a user
+   who picked a list doesn't silently lose it. */
+var ROW_TYPES = ['count', 'list', 'average'];
+var CMP_TYPES = ['summary', 'lists'];
+
+function compareFeedsOutput(node) {
+  return inputsOf(node.id).some(function(id) {
+    var up = findNode(id);
+    return up && up.type === 'compare';
+  });
+}
+
+function normaliseOutputType(node) {
+  var v = node._outputType;
+  if (compareFeedsOutput(node)) {
+    if (CMP_TYPES.indexOf(v) !== -1) return v;
+    return (v === 'list') ? 'lists' : 'summary';
+  }
+  if (ROW_TYPES.indexOf(v) !== -1) return v;
+  return (v === 'lists') ? 'list' : 'count';
+}
+
 function stripQuotes(s) { return String(s).replace(/^"|"$/g, ''); }
 
 // A branch's label, derived from the query that produced it, so a user who
@@ -930,11 +996,7 @@ function meanGrade(d) {
   return d.reduce(function(a, s){ return a + s.gradeAvg; }, 0) / d.length;
 }
 
-var COMPARE_HEADS = { count: 'Students', average: 'Avg grade', share: 'Share' };
-
 function buildCompareTable(node, inIds, res, log) {
-  var metric = node._metric || 'count';
-  var sortBy = node._sort || 'wired';
   var labels = node._labels || {};
 
   var series = [];
@@ -946,35 +1008,62 @@ function buildCompareTable(node, inIds, res, log) {
       id: inId,
       label: (manual && manual.trim()) ? manual.trim() : autoLabel(r, i),
       count: r.data.length,
-      avg: meanGrade(r.data)
+      avg: meanGrade(r.data),
+      rows: r.data
     });
   });
 
+  log.push(logEntry('COMPARE', [
+    {s: series.length + (series.length === 1 ? ' branch' : ' branches')}
+  ]));
+
+  // Deliberately unformatted. Presentation is compareView()'s job, so one
+  // Compare can feed two Outputs that show different amounts of detail.
+  return { series: series, sort: node._sort || 'wired', measures: measuresOf(node) };
+}
+
+function measureCell(key, s, total) {
+  if (key === 'average') return { value: s.avg, text: s.avg.toFixed(1) };
+  if (key === 'share') {
+    var pct = total ? (s.count / total) * 100 : 0;
+    return { value: pct, text: pct.toFixed(1) + '%' };
+  }
+  return { value: s.count, text: String(s.count) };
+}
+
+function headFor(key) {
+  for (var i = 0; i < MEASURES.length; i++) if (MEASURES[i].key === key) return MEASURES[i].head;
+  return key;
+}
+
+// Resolves a Compare table into displayable columns. Sorting uses the first
+// ticked column, so re-ordering the ticks re-orders the rows.
+function compareView(t) {
+  var keys = (t.measures || DEFAULT_MEASURES).filter(function(k) {
+    return MEASURES.some(function(m){ return m.key === k; });
+  });
+
+  var series = t.series.map(function(s) {
+    return { id:s.id, label:s.label, count:s.count, avg:s.avg, rows:s.rows };
+  });
   var total = series.reduce(function(a, s){ return a + s.count; }, 0);
 
   series.forEach(function(s) {
-    if (metric === 'average') { s.value = s.avg; s.text = s.avg.toFixed(1); }
-    else if (metric === 'share') {
-      s.value = total ? (s.count / total) * 100 : 0;
-      s.text = s.value.toFixed(1) + '%';
-    }
-    else { s.value = s.count; s.text = String(s.count); }
+    s.cells = keys.map(function(k){ return measureCell(k, s, total); });
   });
 
-  if (sortBy === 'desc') series.sort(function(a,b){ return b.value - a.value; });
-  else if (sortBy === 'asc') series.sort(function(a,b){ return a.value - b.value; });
-  else if (sortBy === 'label') series.sort(function(a,b){ return a.label.localeCompare(b.label); });
-
-  log.push(logEntry('COMPARE', [
-    {s: series.length + (series.length === 1 ? ' branch by' : ' branches by')},
-    {c:'val', s: metric}
-  ]));
+  var sortBy = t.sort || 'wired';
+  if (sortBy === 'label') {
+    series.sort(function(a,b){ return a.label.localeCompare(b.label); });
+  } else if (keys.length && (sortBy === 'desc' || sortBy === 'asc')) {
+    var dir = sortBy === 'desc' ? -1 : 1;
+    series.sort(function(a,b){ return dir * (a.cells[0].value - b.cells[0].value); });
+  }
 
   return {
-    cols: ['Branch', COMPARE_HEADS[metric] || 'Value'],
-    series: series,
-    metric: metric,
-    max: series.reduce(function(m, s){ return Math.max(m, s.value); }, 0)
+    cols: ['Branch'].concat(keys.map(headFor)),
+    keys: keys,
+    series: series
   };
 }
 
@@ -1055,33 +1144,71 @@ function outputCardHTML(ot, data) {
   '</div>';
 }
 
-function compareCardHTML(t) {
-  if (t.series.length === 0) {
+var CMP_LIST_LIMIT = 20;
+
+// One card per branch, under the summary table, when the Output is a List.
+function compareBranchListHTML(s) {
+  var body;
+  if (s.rows.length === 0) {
+    body = '<div class="cmp-empty">No students match this branch.</div>';
+  } else {
+    var trs = s.rows.slice(0, CMP_LIST_LIMIT).map(function(r) {
+      return '<tr><td>'+r.id+'</td><td>'+r.gender+'</td><td>'+r.year+'</td>'+
+             '<td>'+r.gradeAvg+'</td><td>'+r.letterGrade+'</td><td>'+esc(r.specialisation)+'</td></tr>';
+    }).join('');
+    var more = s.rows.length > CMP_LIST_LIMIT
+      ? '<tr><td colspan="6" class="cmp-more">... '+(s.rows.length - CMP_LIST_LIMIT)+
+        ' more — Copy and Save include every row</td></tr>'
+      : '';
+    body = '<div style="overflow-x:auto"><table class="rtable">'+
+      '<thead><tr><th>ID</th><th>Gen</th><th>Year</th><th>Avg</th><th>Grade</th><th>Specialisation</th></tr></thead>'+
+      '<tbody>'+trs+more+'</tbody></table></div>';
+  }
+  return '<div class="result-card cmp-branch-card">'+
+    '<div class="result-head">'+esc(s.label)+
+      ' <span class="result-badge">'+s.rows.length+'</span></div>'+
+    body+
+  '</div>';
+}
+
+function compareCardHTML(t, withRows) {
+  var v = compareView(t);
+
+  if (v.series.length === 0) {
     return '<div class="result-card">'+
       '<div class="result-head">Comparison</div>'+
       '<div class="cmp-empty">No branches connected to this Compare node.</div>'+
     '</div>';
   }
-  var rows = t.series.map(function(s) {
-    // Floor the width so a non-zero series is never an invisible sliver
-    var pct = t.max > 0 ? Math.max(2, (s.value / t.max) * 100) : 0;
+
+  var head = v.cols.map(function(c, i) {
+    return i === 0 ? '<th>'+esc(c)+'</th>' : '<th class="cmp-num">'+esc(c)+'</th>';
+  }).join('');
+
+  var rows = v.series.map(function(s) {
     return '<tr>'+
       '<td class="cmp-cell-label" title="'+esc(s.label)+'">'+esc(s.label)+'</td>'+
-      '<td class="cmp-cell-bar"><span class="cmp-bar" style="width:'+pct.toFixed(1)+'%"></span></td>'+
-      '<td class="cmp-cell-val">'+esc(s.text)+'</td>'+
+      s.cells.map(function(c){ return '<td class="cmp-num">'+esc(c.text)+'</td>'; }).join('')+
     '</tr>';
   }).join('');
-  var note = t.series.length === 1
-    ? '<div class="cmp-empty">Only one branch — connect another to compare.</div>'
-    : '';
-  return '<div class="result-card">'+
-    '<div class="result-head">Comparison <span class="result-badge">'+t.series.length+' branches</span></div>'+
+
+  var notes = '';
+  if (v.keys.length === 0) notes += '<div class="cmp-empty">No columns ticked on the Compare node.</div>';
+  if (v.series.length === 1) notes += '<div class="cmp-empty">Only one branch — connect another to compare.</div>';
+
+  var html = '<div class="result-card">'+
+    '<div class="result-head">Comparison <span class="result-badge">'+v.series.length+' branches</span></div>'+
     '<table class="rtable cmp-table">'+
-      '<thead><tr><th>'+esc(t.cols[0])+'</th><th></th><th class="cmp-cell-val">'+esc(t.cols[1])+'</th></tr></thead>'+
+      '<thead><tr>'+head+'</tr></thead>'+
       '<tbody>'+rows+'</tbody>'+
     '</table>'+
-    note+
+    notes+
   '</div>';
+
+  if (withRows) {
+    html += v.series.map(compareBranchListHTML).join('');
+  }
+  return html;
 }
 
 function outputValue(ot, data) {
@@ -1119,18 +1246,20 @@ function runQuery() {
     if (!r.hasSource) {
       body = '<div class="error-box">Not connected to a Source — this Output has no data path.</div>';
     } else if (r.table) {
-      // A table arrives already aggregated, so the Output's count/list/average
-      // selector has nothing left to decide and is bypassed.
+      // The Output decides how much detail; the Compare decided what's measured.
+      var cot = normaliseOutputType(onode);
+      onode._outputType = cot;
       lastResults[onode.id] = r.table.series.length;
-      var tlog = r.log.concat(logEntry('OUTPUT', [{c:'val', s:'comparison table'}]));
+      var tlog = r.log.concat(logEntry('OUTPUT', [{c:'val', s:cot}]));
       exportData[onode.id] = {
         index: oi + 1,
-        ot: 'comparison',
+        ot: cot,
         log: tlog.map(logText),
         data: r.data,
         table: r.table
       };
-      body = '<div class="query-log">'+tlog.map(logHTML).join('\n')+'</div>' + compareCardHTML(r.table);
+      body = '<div class="query-log">'+tlog.map(logHTML).join('\n')+'</div>' +
+             compareCardHTML(r.table, cot === 'lists');
     } else {
       var ot = onode._outputType || 'count';
       lastResults[onode.id] = outputValue(ot, r.data);
@@ -1204,18 +1333,33 @@ function csvCell(v) {
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
-// A comparison exports as the table on screen — label and value per branch —
-// not the underlying rows, which is what makes it paste usefully into a chart.
-function compareDelim(t, sep, quote) {
+// A comparison exports as what's on screen. For count/average that's one row
+// per branch; for a list it's every student row with its branch name prepended,
+// which is the shape a pivot table wants.
+function compareDelim(t, withRows, sep, quote) {
   var cell = quote ? csvCell : function(v){ return String(v); };
-  return [t.cols.map(cell).join(sep)]
-    .concat(t.series.map(function(s){ return [cell(s.label), cell(s.text)].join(sep); }))
+  var v = compareView(t);
+
+  if (withRows) {
+    var lines = [['Branch'].concat(EXPORT_COLS).map(cell).join(sep)];
+    v.series.forEach(function(s) {
+      s.rows.forEach(function(r) {
+        lines.push([cell(s.label)].concat(rowOf(r).map(cell)).join(sep));
+      });
+    });
+    return lines.join('\n');
+  }
+
+  return [v.cols.map(cell).join(sep)]
+    .concat(v.series.map(function(s) {
+      return [cell(s.label)].concat(s.cells.map(function(c){ return cell(c.text); })).join(sep);
+    }))
     .join('\n');
 }
 
 // Tab-separated — pastes straight into Excel/Sheets as columns
 function tsvFor(e) {
-  if (e.table) return compareDelim(e.table, '\t', false);
+  if (e.table) return compareDelim(e.table, e.ot === 'lists', '\t', false);
   return [EXPORT_COLS.join('\t')]
     .concat(e.data.map(function(s){ return rowOf(s).join('\t'); }))
     .join('\n');
@@ -1223,7 +1367,7 @@ function tsvFor(e) {
 
 // Clean data only — no provenance rows, so imports don't need cleaning up
 function csvFor(e) {
-  if (e.table) return compareDelim(e.table, ',', true);
+  if (e.table) return compareDelim(e.table, e.ot === 'lists', ',', true);
   return [EXPORT_COLS.join(',')]
     .concat(e.data.map(function(s){ return rowOf(s).map(csvCell).join(','); }))
     .join('\n');

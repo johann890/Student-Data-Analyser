@@ -465,9 +465,23 @@ select:focus, input:focus { outline: none; border-color: #2a5aaa; }
 
 /* ── PROCESSING DROPDOWN ─────────────────────────────────── */
 .proc-wrap { position: relative; display: inline-flex; }
-.add-btn.processing { border-color: #5a3a7a; color: #b48ce0; }
+.add-btn.processing {
+  border-color: #5a3a7a;
+  color: #b48ce0;
+  /* inline-flex so the caret centres on the label's optical midline rather
+     than sitting on the text baseline */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
 .add-btn.processing:hover { background: #180e22; }
-.caret { font-size: 8px; opacity: 0.7; margin-left: 2px; }
+.caret {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.85;
+  display: block;
+  transform: translateY(0.5px);
+}
 
 .proc-menu {
   position: absolute;
@@ -500,10 +514,6 @@ select:focus, input:focus { outline: none; border-color: #2a5aaa; }
 .proc-item:hover { background: #1c1226; }
 .proc-name { font-size: 11px; color: #b48ce0; }
 .proc-desc { font-size: 10px; color: #4e4e4e; }
-
-.proc-item.is-soon { cursor: default; opacity: 0.4; }
-.proc-item.is-soon:hover { background: transparent; }
-.proc-item.is-soon .proc-name { color: #6a6a6a; }
 
 /* ── COMPARE SHAPE ───────────────────────────────────────── */
 .shape-compare {
@@ -561,25 +571,57 @@ select:focus, input:focus { outline: none; border-color: #2a5aaa; }
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 118px;
 }
-.cmp-cell-bar { width: 40%; padding: 4px 6px !important; }
-.cmp-bar {
-  display: block;
-  height: 7px;
-  border-radius: 2px;
-  background: #5a3a7a;
-  min-width: 2px;
-}
-.cmp-cell-val {
+.cmp-num {
   text-align: right;
   color: #b48ce0 !important;
   white-space: nowrap;
-  width: 62px;
+  width: 58px;
 }
+th.cmp-num { color: #383838 !important; }
 .cmp-empty {
   padding: 8px 11px;
   font-size: 10px;
   color: #4a4a4a;
   border-top: 1px solid #141414;
 }
+
+/* Per-branch student lists, shown under the summary when Output type = List */
+.cmp-branch-card { margin-top: 8px; }
+.cmp-branch-card .result-head {
+  color: #8a7ab0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+.cmp-more {
+  color: #333333 !important;
+  padding: 5px 9px !important;
+  font-size: 10px;
+}
+
+/* Measure column checkboxes on the Compare panel */
+.cmp-measures {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 1px 0 2px;
+}
+.cmp-measure {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #a8a8a8;
+  cursor: pointer;
+  user-select: none;
+}
+.cmp-measure input[type=checkbox] {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: #5a3a7a;
+  cursor: pointer;
+}
+.cmp-measure:hover { color: #d0d0d0; }
