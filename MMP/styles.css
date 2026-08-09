@@ -232,9 +232,35 @@ select:focus, input:focus { outline: none; border-color: #2a5aaa; }
   grid-template-columns: 80px 38px 1fr;
   align-items: center;
 }
-/* two-col variant: field | value (year, gender) */
+/* two-col variant: field | value (year, gender, subject) */
 .criterion-controls.two-col {
   grid-template-columns: 80px 1fr;
+}
+/* stacked variant: course pickers carry a code and a full title, which will not
+   survive an 80px column — each control gets the panel's whole width instead. */
+.criterion-controls.stack {
+  grid-template-columns: 1fr;
+}
+.criterion-controls.stack .cc-pair {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  gap: 4px;
+  align-items: center;
+}
+.course-sel {
+  font-variant-numeric: tabular-nums;
+}
+/* optgroup headers inherit the page background otherwise, which renders them
+   as unreadable dark-on-dark in most engines */
+select optgroup {
+  background: #141414;
+  color: #6a6a6a;
+  font-style: normal;
+  font-size: 10px;
+}
+select option {
+  background: #141414;
+  color: #c8c8c8;
 }
 .criterion-value-sel { /* full-width, sits in its grid cell */ }
 .add-criterion-btn {
@@ -625,3 +651,53 @@ th.cmp-num { color: #383838 !important; }
   cursor: pointer;
 }
 .cmp-measure:hover { color: #d0d0d0; }
+
+/* COURSE CELLS
+   The enrolment count sits in the student table with the full transcript in a
+   tooltip; the dotted underline is the only affordance saying so. */
+.crs-cell {
+  cursor: help;
+  border-bottom: 1px dotted #333 !important;
+}
+.crs-cell:hover { color: #7ab3ff; }
+
+/* Course breakdown tables reuse .rtable/.cmp-table. The code column is fixed so
+   the two numeric columns keep a stable position down the list. */
+.crs-table th:first-child { width: 44%; }
+.result-card .cmp-table td.cmp-cell-label {
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+}
+
+/* SAVE / LOAD
+   Query-file actions are neither destructive like Clear nor primary like Run,
+   so they sit between the two in weight. */
+.file-btn {
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  color: #9a9a9a;
+  font-size: 11px;
+  padding: 5px 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color .12s, color .12s;
+}
+.file-btn:hover { border-color: #3d3d3d; color: #d0d0d0; }
+.file-btn:active { background: #1a1a1a; }
+
+/* Output file name — a plain field, so it reads as a value rather than a
+   choice, unlike the selects stacked above it. */
+.fname-input {
+  width: 100%;
+  background: #121212;
+  border: 1px solid #262626;
+  color: #c8c8c8;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 4px 6px;
+  border-radius: 3px;
+  box-sizing: border-box;
+}
+.fname-input:focus { outline: none; border-color: #3d3d3d; }
+.fname-input::placeholder { color: #454545; }

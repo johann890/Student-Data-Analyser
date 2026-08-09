@@ -14,29 +14,435 @@ function letterGrade(g) {
   if (g>=75) return 'B+'; if (g>=70) return 'B'; if (g>=65) return 'B-';
   if (g>=60) return 'C+'; if (g>=55) return 'C'; return 'D';
 }
+
+/* COURSE CATALOGUE
+   400-level (Honours) offerings, grouped by subject prefix. A full Honours
+   year is eight 15-point courses = 120 points, so every student record carries
+   exactly eight enrolments for the year they are enrolled in.
+
+   The subject list is derived from the codes rather than hardcoded, so
+   replacing this array with the real catalogue — more courses, new prefixes —
+   requires no other change: the filter dropdowns, the subject criterion and
+   the breakdown tables all read from it. */
+var COURSES = [
+  { code:'COMP409', name:'Advanced Concurrency and Parallelism' },
+  { code:'COMP421', name:'Machine Learning' },
+  { code:'COMP422', name:'Data Mining and Knowledge Engineering' },
+  { code:'COMP423', name:'Advanced Computer Graphics' },
+  { code:'COMP424', name:'Advanced Algorithms' },
+  { code:'COMP440', name:'Artificial Intelligence Research' },
+
+  { code:'SWEN421', name:'Formal Foundations of Software Engineering' },
+  { code:'SWEN422', name:'Human Computer Interaction' },
+  { code:'SWEN423', name:'Software Design and Architecture' },
+  { code:'SWEN430', name:'Compiler Engineering' },
+  { code:'SWEN431', name:'Advanced Programming Languages' },
+  { code:'SWEN432', name:'Advanced Database Design and Implementation' },
+  { code:'SWEN438', name:'Software Evolution' },
+  { code:'SWEN439', name:'Special Topic: Software Engineering' },
+
+  { code:'ENGR401', name:'Professional Practice' },
+  { code:'ENGR440', name:'Advanced Systems Engineering' },
+  { code:'ENGR489', name:'Engineering Project' },
+
+  { code:'AIML420', name:'Foundations of Artificial Intelligence' },
+  { code:'AIML421', name:'Machine Learning Tools and Techniques' },
+  { code:'AIML425', name:'Neural Networks and Deep Learning' },
+  { code:'AIML426', name:'Evolutionary Computation and Learning' },
+  { code:'AIML427', name:'Big Data' },
+  { code:'AIML428', name:'Text Mining' },
+
+  { code:'NWEN406', name:'Advanced Network Applications' },
+  { code:'NWEN438', name:'Distributed Systems' },
+  { code:'NWEN439', name:'Special Topic: Network Engineering' },
+
+  { code:'CYBR471', name:'Cybersecurity Risk Management' },
+  { code:'CYBR472', name:'Applied Cryptography' },
+  { code:'CYBR473', name:'Malware and Reverse Engineering' },
+
+  { code:'DATA471', name:'Data Science in Practice' },
+  { code:'DATA472', name:'Data Engineering' }
+];
+
+var COURSE_POINTS = 15;   // every 400-level course in the catalogue
+var COURSES_PER_YEAR = 8; // 8 x 15 = 120 points, a full Honours year
+
+var SUBJECTS = [];        // derived from the codes, in first-seen order
+var COURSE_BY_CODE = {};
+COURSES.forEach(function(c) {
+  c.subject = c.code.slice(0, 4);
+  c.points = COURSE_POINTS;
+  COURSE_BY_CODE[c.code] = c;
+  if (SUBJECTS.indexOf(c.subject) === -1) SUBJECTS.push(c.subject);
+});
+var DEFAULT_COURSE = COURSES[0].code;
+
+// Taken by everyone regardless of specialisation — the project and the
+// professional-practice course are core to the Honours year.
+var CORE_COURSES = ['ENGR489', 'ENGR401'];
+
+// Which subjects a specialisation leans on, most-preferred first. Anything not
+// listed still has a small chance of being picked, so cohorts overlap rather
+// than splitting into six disjoint groups.
+var SPEC_SUBJECTS = {
+  'Software Engineering':    ['SWEN', 'COMP', 'ENGR'],
+  'Computer Science':        ['COMP', 'SWEN', 'AIML'],
+  'Information Technology':  ['NWEN', 'SWEN', 'COMP'],
+  'Data Science':            ['DATA', 'AIML', 'COMP'],
+  'Cybersecurity':           ['CYBR', 'NWEN', 'COMP'],
+  'Artificial Intelligence': ['AIML', 'COMP', 'DATA']
+};
+var SUBJECT_WEIGHTS = [7, 3, 2]; // by rank in the list above; 1 for everything else
+
+function subjectWeight(spec, subject) {
+  var prefs = SPEC_SUBJECTS[spec] || [];
+  var rank = prefs.indexOf(subject);
+  return rank === -1 ? 1 : SUBJECT_WEIGHTS[rank];
+}
+
+/* Deterministic generation. A fixed seed means the dataset is identical on
+   every page load, so a query that returned 23 students yesterday still
+   returns 23 today — screenshots, notes and marking stay reproducible. */
+function makeRng(seed) {
+  var t = seed >>> 0;
+  return function() {
+    t += 0x6D2B79F5;
+    var r = t;
+    r = Math.imul(r ^ (r >>> 15), r | 1);
+    r ^= r + Math.imul(r ^ (r >>> 7), r | 61);
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+// Weighted sampling without replacement, seeded from the student's own id.
+function pickCourses(rand, spec) {
+  var chosen = CORE_COURSES.filter(function(code){ return COURSE_BY_CODE[code]; });
+  var pool = COURSES.filter(function(c){ return chosen.indexOf(c.code) === -1; });
+  var weights = pool.map(function(c){ return subjectWeight(spec, c.subject); });
+
+  while (chosen.length < COURSES_PER_YEAR && pool.length) {
+    var total = 0, i;
+    for (i = 0; i < weights.length; i++) total += weights[i];
+    var r = rand() * total, pickIdx = pool.length - 1;
+    for (i = 0; i < weights.length; i++) {
+      if (r < weights[i]) { pickIdx = i; break; }
+      r -= weights[i];
+    }
+    chosen.push(pool[pickIdx].code);
+    pool.splice(pickIdx, 1);
+    weights.splice(pickIdx, 1);
+  }
+  // Catalogue order keeps a student's transcript readable
+  return chosen.sort();
+}
+
+var MARK_MIN = 30, MARK_MAX = 100, MARK_SPREAD = 11;
+
+function clampMark(m) { return Math.max(MARK_MIN, Math.min(MARK_MAX, m)); }
+function sumOf(a) { return a.reduce(function(x, y){ return x + y; }, 0); }
+
+/* Marks that scatter around the student's overall average and then sum back to
+   it exactly. Keeping the mean intact means gradeAvg stays the number it was
+   before courses existed, so every previously-recorded query result still
+   holds — the course detail is added underneath it, not instead of it. */
+function marksAround(rand, target, n) {
+  var m = [], i;
+  for (i = 0; i < n; i++) {
+    m.push(clampMark(target + Math.round((rand() * 2 - 1) * MARK_SPREAD)));
+  }
+  var want = target * n, guard = 0;
+  while (sumOf(m) !== want && guard++ < 500) {
+    var step = want > sumOf(m) ? 1 : -1;
+    var idx = Math.floor(rand() * n);
+    var v = m[idx] + step;
+    if (v >= MARK_MIN && v <= MARK_MAX) m[idx] = v;
+  }
+  return m;
+}
+
+function buildEnrolments(id, spec, year, target) {
+  var rand = makeRng(id * 2654435761);
+  var codes = pickCourses(rand, spec);
+  var marks = marksAround(rand, target, codes.length);
+  return codes.map(function(code, i) {
+    var c = COURSE_BY_CODE[code];
+    return {
+      code: c.code,
+      name: c.name,
+      subject: c.subject,
+      points: c.points,
+      year: year,
+      mark: marks[i],
+      letterGrade: letterGrade(marks[i])
+    };
+  });
+}
+
 var STUDENTS = [];
 var baseId = 1001;
-[G22,G23].forEach(function(arr,yi) {
-  arr.forEach(function(g,i) {
-    STUDENTS.push({ id:baseId++, gender:i%2===0?'M':'F', gradeAvg:g, year:2022+yi, specialisation:SPECS[i%SPECS.length], letterGrade:letterGrade(g) });
+[G22, G23].forEach(function(arr, yi) {
+  arr.forEach(function(g, i) {
+    var id = baseId++;
+    var year = 2022 + yi;
+    var spec = SPECS[i % SPECS.length];
+    var enrolments = buildEnrolments(id, spec, year, g);
+    // Derived from the enrolments, not stored alongside them, so the two can
+    // never disagree.
+    var avg = Math.round(sumOf(enrolments.map(function(e){ return e.mark; })) / enrolments.length);
+    STUDENTS.push({
+      id: id,
+      gender: i % 2 === 0 ? 'M' : 'F',
+      year: year,
+      specialisation: spec,
+      courses: enrolments,
+      gradeAvg: avg,
+      letterGrade: letterGrade(avg)
+    });
   });
 });
 
-/* STATE */
+/* These student-object lookups (courseMark, takesCourse, courseStats, ...) were
+   removed in the table refactor. Every one of them is now a table operation:
+   course predicates go through coursesColIndex(), per-course aggregation through
+   breakdownTable(), and the long enrolment format through toEnrolments(). They
+   worked on arrays of student objects, which no longer travel anywhere. */
+
+
+/* ============================================================================
+   TABLE — the single data type carried on every wire
+   ============================================================================
+   Before this refactor a wire carried one of two incompatible things: an array
+   of student objects, or a bespoke Compare table. Every node that wanted to
+   handle both had to fork on `if (r.table)`, and a Compare result could not be
+   processed any further — which is why "count per year, then average those
+   counts" was unbuildable.
+
+   Now there is one shape:
+     columns : [{ key, label, type, ... }]   — the header
+     rows    : [[v, v, ...]]                 — aligned to columns by position
+     meta    : {}                            — optional extras (e.g. Compare branches)
+
+   A student list is a table. A histogram is a table. A count is a 1x1 table.
+   Nodes are written once and work on all of them.
+
+   Rows are arrays rather than objects deliberately: it is the same shape as a
+   CSV, so export is a direct write, and column order is data rather than
+   insertion-order luck. Access goes through cellAt()/colIndex() so nothing
+   depends on a hardcoded position.                                           */
+
+var COLTYPE = {
+  NUMBER:  'number',  // right-aligned, averageable, comparable with < > =
+  TEXT:    'text',    // free text
+  ENUM:    'enum',    // small fixed set — rendered as a dropdown in Filter
+  COURSES: 'courses'  // cell holds an array of enrolment objects (see below)
+};
+
+/* The COURSES column type is the one place a cell holds a structured value
+   rather than a scalar. The alternative — flattening every student into eight
+   rows at the Source — would make "count students" wrong by a factor of eight.
+   Instead the nesting is kept, declared in the column type, and unfolded on
+   demand by toEnrolments(). That unfolding is what a separate "Explode" node
+   would have done; making it a property of the type means no extra node and no
+   way to forget it. */
+
+function makeTable(columns, rows, meta) {
+  return { columns: columns || [], rows: rows || [], meta: meta || {} };
+}
+
+function colIndex(t, key) {
+  for (var i = 0; i < t.columns.length; i++) if (t.columns[i].key === key) return i;
+  return -1;
+}
+function colByKey(t, key) { var i = colIndex(t, key); return i === -1 ? null : t.columns[i]; }
+function hasCol(t, key) { return colIndex(t, key) !== -1; }
+function cellAt(t, row, key) { var i = colIndex(t, key); return i === -1 ? undefined : row[i]; }
+
+// Same header, no rows — used for schema propagation and empty results
+function headerOnly(t) { return makeTable(t.columns, [], {}); }
+
+function numericCols(t) {
+  return t.columns.filter(function(c){ return c.type === COLTYPE.NUMBER; });
+}
+
+/* Find the nested-enrolment column by TYPE, never by name. Column keys are
+   free-form labels and do collide: a Compare emits a numeric measure column
+   also called "courses" (how many distinct ones a branch touched). Matching on
+   the name treated that integer as an array of enrolments. The type is the
+   actual contract, so it is what gets checked. */
+function coursesColIndex(t) {
+  for (var i = 0; i < t.columns.length; i++) {
+    if (t.columns[i].type === COLTYPE.COURSES) return i;
+  }
+  return -1;
+}
+
+/* SOURCE SCHEMAS
+   Two row granularities are available. They are genuinely different tables, not
+   two views of one — "how many students" and "how many enrolments" are
+   different questions — so the Source says which it emits and every downstream
+   node adapts through the schema rather than through special cases. */
+
+var YEARS = STUDENTS.map(function(s){ return s.year; })
+  .filter(function(v, i, a){ return a.indexOf(v) === i; })
+  .sort();
+
+var STUDENT_COLUMNS = [
+  { key:'id',             label:'ID',             type:COLTYPE.NUMBER, def:'1001' },
+  { key:'gender',         label:'Gender',         type:COLTYPE.ENUM,   values:['M','F'] },
+  { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS },
+  { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
+  { key:'gradeAvg',       label:'Avg',            type:COLTYPE.NUMBER, def:'70' },
+  { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT },
+  { key:'courses',        label:'Courses',        type:COLTYPE.COURSES }
+];
+
+var ENROLMENT_COLUMNS = [
+  { key:'studentId',      label:'Student',        type:COLTYPE.NUMBER, def:'1001' },
+  { key:'gender',         label:'Gender',         type:COLTYPE.ENUM,   values:['M','F'] },
+  { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS },
+  { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
+  { key:'code',           label:'Course',         type:COLTYPE.ENUM,   values:COURSES.map(function(c){ return c.code; }) },
+  { key:'name',           label:'Course name',    type:COLTYPE.TEXT },
+  { key:'subject',        label:'Subject',        type:COLTYPE.ENUM,   values:SUBJECTS },
+  { key:'points',         label:'Points',         type:COLTYPE.NUMBER, def:'15' },
+  { key:'mark',           label:'Mark',           type:COLTYPE.NUMBER, def:'70' },
+  { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT }
+];
+
+function studentsTable(list) {
+  return makeTable(STUDENT_COLUMNS, list.map(function(s) {
+    return [s.id, s.gender, s.year, s.specialisation, s.gradeAvg, s.letterGrade, s.courses];
+  }));
+}
+
+function enrolmentsTable(list) {
+  var rows = [];
+  list.forEach(function(s) {
+    s.courses.forEach(function(c) {
+      rows.push([s.id, s.gender, s.year, s.specialisation,
+                 c.code, c.name, c.subject, c.points, c.mark, c.letterGrade]);
+    });
+  });
+  return makeTable(ENROLMENT_COLUMNS, rows);
+}
+
+/* Unfold a student table into one row per student-course pair. Returns null if
+   the table has no course information at all, so callers can degrade rather
+   than guess. Already-enrolment tables pass straight through. */
+function toEnrolments(t) {
+  if (hasCol(t, 'code') && hasCol(t, 'mark')) return t;
+  var ci = coursesColIndex(t);
+  if (ci === -1) return null;
+
+  // Carry across whatever student-level context this table still has
+  var carry = ['id', 'studentId', 'gender', 'year', 'specialisation']
+    .filter(function(k){ return hasCol(t, k) && colByKey(t, k).type !== COLTYPE.COURSES; });
+  var cols = carry.map(function(k) {
+    var c = colByKey(t, k);
+    return { key: k === 'id' ? 'studentId' : k, label: c.label, type: c.type, values: c.values };
+  }).concat([
+    { key:'code',        label:'Course',      type:COLTYPE.ENUM, values:COURSES.map(function(c){ return c.code; }) },
+    { key:'name',        label:'Course name', type:COLTYPE.TEXT },
+    { key:'subject',     label:'Subject',     type:COLTYPE.ENUM, values:SUBJECTS },
+    { key:'points',      label:'Points',      type:COLTYPE.NUMBER, def:'15' },
+    { key:'mark',        label:'Mark',        type:COLTYPE.NUMBER, def:'70' },
+    { key:'letterGrade', label:'Grade',       type:COLTYPE.TEXT }
+  ]);
+
+  var rows = [];
+  t.rows.forEach(function(r) {
+    var prefix = carry.map(function(k){ return cellAt(t, r, k); });
+    var list = r[ci] || [];
+    list.forEach(function(c) {
+      rows.push(prefix.concat([c.code, c.name, c.subject, c.points, c.mark, c.letterGrade]));
+    });
+  });
+  return makeTable(cols, rows);
+}
+
+/* Course breakdown as a table: one row per course over whatever students or
+   enrolments reached this point. Works from either granularity via
+   toEnrolments(), so it needs no knowledge of which one it was handed. */
+var BREAKDOWN_COLUMNS = [
+  { key:'code',    label:'Course',    type:COLTYPE.TEXT },
+  { key:'name',    label:'Name',      type:COLTYPE.TEXT },
+  { key:'subject', label:'Subject',   type:COLTYPE.TEXT },
+  { key:'count',   label:'Students',  type:COLTYPE.NUMBER },
+  { key:'avg',     label:'Avg mark',  type:COLTYPE.NUMBER }
+];
+
+function breakdownTable(t) {
+  var en = toEnrolments(t);
+  if (!en) return makeTable(BREAKDOWN_COLUMNS, []);
+  var acc = {};
+  en.rows.forEach(function(r) {
+    var code = cellAt(en, r, 'code');
+    var a = acc[code] || (acc[code] = {
+      code: code,
+      name: cellAt(en, r, 'name'),
+      subject: cellAt(en, r, 'subject'),
+      count: 0, total: 0
+    });
+    a.count++;
+    a.total += Number(cellAt(en, r, 'mark')) || 0;
+  });
+  var rows = Object.keys(acc).map(function(k) {
+    var a = acc[k];
+    return [a.code, a.name, a.subject, a.count, a.count ? a.total / a.count : 0];
+  }).sort(function(x, y) { return y[3] - x[3] || String(x[0]).localeCompare(String(y[0])); });
+  return makeTable(BREAKDOWN_COLUMNS, rows);
+}
+
+/* Cell formatting is driven by column type, so one renderer and one serialiser
+   cover every table the tool can produce. The COURSES type is the only one that
+   differs between screen (a count, with the transcript in a tooltip) and file
+   (semicolon-joined codes, so the row stays one row). */
+function fmtCell(col, v) {
+  if (v === undefined || v === null) return '';
+  if (col.type === COLTYPE.COURSES) return String((v || []).length);
+  if (col.type === COLTYPE.NUMBER && typeof v === 'number' && !isNumInt(v)) return v.toFixed(1);
+  return String(v);
+}
+function isNumInt(v) { return Math.abs(v - Math.round(v)) < 1e-9; }
+
+function exportCell(col, v) {
+  if (v === undefined || v === null) return '';
+  if (col.type === COLTYPE.COURSES) {
+    return (v || []).map(function(c){ return c.code; }).join(';');
+  }
+  if (col.type === COLTYPE.NUMBER && typeof v === 'number' && !isNumInt(v)) return v.toFixed(1);
+  return String(v);
+}
+
+function cellTitle(col, v) {
+  if (col.type === COLTYPE.COURSES) {
+    return (v || []).map(function(c){ return c.code; }).join(', ');
+  }
+  return '';
+}
+
+/* ============================================================================
+   STATE
+   ============================================================================
+   Every node owns its own configuration in node.cfg. Previously the config
+   lived in the DOM and was scraped back by a saveState() pass before each
+   re-render, which meant an unrendered panel read as "nothing set" (hence the
+   defensive guard the Compare node needed) and made the graph impossible to
+   serialise. The model is now authoritative: controls write into cfg on change,
+   render() only reads. That is also what makes save/load possible at all.    */
+
 var nodes = [];
-var connections = []; // [{from: nodeId, to: nodeId, color: '#...'}]
+var connections = [];   // [{from, to, color}]
 var idCtr = 0;
 var drag = null;
-var lastResults = {}; // nodeId -> {count, avg, etc} for inline display
-var SNAP_DIST = 160; // px proximity threshold — measured between shape edges
-var hoverConn = null; // connKey() of the connection currently hovered, or null
-var exportData = {};  // outputNodeId -> {index, ot, log:[plain lines], data:[...]}
-var resultsFresh = false; // false once the graph changes after a run — blocks export
+var SNAP_DIST = 160;    // px proximity threshold, measured between shape edges
+var hoverConn = null;
+var exportData = {};    // outputNodeId -> {index, name, table, log}
+var resultsFresh = false;
+var nodeEls = {};       // nodeId -> DOM element, for the drag fast path
 
 function uid() { return ++idCtr; }
 
-/* NODE SHAPE DIMENSIONS  */
-// Shape sizes (must match CSS). Node div is always 220px wide; shapes are centered inside it.
 var NODE_W = 220;
 var SHAPE = {
   source:  { w:100, h:100 },
@@ -45,36 +451,119 @@ var SHAPE = {
   output:  { w:106, h:66 }
 };
 
-/* CONNECTION RULES
-   Single source of truth for which node types may feed which. Previously these
-   pairs were spelled out inline in three places (drag hover, drop, ghost
-   arrow); they drifted apart easily and every new node type meant editing all
-   three. The entries for source/filter/output reproduce the original rules
-   exactly. Compare accepts row streams and emits a table, so it may feed an
-   Output but nothing else — a table can't be filtered or compared again. */
 var CONNECT_RULES = {
   source:  ['filter', 'compare', 'output'],
   filter:  ['filter', 'compare', 'output'],
   compare: ['output'],
   output:  []
 };
-
 function canConnect(fromType, toType) {
   return (CONNECT_RULES[fromType] || []).indexOf(toType) !== -1;
 }
 
-// Right edge of the shape (horizontally centered in the 196px node div)
 function shapeExit(node) {
   var s = SHAPE[node.type];
-  var shapeLeft = node.x + (NODE_W - s.w) / 2;
-  return { x: shapeLeft + s.w, y: node.y + s.h / 2 };
+  return { x: node.x + (NODE_W - s.w) / 2 + s.w, y: node.y + s.h / 2 };
 }
-
-// Left edge of the shape
 function shapeEntry(node) {
   var s = SHAPE[node.type];
-  var shapeLeft = node.x + (NODE_W - s.w) / 2;
-  return { x: shapeLeft, y: node.y + s.h / 2 };
+  return { x: node.x + (NODE_W - s.w) / 2, y: node.y + s.h / 2 };
+}
+
+/* Direction resolution was duplicated verbatim between the drop handler and the
+   ghost-arrow preview; they had to agree or the preview would lie about what
+   dropping would do. One function now serves both. */
+function resolveDirection(a, b) {
+  var aFrom = canConnect(a.type, b.type);
+  var bFrom = canConnect(b.type, a.type);
+  if (!aFrom && !bFrom) return null;
+  var ex = shapeExit(a),  en = shapeEntry(b);
+  var rx = shapeExit(b),  rn = shapeEntry(a);
+  var fwd = Math.pow(en.x - ex.x, 2) + Math.pow(en.y - ex.y, 2);
+  var rev = Math.pow(rn.x - rx.x, 2) + Math.pow(rn.y - rx.y, 2);
+  if (aFrom && (!bFrom || fwd <= rev)) return { from:a, to:b, p0:ex, tip:en };
+  return { from:b, to:a, p0:rx, tip:rn };
+}
+
+/* DEFAULT CONFIG PER NODE TYPE
+   Written out in full rather than filled in lazily, so a saved file always
+   contains every key a node uses and loading never depends on defaults that
+   may have changed since the file was written. */
+function defaultCfg(type) {
+  if (type === 'source')  return { pop:'all', rows:'students' };
+  if (type === 'filter')  return { criteria:[newCriterion()] };
+  if (type === 'compare') return { measures:DEFAULT_MEASURES.slice(), sort:'wired', labels:{} };
+  if (type === 'output')  return { show:'rows', avgCol:'', filename:'' };
+  return {};
+}
+
+/* A criterion keeps a value and an operator per field, not one of each. Switching
+   the field selector from Avg to Gender and back therefore restores the original
+   threshold instead of a default, and the same criterion object works against
+   any table schema — including ones with columns that did not exist when it was
+   created. */
+function newCriterion() {
+  return { field:'gradeAvg', values:{}, ops:{}, course:DEFAULT_COURSE };
+}
+
+function critValue(c, field, col) {
+  if (c.values && c.values[field] !== undefined) return c.values[field];
+  if (col && col.def !== undefined) return col.def;
+  if (col && col.values && col.values.length) return String(col.values[0]);
+  return '';
+}
+function critOp(c, field, fallback) {
+  if (c.ops && c.ops[field] !== undefined) return c.ops[field];
+  return fallback;
+}
+
+/* CONFIG WRITES
+   One entry point. Every control carries data-node / data-key attributes and a
+   single delegated listener routes through here, so there is exactly one place
+   where user input becomes model state. */
+function setCfg(nodeId, key, value) {
+  var n = findNode(nodeId);
+  if (!n) return;
+  n.cfg = n.cfg || defaultCfg(n.type);
+
+  var m = key.match(/^crit\.(\d+)\.(.+)$/);
+  if (m) {
+    var c = n.cfg.criteria && n.cfg.criteria[parseInt(m[1], 10)];
+    if (!c) return;
+    var sub = m[2];
+    if (sub === 'field')       c.field = value;
+    else if (sub === 'course') c.course = value;
+    else if (sub.indexOf('value:') === 0) { c.values = c.values || {}; c.values[sub.slice(6)] = value; }
+    else if (sub.indexOf('op:') === 0)    { c.ops = c.ops || {};       c.ops[sub.slice(3)] = value; }
+    return;
+  }
+  if (key.indexOf('label:') === 0) {
+    n.cfg.labels = n.cfg.labels || {};
+    n.cfg.labels[key.slice(6)] = value;
+    return;
+  }
+  if (key.indexOf('measure:') === 0) {
+    var mk = key.slice(8);
+    var list = (n.cfg.measures || []).slice();
+    var at = list.indexOf(mk);
+    if (value && at === -1) list.push(mk);
+    if (!value && at !== -1) list.splice(at, 1);
+    // Preserve the declared order so ticking boxes out of order still yields a
+    // stable column order — sorting uses the first ticked column.
+    n.cfg.measures = MEASURES.filter(function(x){ return list.indexOf(x.key) !== -1; })
+                             .map(function(x){ return x.key; });
+    return;
+  }
+  n.cfg[key] = value;
+}
+
+function findNode(id) {
+  for (var i = 0; i < nodes.length; i++) if (nodes[i].id === id) return nodes[i];
+  return null;
+}
+function inputsOf(nodeId) {
+  return connections.filter(function(c){ return c.to === nodeId; })
+                    .map(function(c){ return c.from; });
 }
 
 /* ADD / REMOVE */
@@ -82,900 +571,329 @@ function addNode(type) {
   var cv = document.getElementById('canvas');
   var x = 60 + Math.random() * Math.max(80, cv.clientWidth - 260);
   var y = 60 + Math.random() * Math.max(80, cv.clientHeight - 220);
-  // Each source gets a unique edge colour; others start with first palette colour, override when connected
   var color = EDGE_PALETTE[edgeColorIndex++ % EDGE_PALETTE.length];
-  nodes.push({ id:uid(), type:type, x:Math.round(x), y:Math.round(y), color:color, criteria:type==='filter'?[{ft:'gradeAvg',op:'gt',val:'70',spec:'Software Engineering',gender:'M',year:'2022'}]:[] });
+  nodes.push({
+    id: uid(), type: type,
+    x: Math.round(x), y: Math.round(y),
+    color: color,
+    cfg: defaultCfg(type)
+  });
   markStale();
   render();
 }
 
 function removeNode(id) {
-  nodes = nodes.filter(function(n){ return n.id!==id; });
-  connections = connections.filter(function(c){ return c.from!==id && c.to!==id; });
-  delete lastResults[id];
+  nodes = nodes.filter(function(n){ return n.id !== id; });
+  connections = connections.filter(function(c){ return c.from !== id && c.to !== id; });
   markStale();
   render();
 }
 
 function clearAll() {
-  nodes = []; connections = []; lastResults = {}; edgeColorIndex = 0;
+  nodes = []; connections = []; edgeColorIndex = 0;
   exportData = {}; resultsFresh = false;
   cancelPreviewTimer(); hidePreview();
   render();
   setOutput('<div class="placeholder">Run a query to see results</div>');
 }
 
-/* CRITERION MANAGEMENT */
 function addCriterion(nodeId) {
   var n = findNode(nodeId);
-  if (!n) return;
-  n.criteria.push({ft:'gradeAvg',op:'gt',val:'70',spec:'Software Engineering',gender:'M',year:'2022'});
+  if (!n || n.type !== 'filter') return;
+  n.cfg.criteria.push(newCriterion());
   markStale();
   render();
 }
 function removeCriterion(nodeId, idx) {
   var n = findNode(nodeId);
-  if (!n) return;
-  n.criteria.splice(idx,1);
+  if (!n || n.type !== 'filter') return;
+  n.cfg.criteria.splice(idx, 1);
   markStale();
   render();
 }
 
-/* DRAG */
-var ghostTarget = null; // node id of the closest candidate during drag
+/* ============================================================================
+   QUERY ENGINE
+   ============================================================================ */
+
+var OP_FNS = {
+  gt:  function(a,b){ return a >  b; },
+  gte: function(a,b){ return a >= b; },
+  lt:  function(a,b){ return a <  b; },
+  lte: function(a,b){ return a <= b; },
+  eq:  function(a,b){ return a == b; },   // deliberate ==: '2022' from a <select> must match 2022
+  ne:  function(a,b){ return a != b; }
+};
+var OP_SYM = { gt:'>', gte:'>=', lt:'<', lte:'<=', eq:'=', ne:'!=' };
+var NUM_OPS  = ['gt','gte','lt','lte','eq','ne'];
+var ENUM_OPS = ['eq','ne'];
 
-function startDrag(e, nodeId) {
-  if (e.target.tagName==='SELECT'||e.target.tagName==='INPUT'||e.target.tagName==='BUTTON') return;
-  e.preventDefault();
-  var node = findNode(nodeId);
-  if (!node) return;
-  var cv = document.getElementById('canvas');
-  var rect = cv.getBoundingClientRect();
-  drag = { node:node, ox:e.clientX-rect.left-node.x, oy:e.clientY-rect.top-node.y };
-  ghostTarget = null;
-  document.addEventListener('mousemove', onMove);
-  document.addEventListener('mouseup', onUp);
-}
-
-function nodeCenterX(n) { return n.x + NODE_W/2; }
-function nodeCenterY(n) { return n.y + SHAPE[n.type].h/2; }
-
-function onMove(e) {
-  if (!drag) return;
-  var cv = document.getElementById('canvas');
-  var rect = cv.getBoundingClientRect();
-  drag.node.x = Math.max(0, Math.min(rect.width-100, e.clientX-rect.left-drag.ox));
-  drag.node.y = Math.max(0, Math.min(rect.height-100, e.clientY-rect.top-drag.oy));
-
-  // Find closest node that could form a valid connection — measure port-to-port distance
-  var dn = drag.node;
-  var best = null, bestDist = SNAP_DIST;
-  nodes.forEach(function(n) {
-    if (n.id === dn.id) return;
-    // Valid pairs come from CONNECT_RULES
-    var validFrom = canConnect(dn.type, n.type);
-    var validTo   = canConnect(n.type, dn.type);
-    if (!validFrom && !validTo) return;
-
-    // Measure distance between the two relevant ports:
-    // if dn would be the "from" node, measure dn's exit → n's entry
-    // if dn would be the "to" node, measure n's exit → dn's entry
-    var dist = Infinity;
-    if (validFrom) {
-      var ex = shapeExit(dn), en = shapeEntry(n);
-      var dx = en.x - ex.x, dy = en.y - ex.y;
-      dist = Math.min(dist, Math.sqrt(dx*dx+dy*dy));
-    }
-    if (validTo) {
-      var ex2 = shapeExit(n), en2 = shapeEntry(dn);
-      var dx2 = en2.x - ex2.x, dy2 = en2.y - ex2.y;
-      dist = Math.min(dist, Math.sqrt(dx2*dx2+dy2*dy2));
-    }
-    if (dist < bestDist) { bestDist = dist; best = n; }
-  });
-  ghostTarget = best ? best.id : null;
-  render();
-}
-
-function onUp() {
-  if (drag && ghostTarget !== null) {
-    var dn = drag.node;
-    var gt = findNode(ghostTarget);
-    var fromNode, toNode;
-    // Determine direction: prefer exit(dn)→entry(gt) if dn is to the left, else swap
-    var ex = shapeExit(dn), en = shapeEntry(gt);
-    var ex2 = shapeExit(gt), en2 = shapeEntry(dn);
-    var distFwd = Math.pow(en.x-ex.x,2)+Math.pow(en.y-ex.y,2);
-    var distRev = Math.pow(en2.x-ex2.x,2)+Math.pow(en2.y-ex2.y,2);
-    // Also respect type validity: source/filter can only be "from"
-    var dnCanBeFrom = canConnect(dn.type, gt.type);
-    var gtCanBeFrom = canConnect(gt.type, dn.type);
-    if (dnCanBeFrom && (!gtCanBeFrom || distFwd <= distRev)) { fromNode = dn; toNode = gt; }
-    else { fromNode = gt; toNode = dn; }
-
-    // Avoid duplicate connections
-    var exists = connections.some(function(c){ return c.from===fromNode.id && c.to===toNode.id; });
-    if (!exists) {
-      // Pick a color: inherit from fromNode's incoming edge color, but if fromNode already
-      // has outgoing edges, give each new output a distinct palette color
-      var outgoing = connections.filter(function(c){ return c.from===fromNode.id; });
-      var edgeColor;
-      if (outgoing.length === 0) {
-        // First outgoing: inherit upstream color or use node's own color
-        edgeColor = getNodeEdgeColor(fromNode);
-      } else {
-        // Additional outgoing: pick next palette color not already used from this node
-        var usedColors = outgoing.map(function(c){ return c.color; });
-        edgeColor = getNodeEdgeColor(fromNode); // start with inherited
-        // Find a palette color not yet used
-        for (var pi=0; pi<EDGE_PALETTE.length; pi++) {
-          if (usedColors.indexOf(EDGE_PALETTE[pi]) === -1) {
-            edgeColor = EDGE_PALETTE[pi];
-            break;
-          }
-        }
-      }
-      connections.push({ from: fromNode.id, to: toNode.id, color: edgeColor });
-      markStale();
-    }
-    ghostTarget = null;
-  }
-  drag = null;
-  ghostTarget = null;
-  document.removeEventListener('mousemove', onMove);
-  document.removeEventListener('mouseup', onUp);
-  render();
-}
-
-// Get the color a node's outgoing edges should use
-function getNodeEdgeColor(node) {
-  // If this node has an incoming connection, inherit that color
-  var incoming = connections.filter(function(c){ return c.to === node.id; });
-  if (incoming.length > 0) return incoming[0].color;
-  return node.color || EDGE_PALETTE[0];
-}
-
-function findNode(id) {
-  for (var i=0;i<nodes.length;i++) if (nodes[i].id===id) return nodes[i];
-  return null;
-}
-
-/* READ FORM VALUES */
-function gv(id,key) { var el=document.getElementById('f_'+id+'_'+key); return el?el.value:''; }
-function gvC(nid,ci,key) { var el=document.getElementById('fc_'+nid+'_'+ci+'_'+key); return el?el.value:''; }
-
-/* SAVE STATE BEFORE RERENDER */
-function saveState() {
-  nodes.forEach(function(node) {
-    if (node.type==='source') {
-      var v = gv(node.id,'pop'); if (v) node._pop = v;
-    }
-    if (node.type==='output') {
-      var v = gv(node.id,'outputType'); if (v) node._outputType = v;
-    }
-    if (node.type==='compare') {
-      var so = gv(node.id,'sort'); if (so) node._sort = so;
-      // Only overwrite when the checkboxes are actually on screen — an
-      // unrendered panel would otherwise read as "nothing ticked".
-      if (document.getElementById('f_'+node.id+'_m_count')) {
-        var picked = [];
-        MEASURES.forEach(function(m) {
-          var box = document.getElementById('f_'+node.id+'_m_'+m.key);
-          if (box && box.checked) picked.push(m.key);
-        });
-        node._measures = picked;
-      }
-      // Labels are keyed by upstream node id, so they survive re-ordering and
-      // stay attached to the right branch when another one is disconnected.
-      node._labels = node._labels || {};
-      var lbls = node._labels;
-      inputsOf(node.id).forEach(function(inId) {
-        var el = document.getElementById('f_'+node.id+'_lbl_'+inId);
-        if (el) lbls[inId] = el.value;
-      });
-    }
-    if (node.type==='filter') {
-      node.criteria.forEach(function(c,ci) {
-        var ft = gvC(node.id,ci,'ft'); if (ft) c.ft = ft;
-        var op = gvC(node.id,ci,'op'); if (op) c.op = op;
-        var val = gvC(node.id,ci,'val'); if (val!=='') c.val = val;
-        var sp = gvC(node.id,ci,'spec'); if (sp) c.spec = sp;
-        var gn = gvC(node.id,ci,'gender'); if (gn) c.gender = gn;
-        var yr = gvC(node.id,ci,'year'); if (yr) c.year = yr;
-      });
-    }
-  });
-}
-
-/* RENDER */
-function render() {
-  saveState();
-  var cv = document.getElementById('canvas');
-  var old = cv.querySelectorAll('.node');
-  for (var i=0;i<old.length;i++) old[i].parentNode.removeChild(old[i]);
-  document.getElementById('hint').style.display = nodes.length===0?'block':'none';
-
-  nodes.forEach(function(node) {
-    var el = document.createElement('div');
-    el.className = 'node';
-    el.style.left = node.x+'px';
-    el.style.top  = node.y+'px';
-
-    // Inline result only shown on output nodes for count/avg — but per feedback, suppress entirely
-    var inline = '';
-    el.innerHTML = shapeHTML(node, inline) + configHTML(node);
-    cv.appendChild(el);
-
-    var shape = el.querySelector('.shape-source') || el.querySelector('.shape-filter') || el.querySelector('.shape-compare') || el.querySelector('.shape-output');
-    (function(nid){
-      shape.addEventListener('mousedown', function(e){ startDrag(e,nid); });
-    })(node.id);
-
-    // Criterion ft change → re-render (save first)
-    var ftSels = el.querySelectorAll('.ft-sel');
-    ftSels.forEach(function(sel) {
-      sel.addEventListener('change', function() { render(); });
-    });
-
-    // Any config edit invalidates the displayed results
-    el.querySelectorAll('.node-config select, .node-config input').forEach(function(ctrl) {
-      ctrl.addEventListener('change', markStale);
-      ctrl.addEventListener('input', markStale);
-    });
-  });
-
-  drawArrows();
-}
-
-function shapeHTML(node, inline) {
-  var removeBtn = '<button class="node-remove" onclick="(function(){removeNode('+node.id+')})()">x</button>';
-  var inlineHTML = inline ? '<span class="node-inline-result">'+inline+'</span>' : '';
-
-  if (node.type==='source') {
-    return '<div class="shape-source">'+removeBtn+'Source'+inlineHTML+'</div>';
-  }
-  if (node.type==='filter') {
-    return '<div class="shape-filter">'+removeBtn+'Filter'+inlineHTML+'</div>';
-  }
-  if (node.type==='compare') {
-    // Stacked bars of unequal length read as "several series side by side" at a
-    // glance, which is what distinguishes this from the Filter rectangle.
-    var glyph = '<span class="cmp-glyph">'+
-      '<i style="width:26px"></i><i style="width:16px"></i><i style="width:21px"></i>'+
-    '</span>';
-    return '<div class="shape-compare">'+removeBtn+glyph+'Compare'+inlineHTML+'</div>';
-  }
-  if (node.type==='output') {
-    return '<div class="shape-output">'+removeBtn+'Output'+inlineHTML+'</div>';
-  }
-  return '';
-}
-
-function configHTML(node) {
-  var id = node.id;
-  var html = '<div class="node-config">';
-
-  if (node.type==='source') {
-    var popVal = node._pop || 'all';
-    html += '<div class="cfg-label">Population</div>'+
-      '<select id="f_'+id+'_pop">'+
-        '<option value="all"'+(popVal==='all'?' selected':'')+'>All students</option>'+
-        '<option value="2022"'+(popVal==='2022'?' selected':'')+'>2022 only</option>'+
-        '<option value="2023"'+(popVal==='2023'?' selected':'')+'>2023 only</option>'+
-      '</select>';
-  }
-
-  if (node.type==='filter') {
-    html += '<div class="criteria-list">';
-    node.criteria.forEach(function(c,ci) {
-      html += criterionHTML(id, ci, c);
-    });
-    html += '</div>'+
-      '<button class="add-criterion-btn" onclick="(function(){addCriterion('+id+')})()">+ add condition</button>';
-  }
-
-  if (node.type==='compare') {
-    var inIds = inputsOf(node.id);
-    var sortBy = node._sort || 'wired';
-    var labels = node._labels || {};
-
-    html += '<div class="cfg-label">Branches ('+inIds.length+')</div>';
-    if (inIds.length === 0) {
-      html += '<div class="cmp-hint">Drag a Source or Filter next to this node to add a branch.</div>';
-    } else {
-      if (inIds.length === 1) {
-        html += '<div class="cmp-hint">One branch connected — add another to compare against.</div>';
-      }
-      html += '<div class="cmp-branches">';
-      inIds.forEach(function(inId, i) {
-        var up = findNode(inId);
-        var swatch = up ? getNodeEdgeColor(up) : '#555';
-        html += '<div class="cmp-branch">'+
-          '<span class="cmp-swatch" style="background:'+swatch+'"></span>'+
-          '<input type="text" class="cmp-label-input" id="f_'+id+'_lbl_'+inId+'" '+
-            'value="'+esc(labels[inId] || '')+'" placeholder="Branch '+(i+1)+' (auto)">'+
-        '</div>';
-      });
-      html += '</div>';
-    }
-
-    var picked = measuresOf(node);
-    html += '<div class="cfg-label">Columns</div>'+
-      '<div class="cmp-measures">'+
-        MEASURES.map(function(m) {
-          return '<label class="cmp-measure">'+
-            '<input type="checkbox" id="f_'+id+'_m_'+m.key+'"'+
-              (picked.indexOf(m.key) !== -1 ? ' checked' : '')+'>'+
-            '<span>'+m.label+'</span>'+
-          '</label>';
-        }).join('')+
-      '</div>'+
-      '<div class="cfg-label">Order</div>'+
-      '<select id="f_'+id+'_sort">'+
-        '<option value="wired"'+(sortBy==='wired'?' selected':'')+'>As connected</option>'+
-        '<option value="desc"'+(sortBy==='desc'?' selected':'')+'>Highest first</option>'+
-        '<option value="asc"'+(sortBy==='asc'?' selected':'')+'>Lowest first</option>'+
-        '<option value="label"'+(sortBy==='label'?' selected':'')+'>Label A–Z</option>'+
-      '</select>'+
-      '<div class="cmp-hint">Highest and lowest use the first ticked column.</div>';
-  }
-
-  if (node.type==='output') {
-    // Write the normalised value back so the node's stored state always matches
-    // the vocabulary its panel is currently showing.
-    var ot = normaliseOutputType(node);
-    node._outputType = ot;
-
-    if (compareFeedsOutput(node)) {
-      html += '<div class="cfg-label">Show</div>'+
-        '<select id="f_'+id+'_outputType">'+
-          '<option value="summary"'+(ot==='summary'?' selected':'')+'>Summary table</option>'+
-          '<option value="lists"'+(ot==='lists'?' selected':'')+'>Summary + student lists</option>'+
-        '</select>';
-    } else {
-      html += '<div class="cfg-label">Type</div>'+
-        '<select id="f_'+id+'_outputType">'+
-          '<option value="count"'+(ot==='count'?' selected':'')+'>Count</option>'+
-          '<option value="list"'+(ot==='list'?' selected':'')+'>List</option>'+
-          '<option value="average"'+(ot==='average'?' selected':'')+'>Average</option>'+
-        '</select>';
-    }
-  }
-
-  html += '</div>';
-  return html;
-}
-
-function criterionHTML(nid, ci, c) {
-  var ft = c.ft || 'gradeAvg';
-  var op = c.op || 'gt';
-  var removeBtn = ci > 0
-    ? '<button class="remove-criterion-btn" onclick="(function(){removeCriterion('+nid+','+ci+')})()">x</button>'
-    : '';
-
-  var fieldSel = '<select id="fc_'+nid+'_'+ci+'_ft" class="ft-sel">'+
-    '<option value="gradeAvg"'+(ft==='gradeAvg'?' selected':'')+'>Grade Avg</option>'+
-    '<option value="year"'+(ft==='year'?' selected':'')+'>Year</option>'+
-    '<option value="specialisation"'+(ft==='specialisation'?' selected':'')+'>Spec</option>'+
-    '<option value="gender"'+(ft==='gender'?' selected':'')+'>Gender</option>'+
-  '</select>';
-
-  var valueControls = '';
-  if (ft==='gradeAvg') {
-    // three-col grid: field | op | number
-    valueControls = '<div class="criterion-controls">'+
-      fieldSel+
-      '<select id="fc_'+nid+'_'+ci+'_op">'+
-        '<option value="gt"'+(op==='gt'?' selected':'')+'>&gt;</option>'+
-        '<option value="gte"'+(op==='gte'?' selected':'')+'>&gt;=</option>'+
-        '<option value="lt"'+(op==='lt'?' selected':'')+'>&lt;</option>'+
-        '<option value="lte"'+(op==='lte'?' selected':'')+'>&lt;=</option>'+
-        '<option value="eq"'+(op==='eq'?' selected':'')+'>  =</option>'+
-      '</select>'+
-      '<input type="number" id="fc_'+nid+'_'+ci+'_val" value="'+(c.val||'70')+'" min="0" max="100">'+
-    '</div>';
-  } else if (ft==='year') {
-    // two-col grid: field | year
-    valueControls = '<div class="criterion-controls two-col">'+
-      fieldSel+
-      '<select id="fc_'+nid+'_'+ci+'_year">'+
-        '<option value="2022"'+(c.year==='2022'?' selected':'')+'>2022</option>'+
-        '<option value="2023"'+(c.year==='2023'?' selected':'')+'>2023</option>'+
-      '</select>'+
-    '</div>';
-  } else if (ft==='specialisation') {
-    // two-col grid: field | spec (spec is wide so put it on second row)
-    valueControls = '<div class="criterion-controls two-col">'+
-      fieldSel+
-      '<select id="fc_'+nid+'_'+ci+'_spec">'+
-        opt('Software Engineering',c.spec)+opt('Computer Science',c.spec)+
-        opt('Information Technology',c.spec)+opt('Data Science',c.spec)+
-        opt('Cybersecurity',c.spec)+opt('Artificial Intelligence',c.spec)+
-      '</select>'+
-    '</div>';
-  } else if (ft==='gender') {
-    // two-col grid: field | gender
-    valueControls = '<div class="criterion-controls two-col">'+
-      fieldSel+
-      '<select id="fc_'+nid+'_'+ci+'_gender">'+
-        '<option value="M"'+(c.gender==='M'?' selected':'')+'>M</option>'+
-        '<option value="F"'+(c.gender==='F'?' selected':'')+'>F</option>'+
-      '</select>'+
-    '</div>';
-  }
-
-  return '<div class="criterion-row">'+valueControls+removeBtn+'</div>';
-}
-
-function opt(val, cur) {
-  return '<option value="'+val+'"'+(cur===val?' selected':'')+'>'+val+'</option>';
-}
-
-/* ARROWS */
-function resolveColor(node, chain) {
-  // Find first source upstream (or self if source)
-  if (node.type==='source') return node.color || EDGE_PALETTE[0];
-  var idx = chain.indexOf(node);
-  for (var i=idx-1; i>=0; i--) {
-    if (chain[i].type==='source') return chain[i].color || EDGE_PALETTE[0];
-  }
-  return EDGE_PALETTE[0];
-}
-
-function svgEl(tag) {
-  return document.createElementNS('http://www.w3.org/2000/svg', tag);
-}
-
-function drawArrow(parent, p0, tip, color, opacity, isGhost) {
-  var ah = 14; // bigger arrowhead
-  var pathEndX = tip.x - ah;
-  var pathEndY = tip.y;
-
-  var dx = Math.max(40, Math.abs(tip.x - p0.x) * 0.45);
-  var p1x = p0.x + dx, p1y = p0.y;
-  var p2x = pathEndX - Math.max(10, dx * 0.2), p2y = pathEndY;
-
-  var pathEl = document.createElementNS('http://www.w3.org/2000/svg','path');
-  pathEl.setAttribute('d','M '+p0.x+' '+p0.y+' C '+p1x+' '+p1y+' '+p2x+' '+p2y+' '+pathEndX+' '+pathEndY);
-  pathEl.setAttribute('stroke', color);
-  pathEl.setAttribute('stroke-width', isGhost ? '1.5' : '2');
-  pathEl.setAttribute('fill','none');
-  pathEl.setAttribute('opacity', opacity);
-  if (isGhost) pathEl.setAttribute('stroke-dasharray','6 4');
-
-  var ang = Math.atan2(tip.y - pathEndY, tip.x - pathEndX);
-  var spread = 0.42;
-  var ax1 = tip.x - ah*Math.cos(ang-spread);
-  var ay1 = tip.y - ah*Math.sin(ang-spread);
-  var ax2 = tip.x - ah*Math.cos(ang+spread);
-  var ay2 = tip.y - ah*Math.sin(ang+spread);
-  var arrowEl = document.createElementNS('http://www.w3.org/2000/svg','polygon');
-  arrowEl.setAttribute('points', tip.x+','+tip.y+' '+ax1+','+ay1+' '+ax2+','+ay2);
-  arrowEl.setAttribute('fill', color);
-  arrowEl.setAttribute('opacity', isGhost ? opacity : Math.min(1, parseFloat(opacity)+0.2));
-
-  // Cubic bezier at t=0.5 → (P0 + 3P1 + 3P2 + P3) / 8. Used as a fallback
-  // midpoint if getPointAtLength is unavailable.
-  pathEl._mid = {
-    x: (p0.x + 3 * p1x + 3 * p2x + pathEndX) / 8,
-    y: (p0.y + 3 * p1y + 3 * p2y + pathEndY) / 8
-  };
-
-  parent.appendChild(pathEl);
-  parent.appendChild(arrowEl);
-  return pathEl;
-}
-
-/* CONNECTION REMOVAL */
-function connKey(c) { return c.from + '->' + c.to; }
-
-function removeConnection(from, to) {
-  connections = connections.filter(function(c) {
-    return !(c.from === from && c.to === to);
-  });
-  hoverConn = null;
-  markStale();
-  render();
-}
-
-// Builds the little red "x" badge that sits at the midpoint of a hovered connection
-function buildDeleteBadge(conn, pathEl) {
-  var mid;
-  try {
-    mid = pathEl.getPointAtLength(pathEl.getTotalLength() / 2);
-  } catch (err) {
-    mid = pathEl._mid; // geometric fallback
-  }
-  if (!mid) return null;
-
-  var g = svgEl('g');
-  g.setAttribute('class', 'conn-delete');
-  g.setAttribute('transform', 'translate(' + mid.x + ',' + mid.y + ')');
-
-  var circle = svgEl('circle');
-  circle.setAttribute('r', '9');
-  g.appendChild(circle);
-
-  var r = 3.6;
-  [[-r, -r, r, r], [-r, r, r, -r]].forEach(function(pts) {
-    var line = svgEl('line');
-    line.setAttribute('x1', pts[0]); line.setAttribute('y1', pts[1]);
-    line.setAttribute('x2', pts[2]); line.setAttribute('y2', pts[3]);
-    g.appendChild(line);
-  });
-
-  var title = svgEl('title');
-  title.textContent = 'Remove this connection';
-  g.appendChild(title);
-
-  g.addEventListener('mousedown', function(e) { e.stopPropagation(); });
-  g.addEventListener('click', function(e) {
-    e.stopPropagation();
-    removeConnection(conn.from, conn.to);
-  });
-
-  return g;
-}
-
-/* EDGE DATA PREVIEW
-   After a deliberate dwell over a connection, show up to 5 rows of the dataset
-   flowing along it — the output of the edge's upstream (from) node, recomputed
-   live so it's always current, even mid-edit before any run. A plausibility
-   aid: the "of N" total is the real signal; the rows are dataset-ordered
-   texture, not a representative sample. */
-
-var PREVIEW_DELAY = 450; // ms of stillness before the preview appears
-var previewTimer = null;
-var previewEl = null;
-
-function cancelPreviewTimer() {
-  if (previewTimer) { clearTimeout(previewTimer); previewTimer = null; }
-}
-
-function armPreviewTimer(conn, pathEl) {
-  cancelPreviewTimer();
-  previewTimer = setTimeout(function() {
-    previewTimer = null;
-    showPreview(conn, pathEl);
-  }, PREVIEW_DELAY);
-}
-
-function ensurePreviewEl() {
-  if (previewEl) return previewEl;
-  previewEl = document.createElement('div');
-  previewEl.className = 'edge-preview';
-  previewEl.style.display = 'none';
-  document.getElementById('canvas').appendChild(previewEl);
-  return previewEl;
-}
-
-function hidePreview() {
-  if (previewEl) previewEl.style.display = 'none';
-}
-
-// The dataset on the wire = the from-node's emitted output. evaluateGraph()
-// computes this for every node; we just read the right one back.
-// saveState() first so an unsaved config edit (e.g. a criterion value typed but
-// not yet run) is reflected — only render()/runQuery persist otherwise, so
-// without this the preview would show pre-edit data until the next run.
-function edgeData(conn) {
-  saveState();
-  var ev = evaluateGraph();
-  if (ev.error) return { error: ev.error };
-  var r = ev.res[conn.from];
-  if (!r) return { error: 'unresolved' };
-  if (!r.hasSource) return { incomplete: true };
-  if (r.table) return { table: r.table };
-  return { data: r.data };
-}
-
-function previewTableHTML(data) {
-  var rows = data.slice(0, 5).map(function(s) {
-    return '<tr><td>'+s.id+'</td><td>'+s.gender+'</td><td>'+s.year+'</td><td>'+s.gradeAvg+'</td></tr>';
-  }).join('');
-  return '<table class="ep-table">'+
-    '<thead><tr><th>ID</th><th>Gen</th><th>Yr</th><th>Avg</th></tr></thead>'+
-    '<tbody>'+rows+'</tbody></table>';
-}
-
-function showPreview(conn, pathEl) {
-  var res = edgeData(conn);
-  var el = ensurePreviewEl();
-  var body;
-
-  if (res.error) {
-    body = '<div class="ep-note">Can\'t preview — '+
-      (res.error.indexOf('Circular') === 0 ? 'circular connection.' : 'graph unresolved.')+'</div>';
-  } else if (res.incomplete) {
-    body = '<div class="ep-note">No data on this edge yet — upstream isn\'t connected to a Source.</div>';
-  } else if (res.table) {
-    var t = res.table;
-    var trows = t.series.slice(0, 5).map(function(s) {
-      return '<tr><td>'+esc(s.label)+'</td><td>'+s.count+'</td></tr>';
-    }).join('');
-    body = '<div class="ep-count"><span class="ep-num">'+t.series.length+'</span> branch'+
-      (t.series.length===1?'':'es')+' on this edge</div>'+
-      (t.series.length === 0
-        ? '<div class="ep-note">Nothing to compare yet.</div>'
-        : '<table class="ep-table"><thead><tr><th>Branch</th><th>Students</th></tr></thead>'+
-          '<tbody>'+trows+'</tbody></table>'+
-          (t.series.length > 5 ? '<div class="ep-foot">showing 5 of '+t.series.length+'</div>' : ''));
-  } else {
-    var n = res.data.length;
-    var shown = Math.min(5, n);
-    var count = '<div class="ep-count"><span class="ep-num">'+n+'</span> record'+(n===1?'':'s')+' on this edge</div>';
-    if (n === 0) {
-      body = count + '<div class="ep-note">Empty stream — nothing passes this point.</div>';
-    } else {
-      body = count + previewTableHTML(res.data) +
-        '<div class="ep-foot">showing '+shown+' of '+n+', in dataset order</div>';
-    }
-  }
-  el.innerHTML = body;
-
-  // Anchor to the curve midpoint, offset upward so the preview floats clear
-  // above the delete badge. Both reference the same point, so curvature is
-  // irrelevant — they stay stacked however the arrow bows.
-  var mid = pathEl._mid || { x: 0, y: 0 };
-  el.style.display = 'block';
-
-  var cw = document.getElementById('canvas').clientWidth;
-  var pw = el.offsetWidth, ph = el.offsetHeight;
-  var GAP = 26; // clears the ~9px badge radius plus breathing room
-
-  var left = mid.x - pw / 2;
-  left = Math.max(6, Math.min(left, cw - pw - 6)); // keep within canvas sides
-
-  var top = mid.y - ph - GAP; // preferred: above the badge
-  el.classList.remove('ep-below');
-  if (top < 6) {                // not enough room above → flip below
-    top = mid.y + GAP;
-    el.classList.add('ep-below');
-  }
-  el.style.left = Math.round(left) + 'px';
-  el.style.top = Math.round(top) + 'px';
-}
-
-function drawArrows() {
-  var svg = document.getElementById('svg');
-  while (svg.firstChild) svg.removeChild(svg.firstChild);
-
-  // A rebuild invalidates the path element the pending preview was armed on
-  cancelPreviewTimer();
-
-  // Draw real connections
-  connections.forEach(function(conn) {
-    var a = findNode(conn.from), b = findNode(conn.to);
-    if (!a || !b) return;
-    var p0 = shapeExit(a);
-    var tip = shapeEntry(b);
-
-    var g = svgEl('g');
-    svg.appendChild(g);
-    var pathEl = drawArrow(g, p0, tip, conn.color, '0.9', false);
-
-    // No hover affordances mid-drag — the pointer is busy moving a node
-    if (drag) return;
-
-    // Invisible fat stroke so the thin 2px line is comfortably hoverable.
-    // Extended to the true tip so the arrowhead counts as part of the line —
-    // the drawn path stops short of it to make room for the polygon.
-    var hit = svgEl('path');
-    hit.setAttribute('d', pathEl.getAttribute('d') + ' L ' + tip.x + ' ' + tip.y);
-    hit.setAttribute('class', 'conn-hit');
-    g.appendChild(hit);
-
-    var badge = null, hovered = false;
-    function setHover(on) {
-      if (on === hovered) return;
-      hovered = on;
-      if (on) {
-        badge = buildDeleteBadge(conn, pathEl);
-        if (badge) g.appendChild(badge);
-      } else {
-        if (badge && badge.parentNode) badge.parentNode.removeChild(badge);
-        badge = null;
-      }
-      hoverConn = on ? connKey(conn) : null;
-    }
-
-    // mousemove (not just mouseenter) so hover still engages if the SVG was
-    // rebuilt underneath a stationary cursor — mouseenter would never fire there
-    hit.addEventListener('mousemove', function() { setHover(true); });
-    g.addEventListener('mouseleave', function() {
-      setHover(false);
-      cancelPreviewTimer();
-      hidePreview();
-    });
-
-    // Data preview after a deliberate dwell — a quick pass to reach the delete
-    // badge won't summon it. Anchored to the curve midpoint, not the cursor.
-    hit.addEventListener('mousemove', function() { armPreviewTimer(conn, pathEl); });
-
-    // Restore the badge after a re-render that happened while hovering
-    if (hoverConn === connKey(conn)) setHover(true);
-  });
-
-  // Draw ghost connection preview while dragging
-  if (drag && ghostTarget !== null) {
-    var dn = drag.node;
-    var gt = findNode(ghostTarget);
-    if (gt) {
-      var ex = shapeExit(dn), en = shapeEntry(gt);
-      var ex2 = shapeExit(gt), en2 = shapeEntry(dn);
-      var distFwd = Math.pow(en.x-ex.x,2)+Math.pow(en.y-ex.y,2);
-      var distRev = Math.pow(en2.x-ex2.x,2)+Math.pow(en2.y-ex2.y,2);
-      var dnCanBeFrom = canConnect(dn.type, gt.type);
-      var gtCanBeFrom = canConnect(gt.type, dn.type);
-      var p0g, tipg;
-      if (dnCanBeFrom && (!gtCanBeFrom || distFwd <= distRev)) { p0g = ex; tipg = en; }
-      else { p0g = ex2; tipg = en2; }
-      drawArrow(svg, p0g, tipg, '#aaaaaa', '0.55', true);
-    }
-  }
-}
-
-/* QUERY ENGINE */
-var OP_FNS = { gt:function(a,b){return a>b;}, gte:function(a,b){return a>=b;}, lt:function(a,b){return a<b;}, lte:function(a,b){return a<=b;}, eq:function(a,b){return a==b;} };
-var OP_SYM = { gt:'>',gte:'>=',lt:'<',lte:'<=',eq:'=' };
-
-// Topological sort of connected nodes
 function topoSort() {
-  // Build adjacency
   var inDeg = {}, adj = {};
-  nodes.forEach(function(n){ inDeg[n.id]=0; adj[n.id]=[]; });
-  connections.forEach(function(c){ adj[c.from].push(c.to); inDeg[c.to]=(inDeg[c.to]||0)+1; });
-  var queue = nodes.filter(function(n){ return inDeg[n.id]===0; }).map(function(n){return n.id;});
+  nodes.forEach(function(n){ inDeg[n.id] = 0; adj[n.id] = []; });
+  connections.forEach(function(c) {
+    if (!adj[c.from] || inDeg[c.to] === undefined) return;
+    adj[c.from].push(c.to);
+    inDeg[c.to]++;
+  });
+  var queue = nodes.filter(function(n){ return inDeg[n.id] === 0; }).map(function(n){ return n.id; });
   var order = [];
   while (queue.length) {
-    var id = queue.shift(); order.push(id);
-    (adj[id]||[]).forEach(function(nid){ if(--inDeg[nid]===0) queue.push(nid); });
+    var id = queue.shift();
+    order.push(id);
+    adj[id].forEach(function(nid){ if (--inDeg[nid] === 0) queue.push(nid); });
   }
-  return order.map(function(id){ return findNode(id); }).filter(Boolean);
+  return order.map(findNode).filter(Boolean);
 }
 
-/* GRAPH EVALUATION
-   Every node computes its own dataset from its own inputs, so parallel
-   branches stay independent. A node fed by several inputs merges them
-   (union, deduplicated by student id).
-   Previously every filter in the graph was applied to one shared dataset,
-   so sibling branches contradicted each other and both collapsed to zero. */
-
-function inputsOf(nodeId) {
-  return connections
-    .filter(function(c){ return c.to === nodeId; })
-    .map(function(c){ return c.from; });
-}
-
-function unionOf(lists) {
-  var seen = {}, out = [];
-  lists.forEach(function(list) {
-    list.forEach(function(s) {
-      if (!seen[s.id]) { seen[s.id] = true; out.push(s); }
-    });
-  });
-  return out;
-}
-
-
-/* QUERY LOG
-   Entries are structured, not pre-baked HTML, so the same entry can render as
-   markup for the panel and as plain text for export. Building HTML first and
-   stripping tags later loses operators like "<" — they are indistinguishable
-   from markup once concatenated. */
-
-function logEntry(kw, parts) { return { kw: kw, parts: parts }; }
+/* QUERY LOG — structured, not pre-baked HTML, so one entry renders as markup
+   for the panel and as plain text for a file. Building HTML first and stripping
+   tags later loses operators like "<": once concatenated they are
+   indistinguishable from markup. */
+function logEntry(kw, parts) { return { kw:kw, parts:parts }; }
 
 function esc(s) {
   return String(s)
     .replace(/&/g, '&amp;').replace(/</g, '&lt;')
     .replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
-
 function logHTML(e) {
   return '<span class="kw">' + esc(e.kw) + '</span>  ' + e.parts.map(function(p) {
     return p.c ? '<span class="' + p.c + '">' + esc(p.s) + '</span>' : esc(p.s);
   }).join(' ');
 }
-
 function logText(e) {
-  return e.kw + '  ' + e.parts.map(function(p) { return p.s; }).join(' ');
+  return e.kw + '  ' + e.parts.map(function(p){ return p.s; }).join(' ');
 }
 
-function sourceData(node, log) {
-  var pop = node._pop || 'all';
-  if (pop === '2022' || pop === '2023') {
+/* SOURCE */
+function sourceTable(node, log) {
+  var cfg = node.cfg || defaultCfg('source');
+  var pop = cfg.pop || 'all';
+  var list = STUDENTS;
+  if (pop !== 'all') {
     var yr = parseInt(pop, 10);
+    list = STUDENTS.filter(function(s){ return s.year === yr; });
     log.push(logEntry('SOURCE', [{s:'year'}, {c:'op', s:'='}, {c:'val', s:yr}]));
-    return STUDENTS.filter(function(s){ return s.year === yr; });
+  } else {
+    log.push(logEntry('SOURCE', [{s:'all_students'}]));
   }
-  log.push(logEntry('SOURCE', [{s:'all_students'}]));
-  return STUDENTS.slice();
+  if (cfg.rows === 'enrolments') {
+    log.push(logEntry('ROWS', [{s:'one row per enrolment'}]));
+    return enrolmentsTable(list);
+  }
+  return studentsTable(list);
 }
 
-// Applies one filter node's criteria. Returns {data:[...]} or {error:'msg'}.
-function applyFilter(node, data, log) {
-  for (var ci = 0; ci < node.criteria.length; ci++) {
-    var c = node.criteria[ci];
-    var ft = c.ft || 'gradeAvg';
+/* MERGE
+   Multiple wires into one node combine their rows. Identity is per-granularity:
+   two branches that both contain student 1042 contribute one row, not two.
+   Headers must match — merging a student table with an enrolment table is a
+   wiring mistake, and saying so is more useful than silently producing a
+   ragged table. */
+function schemaKey(t) { return t.columns.map(function(c){ return c.key; }).join('|'); }
 
-    if (ft === 'gradeAvg') {
-      var num = parseFloat(c.val);
-      if (isNaN(num)) return { error: 'Grade value must be a number.' };
-      var fn = OP_FNS[c.op] || OP_FNS.gt;
-      data = data.filter(function(s){ return fn(s.gradeAvg, num); });
-      log.push(logEntry('FILTER', [{s:'gradeAvg'}, {c:'op', s:(OP_SYM[c.op]||'>')}, {c:'val', s:num}]));
+function rowKey(t, row) {
+  if (hasCol(t, 'id')) return 'i' + cellAt(t, row, 'id');
+  if (hasCol(t, 'studentId') && hasCol(t, 'code')) {
+    return 'e' + cellAt(t, row, 'studentId') + ':' + cellAt(t, row, 'code');
+  }
+  return 'r' + row.join('\u0001');
+}
 
-    } else if (ft === 'year') {
-      var yr = parseInt(c.year, 10);
-      data = data.filter(function(s){ return s.year === yr; });
-      log.push(logEntry('FILTER', [{s:'year'}, {c:'op', s:'='}, {c:'val', s:yr}]));
-
-    } else if (ft === 'specialisation') {
-      var sp = c.spec;
-      data = data.filter(function(s){ return s.specialisation === sp; });
-      log.push(logEntry('FILTER', [{s:'spec'}, {c:'op', s:'='}, {c:'val', s:'"'+sp+'"'}]));
-
-    } else if (ft === 'gender') {
-      var gnd = c.gender;
-      data = data.filter(function(s){ return s.gender === gnd; });
-      log.push(logEntry('FILTER', [{s:'gender'}, {c:'op', s:'='}, {c:'val', s:'"'+gnd+'"'}]));
+function unionTables(tables) {
+  if (tables.length === 0) return makeTable(STUDENT_COLUMNS, []);
+  if (tables.length === 1) return tables[0];
+  var first = schemaKey(tables[0]);
+  for (var i = 1; i < tables.length; i++) {
+    if (schemaKey(tables[i]) !== first) {
+      return { error: 'Merged inputs have different columns — a Source set to Students and one set to Enrolments cannot feed the same node.' };
     }
   }
-  return { data: data };
+  var seen = {}, rows = [];
+  tables.forEach(function(t) {
+    t.rows.forEach(function(r) {
+      var k = rowKey(t, r);
+      if (!seen[k]) { seen[k] = true; rows.push(r); }
+    });
+  });
+  return makeTable(tables[0].columns, rows);
 }
 
-/* COMPARE
-   Every other node narrows or passes through one stream. Compare is the first
-   that treats its inputs as separate things: each incoming branch stays its own
-   series and becomes one labelled row of a table, instead of being unioned into
-   a single row set. That table is what travels on to the Output. */
+/* FILTER
+   The available fields come from the incoming table's own columns, so a Filter
+   wired behind an enrolment Source offers Mark and Course while the same node
+   behind a student Source offers Avg and Specialisation. Nothing about student
+   records is hardcoded here. */
+function courseFields() {
+  return [
+    { key:'courses.subject', label:'Course subject', kind:'courseSubject' },
+    { key:'courses.code',    label:'Took course',    kind:'courseCode' },
+    { key:'courses.mark',    label:'Course mark',    kind:'courseMark' }
+  ];
+}
 
-/* MEASURES
-   A comparison table has one row per branch and a column per measure, so this
-   is a multi-select rather than a single choice. Share is off by default: the
-   300px panel fits Branch plus two numeric columns comfortably, three is tight. */
+function filterFields(schema) {
+  var out = [];
+  schema.columns.forEach(function(c) {
+    if (c.type === COLTYPE.COURSES) {
+      out.push.apply(out, courseFields());
+    } else {
+      out.push({ key:c.key, label:c.label, kind:c.type, column:c });
+    }
+  });
+  return out;
+}
+
+function fieldByKey(schema, key) {
+  var fs = filterFields(schema);
+  for (var i = 0; i < fs.length; i++) if (fs[i].key === key) return fs[i];
+  return null;
+}
+
+function opsFor(kind) {
+  if (kind === COLTYPE.NUMBER || kind === 'courseMark') return NUM_OPS;
+  if (kind === COLTYPE.TEXT) return ENUM_OPS;
+  return ENUM_OPS;
+}
+function defaultOpFor(kind) {
+  if (kind === COLTYPE.NUMBER || kind === 'courseMark') return 'gt';
+  return 'eq';
+}
+
+function applyFilter(node, t, log) {
+  var crits = (node.cfg && node.cfg.criteria) || [];
+
+  for (var ci = 0; ci < crits.length; ci++) {
+    var c = crits[ci];
+    var f = fieldByKey(t, c.field);
+
+    // A criterion can outlive the column it referred to — rewiring a Filter from
+    // a student Source to an enrolment one is enough. Skipping with a note is
+    // better than erroring: the rest of the query still runs and the log says
+    // exactly what was ignored.
+    if (!f) {
+      log.push(logEntry('SKIP', [{s:'no column'}, {c:'val', s:'"'+(c.field||'?')+'"'}]));
+      continue;
+    }
+
+    var res = applyCriterion(t, c, f, log);
+    if (res.error) return res;
+    t = res.table;
+  }
+  return { table: t };
+}
+
+function applyCriterion(t, c, f, log) {
+  var coursesIdx = coursesColIndex(t);
+
+  if (f.kind === 'courseSubject' || f.kind === 'courseCode') {
+    if (coursesIdx === -1) return { table: t };
+    var want = critValue(c, f.key, null) ||
+               (f.kind === 'courseSubject' ? SUBJECTS[0] : DEFAULT_COURSE);
+    var prop = f.kind === 'courseSubject' ? 'subject' : 'code';
+    var rows = t.rows.filter(function(r) {
+      var list = r[coursesIdx] || [];
+      return list.some(function(e){ return e[prop] === want; });
+    });
+    log.push(logEntry('FILTER', [
+      {s: prop === 'subject' ? 'subject' : 'course'}, {c:'op', s:'has'}, {c:'val', s:'"'+want+'"'}
+    ]));
+    return { table: makeTable(t.columns, rows) };
+  }
+
+  if (f.kind === 'courseMark') {
+    // Two conditions in one: enrolled in the course AND the mark passes. A
+    // student who never took it is excluded rather than treated as zero, which
+    // would silently satisfy every "less than" test.
+    if (coursesIdx === -1) return { table: t };
+    var code = c.course || DEFAULT_COURSE;
+    var num = parseFloat(critValue(c, f.key, { def:'70' }));
+    if (isNaN(num)) return { error: 'Course mark must be a number.' };
+    var op = critOp(c, f.key, 'gte');
+    var fn = OP_FNS[op] || OP_FNS.gte;
+    var mrows = t.rows.filter(function(r) {
+      var list = r[coursesIdx] || [];
+      for (var i = 0; i < list.length; i++) {
+        if (list[i].code === code) return fn(list[i].mark, num);
+      }
+      return false;
+    });
+    log.push(logEntry('FILTER', [
+      {s: code + '.mark'}, {c:'op', s:(OP_SYM[op] || '>=')}, {c:'val', s:num}
+    ]));
+    return { table: makeTable(t.columns, mrows) };
+  }
+
+  var idx = colIndex(t, f.key);
+  var col = f.column;
+  var opk = critOp(c, f.key, defaultOpFor(f.kind));
+  var fnc = OP_FNS[opk] || OP_FNS.eq;
+  var raw = critValue(c, f.key, col);
+
+  if (col.type === COLTYPE.NUMBER) {
+    var n = parseFloat(raw);
+    if (isNaN(n)) return { error: col.label + ' value must be a number.' };
+    var nrows = t.rows.filter(function(r){ return fnc(Number(r[idx]), n); });
+    log.push(logEntry('FILTER', [
+      {s:col.key}, {c:'op', s:(OP_SYM[opk]||'>')}, {c:'val', s:n}
+    ]));
+    return { table: makeTable(t.columns, nrows) };
+  }
+
+  var out = t.rows.filter(function(r){ return fnc(String(r[idx]), String(raw)); });
+  log.push(logEntry('FILTER', [
+    {s:col.key}, {c:'op', s:(OP_SYM[opk]||'=')}, {c:'val', s:'"'+raw+'"'}
+  ]));
+  return { table: makeTable(t.columns, out) };
+}
+
+/* ============================================================================
+   COMPARE
+   ============================================================================
+   NOTE: superseded by the planned SelectFor / Histogram node. Compare is a
+   group-by whose groups are wired by hand — the user builds each branch as a
+   separate Filter chain instead of naming a column to split on. It is kept
+   working here so the table refactor changes no behaviour, but new work should
+   go into SelectFor rather than into extending this.                          */
+
 var MEASURES = [
-  { key:'count',   label:'Students',        head:'Students'  },
-  { key:'average', label:'Avg grade',       head:'Avg grade' },
-  { key:'share',   label:'Share of total',  head:'Share'     }
+  { key:'count',   label:'Students',         head:'Students'  },
+  { key:'average', label:'Avg grade',        head:'Avg grade' },
+  { key:'share',   label:'Share of total',   head:'Share'     },
+  { key:'courses', label:'Distinct courses', head:'Courses'   }
 ];
 var DEFAULT_MEASURES = ['count', 'average'];
 
 function measuresOf(node) {
-  return node._measures || DEFAULT_MEASURES;
+  var m = node.cfg && node.cfg.measures;
+  return m && m.length !== undefined ? m : DEFAULT_MEASURES;
 }
 
-/* OUTPUT MODE
-   An Output fed by a Compare is choosing how much detail to show, not what to
-   measure — the Compare already decided that. So its selector switches
-   vocabulary. Values are mapped like-for-like when a wire changes, so a user
-   who picked a list doesn't silently lose it. */
-var ROW_TYPES = ['count', 'list', 'average'];
-var CMP_TYPES = ['summary', 'lists'];
-
-function compareFeedsOutput(node) {
-  return inputsOf(node.id).some(function(id) {
-    var up = findNode(id);
-    return up && up.type === 'compare';
+/* Which column "average" refers to, chosen from the table rather than assumed.
+   gradeAvg on a student table, mark on an enrolment table, otherwise the first
+   numeric column that is not an identifier. */
+function defaultAvgCol(t) {
+  if (hasCol(t, 'gradeAvg')) return 'gradeAvg';
+  if (hasCol(t, 'mark')) return 'mark';
+  var nums = numericCols(t).filter(function(c) {
+    return c.key !== 'id' && c.key !== 'studentId' && c.key !== 'points';
   });
+  return nums.length ? nums[0].key : '';
 }
 
-function normaliseOutputType(node) {
-  var v = node._outputType;
-  if (compareFeedsOutput(node)) {
-    if (CMP_TYPES.indexOf(v) !== -1) return v;
-    return (v === 'list') ? 'lists' : 'summary';
-  }
-  if (ROW_TYPES.indexOf(v) !== -1) return v;
-  return (v === 'lists') ? 'list' : 'count';
+function meanOf(t, key) {
+  if (!key || !hasCol(t, key) || t.rows.length === 0) return 0;
+  var i = colIndex(t, key), sum = 0;
+  t.rows.forEach(function(r){ sum += Number(r[i]) || 0; });
+  return sum / t.rows.length;
 }
 
 function stripQuotes(s) { return String(s).replace(/^"|"$/g, ''); }
 
-// A branch's label, derived from the query that produced it, so a user who
-// hasn't typed anything still gets something readable rather than "Branch 2".
-// Filters describe a branch far better than its source does, so they win.
+// A branch's label derived from the query that produced it, so a user who never
+// typed one still gets something readable. Filters describe a branch far better
+// than its source does, so they win.
 function autoLabel(r, idx) {
   var filters = r.log.filter(function(e){ return e.kw === 'FILTER'; });
   if (filters.length) {
@@ -991,84 +909,124 @@ function autoLabel(r, idx) {
   return 'Branch ' + (idx + 1);
 }
 
-function meanGrade(d) {
-  if (!d.length) return 0;
-  return d.reduce(function(a, s){ return a + s.gradeAvg; }, 0) / d.length;
+function compareColumns(keys) {
+  return [{ key:'branch', label:'Branch', type:COLTYPE.TEXT }].concat(
+    keys.map(function(k) {
+      var m = MEASURES.filter(function(x){ return x.key === k; })[0];
+      return { key:k, label:(m ? m.head : k), type:COLTYPE.NUMBER };
+    })
+  );
 }
 
-function buildCompareTable(node, inIds, res, log) {
-  var labels = node._labels || {};
+function buildCompare(node, inIds, res, log) {
+  var labels = (node.cfg && node.cfg.labels) || {};
+  var keys = measuresOf(node).filter(function(k) {
+    return MEASURES.some(function(m){ return m.key === k; });
+  });
 
-  var series = [];
+  var branches = [];
   inIds.forEach(function(inId, i) {
     var r = res[inId];
     if (!r) return;
     var manual = labels[inId];
-    series.push({
+    branches.push({
       id: inId,
-      label: (manual && manual.trim()) ? manual.trim() : autoLabel(r, i),
-      count: r.data.length,
-      avg: meanGrade(r.data),
-      rows: r.data
+      label: (manual && String(manual).trim()) ? String(manual).trim() : autoLabel(r, i),
+      table: r.table
     });
   });
 
-  log.push(logEntry('COMPARE', [
-    {s: series.length + (series.length === 1 ? ' branch' : ' branches')}
-  ]));
+  var total = branches.reduce(function(a, b){ return a + b.table.rows.length; }, 0);
 
-  // Deliberately unformatted. Presentation is compareView()'s job, so one
-  // Compare can feed two Outputs that show different amounts of detail.
-  return { series: series, sort: node._sort || 'wired', measures: measuresOf(node) };
-}
-
-function measureCell(key, s, total) {
-  if (key === 'average') return { value: s.avg, text: s.avg.toFixed(1) };
-  if (key === 'share') {
-    var pct = total ? (s.count / total) * 100 : 0;
-    return { value: pct, text: pct.toFixed(1) + '%' };
-  }
-  return { value: s.count, text: String(s.count) };
-}
-
-function headFor(key) {
-  for (var i = 0; i < MEASURES.length; i++) if (MEASURES[i].key === key) return MEASURES[i].head;
-  return key;
-}
-
-// Resolves a Compare table into displayable columns. Sorting uses the first
-// ticked column, so re-ordering the ticks re-orders the rows.
-function compareView(t) {
-  var keys = (t.measures || DEFAULT_MEASURES).filter(function(k) {
-    return MEASURES.some(function(m){ return m.key === k; });
+  branches.forEach(function(b) {
+    var avgKey = defaultAvgCol(b.table);
+    b.values = {
+      count:   b.table.rows.length,
+      average: meanOf(b.table, avgKey),
+      share:   total ? (b.table.rows.length / total) * 100 : 0,
+      courses: breakdownTable(b.table).rows.length
+    };
   });
 
-  var series = t.series.map(function(s) {
-    return { id:s.id, label:s.label, count:s.count, avg:s.avg, rows:s.rows };
-  });
-  var total = series.reduce(function(a, s){ return a + s.count; }, 0);
-
-  series.forEach(function(s) {
-    s.cells = keys.map(function(k){ return measureCell(k, s, total); });
-  });
-
-  var sortBy = t.sort || 'wired';
+  var sortBy = (node.cfg && node.cfg.sort) || 'wired';
   if (sortBy === 'label') {
-    series.sort(function(a,b){ return a.label.localeCompare(b.label); });
+    branches.sort(function(a, b){ return a.label.localeCompare(b.label); });
   } else if (keys.length && (sortBy === 'desc' || sortBy === 'asc')) {
     var dir = sortBy === 'desc' ? -1 : 1;
-    series.sort(function(a,b){ return dir * (a.cells[0].value - b.cells[0].value); });
+    branches.sort(function(a, b){ return dir * (a.values[keys[0]] - b.values[keys[0]]); });
   }
 
-  return {
-    cols: ['Branch'].concat(keys.map(headFor)),
-    keys: keys,
-    series: series
-  };
+  log.push(logEntry('COMPARE', [
+    {s: branches.length + (branches.length === 1 ? ' branch' : ' branches')}
+  ]));
+
+  // The branch tables ride along in meta so an Output can still show per-branch
+  // detail. The table itself is the primary value — everything downstream can
+  // read it without knowing Compare exists.
+  return makeTable(
+    compareColumns(keys),
+    branches.map(function(b) {
+      return [b.label].concat(keys.map(function(k) {
+        return k === 'share' ? b.values[k] : b.values[k];
+      }));
+    }),
+    { branches: branches, measures: keys }
+  );
 }
 
-// Walks the DAG in topological order. Returns {res:{nodeId:{data,log,hasSource,table}}}
-// or {error:'msg'}.
+/* ============================================================================
+   OUTPUT
+   ============================================================================
+   Every Output emits a table, including Count and Average — a scalar is a 1x1
+   table. That is what lets one renderer and one CSV writer serve every result
+   shape instead of a branch per output type.                                  */
+
+var ROW_SHOWS = ['rows', 'count', 'average', 'courses'];
+var CMP_SHOWS = ['summary', 'lists', 'courses'];
+
+function compareFeedsOutput(node) {
+  return inputsOf(node.id).some(function(id) {
+    var up = findNode(id);
+    return up && up.type === 'compare';
+  });
+}
+
+// 'courses' is valid on both sides, so rewiring an Output across a Compare
+// keeps the selection instead of resetting it.
+function normaliseShow(node) {
+  var v = node.cfg && node.cfg.show;
+  if (compareFeedsOutput(node)) {
+    if (CMP_SHOWS.indexOf(v) !== -1) return v;
+    return (v === 'rows') ? 'lists' : 'summary';
+  }
+  if (ROW_SHOWS.indexOf(v) !== -1) return v;
+  return (v === 'lists' || v === 'summary') ? 'rows' : 'count';
+}
+
+function outputTable(node, t) {
+  var show = normaliseShow(node);
+
+  if (show === 'count') {
+    return makeTable([{ key:'count', label:'Count', type:COLTYPE.NUMBER }],
+                     [[t.rows.length]]);
+  }
+  if (show === 'average') {
+    var key = (node.cfg && node.cfg.avgCol) || defaultAvgCol(t);
+    var col = colByKey(t, key);
+    return makeTable(
+      [{ key:'average', label:'Average ' + (col ? col.label : ''), type:COLTYPE.NUMBER },
+       { key:'n',       label:'Rows',                              type:COLTYPE.NUMBER }],
+      [[meanOf(t, key), t.rows.length]]
+    );
+  }
+  if (show === 'courses') return breakdownTable(t);
+  return t; // 'rows', 'summary' and 'lists' all display the incoming table
+}
+
+/* GRAPH EVALUATION
+   Walks the DAG in topological order. Each node computes from its own inputs,
+   so parallel branches stay independent.
+   Returns {res: {nodeId: {table, log, hasSource}}} or {error}. */
 function evaluateGraph() {
   var order = topoSort();
   if (order.length < nodes.length) {
@@ -1078,229 +1036,848 @@ function evaluateGraph() {
   var res = {};
   for (var i = 0; i < order.length; i++) {
     var node = order[i];
-    var log = [], data, hasSource, table = null;
+    var log = [], table, hasSource;
 
     if (node.type === 'source') {
-      data = sourceData(node, log);
+      table = sourceTable(node, log);
       hasSource = true;
     } else {
       var inIds = inputsOf(node.id);
-      var ins = inIds
-        .map(function(id){ return res[id]; })
-        .filter(Boolean);
-
+      var ins = inIds.map(function(id){ return res[id]; }).filter(Boolean);
       ins.forEach(function(r){ log.push.apply(log, r.log); });
-      // Compare keeps its branches apart, so a merge would misdescribe it
-      if (ins.length > 1 && node.type !== 'compare') {
-        log.push(logEntry('MERGE', [{s:ins.length + ' inputs'}]));
-      }
-
-      data = unionOf(ins.map(function(r){ return r.data; }));
-      hasSource = ins.some(function(r){ return r.hasSource; });
-
-      if (node.type === 'filter') {
-        var out = applyFilter(node, data, log);
-        if (out.error) return { error: out.error };
-        data = out.data;
-      }
 
       if (node.type === 'compare') {
-        table = buildCompareTable(node, inIds, res, log);
+        // Compare is the one node that keeps its inputs apart rather than
+        // merging them, so it reads the branch results directly.
+        table = buildCompare(node, inIds, res, log);
+        hasSource = ins.some(function(r){ return r.hasSource; });
       } else {
-        // A table travels downstream unchanged. Only Compare builds one, and it
-        // may only feed an Output, so this just carries it the final hop.
-        ins.forEach(function(r){ if (r.table) table = r.table; });
+        if (ins.length > 1) log.push(logEntry('MERGE', [{s: ins.length + ' inputs'}]));
+        var merged = unionTables(ins.map(function(r){ return r.table; }));
+        if (merged.error) return { error: merged.error };
+        table = merged;
+        hasSource = ins.some(function(r){ return r.hasSource; });
+
+        if (node.type === 'filter') {
+          var out = applyFilter(node, table, log);
+          if (out.error) return { error: out.error };
+          table = out.table;
+        }
       }
     }
-    res[node.id] = { data: data, log: log, hasSource: hasSource, table: table };
+    res[node.id] = { table: table, log: log, hasSource: hasSource };
   }
   return { res: res };
 }
 
-function outputCardHTML(ot, data) {
-  if (ot === 'count') {
-    return '<div class="result-card">'+
-      '<div class="result-head">Count</div>'+
-      '<div class="result-big"><span class="big-num">'+data.length+'</span></div>'+
-    '</div>';
-  }
-  if (ot === 'average') {
-    var avg = data.length===0 ? 0 : (data.reduce(function(s,r){return s+r.gradeAvg;},0)/data.length);
-    return '<div class="result-card">'+
-      '<div class="result-head">Average</div>'+
-      '<div class="result-big"><span class="big-num">'+avg.toFixed(1)+'</span><span class="big-sub">/ 100 &nbsp;('+data.length+' records)</span></div>'+
-    '</div>';
-  }
-  var shown = data.slice(0,50);
-  var rows = shown.map(function(s){
-    return '<tr><td>'+s.id+'</td><td>'+s.gender+'</td><td>'+s.year+'</td><td>'+s.gradeAvg+'</td><td>'+s.letterGrade+'</td><td>'+s.specialisation+'</td></tr>';
-  }).join('');
-  var more = data.length>50?'<tr><td colspan="6" style="color:#282828;padding:5px 9px;font-size:10px">... '+(data.length-50)+' more</td></tr>':'';
-  return '<div class="result-card">'+
-    '<div class="result-head">List <span style="color:#444;font-size:9px">('+data.length+')</span></div>'+
-    '<div style="overflow-x:auto"><table class="rtable">'+
-    '<thead><tr><th>ID</th><th>Gen</th><th>Year</th><th>Avg</th><th>Grade</th><th>Specialisation</th></tr></thead>'+
-    '<tbody>'+rows+more+'</tbody></table></div>'+
-  '</div>';
+/* SCHEMA PROPAGATION
+   The same walk as evaluateGraph but carrying only column headers, no rows. It
+   is what lets a Filter's field list and an Output's average-column list be
+   built from whatever is actually flowing into them. Cheap enough to run on
+   every render because no row is ever touched. */
+function computeSchemas() {
+  var order = topoSort();
+  var out = {};
+  order.forEach(function(node) {
+    var ins = inputsOf(node.id).map(function(id){ return out[id]; }).filter(Boolean);
+    if (node.type === 'source') {
+      var cfg = node.cfg || defaultCfg('source');
+      out[node.id] = headerOnly(cfg.rows === 'enrolments'
+        ? makeTable(ENROLMENT_COLUMNS, [])
+        : makeTable(STUDENT_COLUMNS, []));
+    } else if (node.type === 'compare') {
+      out[node.id] = makeTable(compareColumns(measuresOf(node)), []);
+    } else if (ins.length) {
+      out[node.id] = ins[0];
+    } else {
+      out[node.id] = makeTable([], []);
+    }
+  });
+  return out;
 }
 
-var CMP_LIST_LIMIT = 20;
+// The header a node's config panel should describe: what arrives, not what
+// leaves. An unconnected node falls back to the student schema so its panel is
+// still meaningful before anything is wired up.
+function inputSchema(node, schemas) {
+  var ins = inputsOf(node.id).map(function(id){ return schemas[id]; }).filter(Boolean);
+  if (ins.length) return ins[0];
+  return makeTable(STUDENT_COLUMNS, []);
+}
 
-// One card per branch, under the summary table, when the Output is a List.
-function compareBranchListHTML(s) {
+/* ============================================================================
+   RENDER — CONFIG PANELS
+   ============================================================================
+   Controls carry data-node / data-key and are read by one delegated listener.
+   Nothing here reads the DOM back: render() is a pure function of the model,
+   which is what makes the drag fast path and save/load safe.                  */
+
+function ctl(nodeId, key, extra) {
+  return ' data-node="' + nodeId + '" data-key="' + esc(key) + '"' + (extra || '');
+}
+function opt(val, cur, label) {
+  return '<option value="' + esc(val) + '"' + (String(cur) === String(val) ? ' selected' : '') + '>' +
+    esc(label === undefined ? val : label) + '</option>';
+}
+function courseTitle(code) {
+  var c = COURSE_BY_CODE[code];
+  return c ? c.code + ' — ' + c.name : String(code);
+}
+
+// Grouped by subject so a 31-course catalogue stays navigable and a longer real
+// one degrades gracefully instead of becoming a single flat list.
+function courseSelect(nodeId, key, cur) {
+  var sel = cur || DEFAULT_COURSE;
+  var html = '<select class="course-sel" title="' + esc(courseTitle(sel)) + '"' + ctl(nodeId, key) + '>';
+  SUBJECTS.forEach(function(subj) {
+    var inSubj = COURSES.filter(function(c){ return c.subject === subj; });
+    if (!inSubj.length) return;
+    html += '<optgroup label="' + esc(subj) + '">';
+    inSubj.forEach(function(c) {
+      html += '<option value="' + c.code + '"' + (sel === c.code ? ' selected' : '') + '>' +
+        esc(c.code + ' — ' + c.name) + '</option>';
+    });
+    html += '</optgroup>';
+  });
+  return html + '</select>';
+}
+
+function opSelect(nodeId, key, ops, cur) {
+  return '<select' + ctl(nodeId, key) + '>' +
+    ops.map(function(o){ return opt(o, cur, OP_SYM[o]); }).join('') +
+  '</select>';
+}
+
+/* One criterion row. Its shape follows the field's type, and the field list
+   follows the incoming table — so this function knows nothing about students. */
+function criterionHTML(node, ci, c, schema) {
+  var fields = filterFields(schema);
+  if (!fields.length) {
+    return '<div class="criterion-row"><div class="cmp-hint">No columns upstream — connect a Source.</div></div>';
+  }
+  var cur = fieldByKey(schema, c.field) || fields[0];
+  var nid = node.id;
+  var remove = ci > 0
+    ? '<button class="remove-criterion-btn" onclick="removeCriterion(' + nid + ',' + ci + ')">x</button>'
+    : '';
+
+  var plain = fields.filter(function(f){ return f.key.indexOf('courses.') !== 0; });
+  var crs   = fields.filter(function(f){ return f.key.indexOf('courses.') === 0; });
+  var fieldSel = '<select class="ft-sel"' + ctl(nid, 'crit.' + ci + '.field') + '>' +
+    (plain.length ? '<optgroup label="Row">' + plain.map(function(f){ return opt(f.key, cur.key, f.label); }).join('') + '</optgroup>' : '') +
+    (crs.length   ? '<optgroup label="Courses">' + crs.map(function(f){ return opt(f.key, cur.key, f.label); }).join('') + '</optgroup>' : '') +
+  '</select>';
+
+  var vKey = 'crit.' + ci + '.value:' + cur.key;
+  var oKey = 'crit.' + ci + '.op:' + cur.key;
   var body;
-  if (s.rows.length === 0) {
-    body = '<div class="cmp-empty">No students match this branch.</div>';
+
+  if (cur.kind === 'courseSubject') {
+    body = '<div class="criterion-controls two-col">' + fieldSel +
+      '<select' + ctl(nid, vKey) + '>' +
+        SUBJECTS.map(function(s){ return opt(s, critValue(c, cur.key, null) || SUBJECTS[0]); }).join('') +
+      '</select></div>';
+
+  } else if (cur.kind === 'courseCode') {
+    body = '<div class="criterion-controls stack">' + fieldSel +
+      courseSelect(nid, vKey, critValue(c, cur.key, null) || DEFAULT_COURSE) + '</div>';
+
+  } else if (cur.kind === 'courseMark') {
+    body = '<div class="criterion-controls stack">' + fieldSel +
+      courseSelect(nid, 'crit.' + ci + '.course', c.course) +
+      '<div class="cc-pair">' +
+        opSelect(nid, oKey, NUM_OPS, critOp(c, cur.key, 'gte')) +
+        '<input type="number" min="0" max="100" value="' + esc(critValue(c, cur.key, { def:'70' })) + '"' +
+          ctl(nid, vKey) + '></div></div>';
+
+  } else if (cur.kind === COLTYPE.NUMBER) {
+    body = '<div class="criterion-controls">' + fieldSel +
+      opSelect(nid, oKey, NUM_OPS, critOp(c, cur.key, 'gt')) +
+      '<input type="number" value="' + esc(critValue(c, cur.key, cur.column)) + '"' + ctl(nid, vKey) + '>' +
+    '</div>';
+
+  } else if (cur.kind === COLTYPE.ENUM) {
+    var vals = (cur.column && cur.column.values) || [];
+    // Long option text (specialisations, course names) will not survive the
+    // 80px field column, so those get a row of their own.
+    var wide = vals.some(function(v){ return String(v).length > 8; });
+    var valSel = '<select' + ctl(nid, vKey) + '>' +
+      vals.map(function(v){ return opt(v, critValue(c, cur.key, cur.column)); }).join('') + '</select>';
+    body = wide
+      ? '<div class="criterion-controls stack">' + fieldSel + valSel + '</div>'
+      : '<div class="criterion-controls two-col">' + fieldSel + valSel + '</div>';
+
   } else {
-    var trs = s.rows.slice(0, CMP_LIST_LIMIT).map(function(r) {
-      return '<tr><td>'+r.id+'</td><td>'+r.gender+'</td><td>'+r.year+'</td>'+
-             '<td>'+r.gradeAvg+'</td><td>'+r.letterGrade+'</td><td>'+esc(r.specialisation)+'</td></tr>';
-    }).join('');
-    var more = s.rows.length > CMP_LIST_LIMIT
-      ? '<tr><td colspan="6" class="cmp-more">... '+(s.rows.length - CMP_LIST_LIMIT)+
-        ' more — Copy and Save include every row</td></tr>'
-      : '';
-    body = '<div style="overflow-x:auto"><table class="rtable">'+
-      '<thead><tr><th>ID</th><th>Gen</th><th>Year</th><th>Avg</th><th>Grade</th><th>Specialisation</th></tr></thead>'+
-      '<tbody>'+trs+more+'</tbody></table></div>';
-  }
-  return '<div class="result-card cmp-branch-card">'+
-    '<div class="result-head">'+esc(s.label)+
-      ' <span class="result-badge">'+s.rows.length+'</span></div>'+
-    body+
-  '</div>';
-}
-
-function compareCardHTML(t, withRows) {
-  var v = compareView(t);
-
-  if (v.series.length === 0) {
-    return '<div class="result-card">'+
-      '<div class="result-head">Comparison</div>'+
-      '<div class="cmp-empty">No branches connected to this Compare node.</div>'+
+    body = '<div class="criterion-controls two-col">' + fieldSel +
+      '<input type="text" value="' + esc(critValue(c, cur.key, cur.column)) + '"' + ctl(nid, vKey) + '>' +
     '</div>';
   }
 
-  var head = v.cols.map(function(c, i) {
-    return i === 0 ? '<th>'+esc(c)+'</th>' : '<th class="cmp-num">'+esc(c)+'</th>';
+  return '<div class="criterion-row">' + body + remove + '</div>';
+}
+
+function configHTML(node, schemas) {
+  var id = node.id;
+  var cfg = node.cfg = node.cfg || defaultCfg(node.type);
+  var schema = inputSchema(node, schemas);
+  var html = '<div class="node-config">';
+
+  if (node.type === 'source') {
+    html += '<div class="cfg-label">Population</div>' +
+      '<select' + ctl(id, 'pop') + '>' +
+        opt('all', cfg.pop, 'All students') +
+        YEARS.map(function(y){ return opt(String(y), cfg.pop, y + ' only'); }).join('') +
+      '</select>' +
+      // Granularity is a Source setting rather than a separate node: "how many
+      // students" and "how many enrolments" are different questions, and every
+      // downstream panel adapts through the schema.
+      '<div class="cfg-label">Rows</div>' +
+      '<select' + ctl(id, 'rows') + '>' +
+        opt('students', cfg.rows, 'One per student') +
+        opt('enrolments', cfg.rows, 'One per enrolment') +
+      '</select>';
+  }
+
+  if (node.type === 'filter') {
+    html += '<div class="criteria-list">' +
+      cfg.criteria.map(function(c, ci){ return criterionHTML(node, ci, c, schema); }).join('') +
+    '</div>' +
+    '<button class="add-criterion-btn" onclick="addCriterion(' + id + ')">+ add condition</button>';
+  }
+
+  if (node.type === 'compare') {
+    var inIds = inputsOf(id);
+    var labels = cfg.labels || {};
+    html += '<div class="cfg-label">Branches (' + inIds.length + ')</div>';
+    if (inIds.length === 0) {
+      html += '<div class="cmp-hint">Drag a Source or Filter next to this node to add a branch.</div>';
+    } else {
+      if (inIds.length === 1) {
+        html += '<div class="cmp-hint">One branch connected — add another to compare against.</div>';
+      }
+      html += '<div class="cmp-branches">';
+      inIds.forEach(function(inId, i) {
+        var up = findNode(inId);
+        html += '<div class="cmp-branch">' +
+          '<span class="cmp-swatch" style="background:' + (up ? getNodeEdgeColor(up) : '#555') + '"></span>' +
+          '<input type="text" class="cmp-label-input" placeholder="Branch ' + (i + 1) + ' (auto)" ' +
+            'value="' + esc(labels[inId] || '') + '"' + ctl(id, 'label:' + inId) + '>' +
+        '</div>';
+      });
+      html += '</div>';
+    }
+
+    var picked = measuresOf(node);
+    html += '<div class="cfg-label">Columns</div><div class="cmp-measures">' +
+      MEASURES.map(function(m) {
+        return '<label class="cmp-measure">' +
+          '<input type="checkbox"' + (picked.indexOf(m.key) !== -1 ? ' checked' : '') +
+            ctl(id, 'measure:' + m.key) + '>' +
+          '<span>' + esc(m.label) + '</span></label>';
+      }).join('') +
+    '</div>' +
+    '<div class="cfg-label">Order</div>' +
+    '<select' + ctl(id, 'sort') + '>' +
+      opt('wired', cfg.sort, 'As connected') +
+      opt('desc',  cfg.sort, 'Highest first') +
+      opt('asc',   cfg.sort, 'Lowest first') +
+      opt('label', cfg.sort, 'Label A–Z') +
+    '</select>' +
+    '<div class="cmp-hint">Highest and lowest use the first ticked column.</div>';
+  }
+
+  if (node.type === 'output') {
+    var show = normaliseShow(node);
+    cfg.show = show;
+
+    html += '<div class="cfg-label">Show</div><select' + ctl(id, 'show') + '>';
+    if (compareFeedsOutput(node)) {
+      html += opt('summary', show, 'Summary table') +
+              opt('lists',   show, 'Summary + row lists') +
+              opt('courses', show, 'Summary + course breakdown');
+    } else {
+      html += opt('rows',    show, 'All rows') +
+              opt('count',   show, 'Count') +
+              opt('average', show, 'Average') +
+              opt('courses', show, 'Course breakdown');
+    }
+    html += '</select>';
+
+    // Average is no longer hardwired to gradeAvg — the column list comes from
+    // whatever is arriving, so it works on an enrolment stream too.
+    if (show === 'average') {
+      var nums = numericCols(schema).filter(function(c) {
+        return c.key !== 'id' && c.key !== 'studentId';
+      });
+      var cur = cfg.avgCol || defaultAvgCol(schema);
+      html += '<div class="cfg-label">Average of</div>' +
+        (nums.length
+          ? '<select' + ctl(id, 'avgCol') + '>' +
+              nums.map(function(c){ return opt(c.key, cur, c.label); }).join('') + '</select>'
+          : '<div class="cmp-hint">No numeric column upstream.</div>');
+    }
+
+    html += '<div class="cfg-label">File name</div>' +
+      '<input type="text" class="fname-input" placeholder="output' + id + '" ' +
+        'value="' + esc(cfg.filename || '') + '"' + ctl(id, 'filename') + '>';
+  }
+
+  return html + '</div>';
+}
+
+function shapeHTML(node) {
+  var removeBtn = '<button class="node-remove" onclick="removeNode(' + node.id + ')">x</button>';
+  if (node.type === 'source') return '<div class="shape-source">' + removeBtn + 'Source</div>';
+  if (node.type === 'filter') return '<div class="shape-filter">' + removeBtn + 'Filter</div>';
+  if (node.type === 'compare') {
+    var glyph = '<span class="cmp-glyph"><i style="width:26px"></i><i style="width:16px"></i><i style="width:21px"></i></span>';
+    return '<div class="shape-compare">' + removeBtn + glyph + 'Compare</div>';
+  }
+  if (node.type === 'output') return '<div class="shape-output">' + removeBtn + 'Output</div>';
+  return '';
+}
+
+function render() {
+  var cv = document.getElementById('canvas');
+  var old = cv.querySelectorAll('.node');
+  for (var i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
+  nodeEls = {};
+  document.getElementById('hint').style.display = nodes.length === 0 ? 'block' : 'none';
+
+  var schemas = computeSchemas();
+
+  nodes.forEach(function(node) {
+    var el = document.createElement('div');
+    el.className = 'node';
+    el.style.left = node.x + 'px';
+    el.style.top  = node.y + 'px';
+    el.innerHTML = shapeHTML(node) + configHTML(node, schemas);
+    cv.appendChild(el);
+    nodeEls[node.id] = el;
+
+    var shape = el.querySelector('.shape-source, .shape-filter, .shape-compare, .shape-output');
+    if (shape) {
+      shape.addEventListener('mousedown', function(e){ startDrag(e, node.id); });
+    }
+  });
+
+  drawArrows();
+}
+
+/* Delegated config listener — one handler for every control on the canvas.
+   Registered once at start-up rather than per element per render, so a rebuild
+   cannot leave stale listeners behind.
+
+   Selects and checkboxes re-render (the panel's shape may depend on them);
+   text and number inputs do not, because rebuilding the DOM mid-keystroke
+   destroys the element being typed into. */
+function onConfigInput(e) {
+  var el = e.target;
+  if (!el || !el.getAttribute) return;
+  var nid = el.getAttribute('data-node');
+  var key = el.getAttribute('data-key');
+  if (!nid || !key) return;
+
+  var value = el.type === 'checkbox' ? el.checked : el.value;
+  setCfg(parseInt(nid, 10), key, value);
+  markStale();
+
+  var reshapes = el.tagName === 'SELECT' || el.type === 'checkbox';
+  if (reshapes && e.type === 'change') render();
+}
+
+/* ARROWS */
+function getNodeEdgeColor(node) {
+  var incoming = connections.filter(function(c){ return c.to === node.id; });
+  if (incoming.length) return incoming[0].color;
+  return node.color || EDGE_PALETTE[0];
+}
+
+function svgEl(tag) { return document.createElementNS('http://www.w3.org/2000/svg', tag); }
+
+function drawArrow(parent, p0, tip, color, opacity, isGhost) {
+  var ah = 14;
+  var pathEndX = tip.x - ah, pathEndY = tip.y;
+  var dx = Math.max(40, Math.abs(tip.x - p0.x) * 0.45);
+  var p1x = p0.x + dx, p1y = p0.y;
+  var p2x = pathEndX - Math.max(10, dx * 0.2), p2y = pathEndY;
+
+  var pathEl = svgEl('path');
+  pathEl.setAttribute('d', 'M ' + p0.x + ' ' + p0.y + ' C ' + p1x + ' ' + p1y + ' ' + p2x + ' ' + p2y + ' ' + pathEndX + ' ' + pathEndY);
+  pathEl.setAttribute('stroke', color);
+  pathEl.setAttribute('stroke-width', isGhost ? '1.5' : '2');
+  pathEl.setAttribute('fill', 'none');
+  pathEl.setAttribute('opacity', opacity);
+  if (isGhost) pathEl.setAttribute('stroke-dasharray', '6 4');
+
+  var ang = Math.atan2(tip.y - pathEndY, tip.x - pathEndX), spread = 0.42;
+  var arrowEl = svgEl('polygon');
+  arrowEl.setAttribute('points',
+    tip.x + ',' + tip.y + ' ' +
+    (tip.x - ah * Math.cos(ang - spread)) + ',' + (tip.y - ah * Math.sin(ang - spread)) + ' ' +
+    (tip.x - ah * Math.cos(ang + spread)) + ',' + (tip.y - ah * Math.sin(ang + spread)));
+  arrowEl.setAttribute('fill', color);
+  arrowEl.setAttribute('opacity', isGhost ? opacity : Math.min(1, parseFloat(opacity) + 0.2));
+
+  // Cubic bezier at t=0.5 -> (P0 + 3P1 + 3P2 + P3) / 8, used as a midpoint
+  // fallback where getPointAtLength is unavailable.
+  pathEl._mid = {
+    x: (p0.x + 3 * p1x + 3 * p2x + pathEndX) / 8,
+    y: (p0.y + 3 * p1y + 3 * p2y + pathEndY) / 8
+  };
+
+  parent.appendChild(pathEl);
+  parent.appendChild(arrowEl);
+  return pathEl;
+}
+
+/* DRAG
+   onMove used to call render(), tearing down and rebuilding every node's DOM at
+   pointer rate. Now it moves the existing elements and redraws only the arrows;
+   panel contents cannot change during a drag, so there is nothing to rebuild.
+   This was previously masked by the fact that config lived in the DOM — a full
+   rebuild was needed to avoid losing it. With the model authoritative, it is
+   not. */
+var ghostTarget = null;
+
+function startDrag(e, nodeId) {
+  var tag = e.target.tagName;
+  if (tag === 'SELECT' || tag === 'INPUT' || tag === 'BUTTON') return;
+  e.preventDefault();
+  var node = findNode(nodeId);
+  if (!node) return;
+  var rect = document.getElementById('canvas').getBoundingClientRect();
+  drag = { node:node, ox: e.clientX - rect.left - node.x, oy: e.clientY - rect.top - node.y };
+  ghostTarget = null;
+  cancelPreviewTimer(); hidePreview();
+  document.addEventListener('mousemove', onMove);
+  document.addEventListener('mouseup', onUp);
+}
+
+function onMove(e) {
+  if (!drag) return;
+  var rect = document.getElementById('canvas').getBoundingClientRect();
+  var s = SHAPE[drag.node.type];
+  drag.node.x = Math.max(0, Math.min(rect.width - NODE_W, e.clientX - rect.left - drag.ox));
+  drag.node.y = Math.max(0, Math.min(rect.height - s.h, e.clientY - rect.top - drag.oy));
+
+  // Closest node that could form a valid connection, measured port to port
+  var dn = drag.node, best = null, bestDist = SNAP_DIST;
+  nodes.forEach(function(n) {
+    if (n.id === dn.id) return;
+    var dir = resolveDirection(dn, n);
+    if (!dir) return;
+    var dx = dir.tip.x - dir.p0.x, dy = dir.tip.y - dir.p0.y;
+    var dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist < bestDist) { bestDist = dist; best = n; }
+  });
+  ghostTarget = best ? best.id : null;
+
+  var el = nodeEls[dn.id];
+  if (el) { el.style.left = dn.x + 'px'; el.style.top = dn.y + 'px'; }
+  drawArrows();
+}
+
+function onUp() {
+  if (drag && ghostTarget !== null) {
+    var gt = findNode(ghostTarget);
+    var dir = gt ? resolveDirection(drag.node, gt) : null;
+    if (dir) {
+      var exists = connections.some(function(c) {
+        return c.from === dir.from.id && c.to === dir.to.id;
+      });
+      if (!exists) {
+        connections.push({ from: dir.from.id, to: dir.to.id, color: pickEdgeColor(dir.from) });
+        markStale();
+      }
+    }
+  }
+  drag = null;
+  ghostTarget = null;
+  document.removeEventListener('mousemove', onMove);
+  document.removeEventListener('mouseup', onUp);
+  render(); // panels can change once wiring changes — full rebuild is correct here
+}
+
+// First outgoing edge inherits the upstream colour; later ones take a distinct
+// palette colour so branches stay visually separable.
+function pickEdgeColor(fromNode) {
+  var outgoing = connections.filter(function(c){ return c.from === fromNode.id; });
+  if (outgoing.length === 0) return getNodeEdgeColor(fromNode);
+  var used = outgoing.map(function(c){ return c.color; });
+  for (var i = 0; i < EDGE_PALETTE.length; i++) {
+    if (used.indexOf(EDGE_PALETTE[i]) === -1) return EDGE_PALETTE[i];
+  }
+  return getNodeEdgeColor(fromNode);
+}
+
+/* CONNECTION REMOVAL */
+function connKey(c) { return c.from + '->' + c.to; }
+
+function removeConnection(from, to) {
+  connections = connections.filter(function(c){ return !(c.from === from && c.to === to); });
+  hoverConn = null;
+  markStale();
+  render();
+}
+
+function buildDeleteBadge(conn, pathEl) {
+  var mid;
+  try { mid = pathEl.getPointAtLength(pathEl.getTotalLength() / 2); }
+  catch (err) { mid = pathEl._mid; }
+  if (!mid) return null;
+
+  var g = svgEl('g');
+  g.setAttribute('class', 'conn-delete');
+  g.setAttribute('transform', 'translate(' + mid.x + ',' + mid.y + ')');
+
+  var circle = svgEl('circle');
+  circle.setAttribute('r', '9');
+  g.appendChild(circle);
+
+  var r = 3.6;
+  [[-r,-r,r,r], [-r,r,r,-r]].forEach(function(p) {
+    var line = svgEl('line');
+    line.setAttribute('x1', p[0]); line.setAttribute('y1', p[1]);
+    line.setAttribute('x2', p[2]); line.setAttribute('y2', p[3]);
+    g.appendChild(line);
+  });
+
+  var title = svgEl('title');
+  title.textContent = 'Remove this connection';
+  g.appendChild(title);
+
+  g.addEventListener('mousedown', function(e){ e.stopPropagation(); });
+  g.addEventListener('click', function(e) {
+    e.stopPropagation();
+    removeConnection(conn.from, conn.to);
+  });
+  return g;
+}
+
+/* EDGE DATA PREVIEW
+   After a deliberate dwell, show the first few rows travelling along a
+   connection — the upstream node's emitted table, recomputed live so it is
+   current even mid-edit. A plausibility aid: the "of N" total is the real
+   signal, the rows are dataset-ordered texture rather than a sample. */
+var PREVIEW_DELAY = 450;
+var previewTimer = null;
+var previewEl = null;
+
+function cancelPreviewTimer() {
+  if (previewTimer) { clearTimeout(previewTimer); previewTimer = null; }
+}
+function armPreviewTimer(conn, pathEl) {
+  cancelPreviewTimer();
+  previewTimer = setTimeout(function() {
+    previewTimer = null;
+    showPreview(conn, pathEl);
+  }, PREVIEW_DELAY);
+}
+function ensurePreviewEl() {
+  if (previewEl) return previewEl;
+  previewEl = document.createElement('div');
+  previewEl.className = 'edge-preview';
+  previewEl.style.display = 'none';
+  document.getElementById('canvas').appendChild(previewEl);
+  return previewEl;
+}
+function hidePreview() { if (previewEl) previewEl.style.display = 'none'; }
+
+// No saveState() call is needed any more: the model is already current, because
+// every keystroke wrote straight into it.
+function edgeData(conn) {
+  var ev = evaluateGraph();
+  if (ev.error) return { error: ev.error };
+  var r = ev.res[conn.from];
+  if (!r) return { error: 'unresolved' };
+  if (!r.hasSource) return { incomplete: true };
+  return { table: r.table };
+}
+
+// Preview columns are capped, not chosen: an enrolment table is ten columns
+// wide and would overflow the floating panel.
+var PREVIEW_COLS = 5;
+var PREVIEW_ROWS = 5;
+
+function previewTableHTML(t) {
+  var cols = t.columns.slice(0, PREVIEW_COLS);
+  var head = cols.map(function(c){ return '<th>' + esc(c.label) + '</th>'; }).join('') +
+    (t.columns.length > cols.length ? '<th>…</th>' : '');
+  var body = t.rows.slice(0, PREVIEW_ROWS).map(function(r) {
+    return '<tr>' + cols.map(function(c, i) {
+      var ttl = cellTitle(c, r[i]);
+      return '<td' + (ttl ? ' title="' + esc(ttl) + '"' : '') + '>' + esc(fmtCell(c, r[i])) + '</td>';
+    }).join('') + (t.columns.length > cols.length ? '<td>…</td>' : '') + '</tr>';
+  }).join('');
+  return '<table class="ep-table"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>';
+}
+
+function showPreview(conn, pathEl) {
+  var res = edgeData(conn);
+  var el = ensurePreviewEl();
+  var body;
+
+  if (res.error) {
+    body = '<div class="ep-note">Can\'t preview — ' +
+      (res.error.indexOf('Circular') === 0 ? 'circular connection.' : 'graph unresolved.') + '</div>';
+  } else if (res.incomplete) {
+    body = '<div class="ep-note">No data on this edge yet — upstream isn\'t connected to a Source.</div>';
+  } else {
+    var t = res.table, n = t.rows.length;
+    var count = '<div class="ep-count"><span class="ep-num">' + n + '</span> row' + (n === 1 ? '' : 's') + ' on this edge</div>';
+    body = n === 0
+      ? count + '<div class="ep-note">Empty table — nothing passes this point.</div>'
+      : count + previewTableHTML(t) +
+        '<div class="ep-foot">showing ' + Math.min(PREVIEW_ROWS, n) + ' of ' + n + ', in table order</div>';
+  }
+  el.innerHTML = body;
+
+  var mid = pathEl._mid || { x:0, y:0 };
+  el.style.display = 'block';
+
+  var cw = document.getElementById('canvas').clientWidth;
+  var pw = el.offsetWidth, ph = el.offsetHeight;
+  var GAP = 26; // clears the ~9px badge radius plus breathing room
+
+  var left = Math.max(6, Math.min(mid.x - pw / 2, cw - pw - 6));
+  var top = mid.y - ph - GAP;
+  el.classList.remove('ep-below');
+  if (top < 6) { top = mid.y + GAP; el.classList.add('ep-below'); }
+  el.style.left = Math.round(left) + 'px';
+  el.style.top = Math.round(top) + 'px';
+}
+
+function drawArrows() {
+  var svg = document.getElementById('svg');
+  while (svg.firstChild) svg.removeChild(svg.firstChild);
+  cancelPreviewTimer(); // a rebuild invalidates the path a pending preview was armed on
+
+  connections.forEach(function(conn) {
+    var a = findNode(conn.from), b = findNode(conn.to);
+    if (!a || !b) return;
+    var p0 = shapeExit(a), tip = shapeEntry(b);
+
+    var g = svgEl('g');
+    svg.appendChild(g);
+    var pathEl = drawArrow(g, p0, tip, conn.color, '0.9', false);
+
+    if (drag) return; // no hover affordances mid-drag
+
+    // Invisible fat stroke so the 2px line is comfortably hoverable, extended to
+    // the true tip so the arrowhead counts as part of the line.
+    var hit = svgEl('path');
+    hit.setAttribute('d', pathEl.getAttribute('d') + ' L ' + tip.x + ' ' + tip.y);
+    hit.setAttribute('class', 'conn-hit');
+    g.appendChild(hit);
+
+    var badge = null, hovered = false;
+    function setHover(on) {
+      if (on === hovered) return;
+      hovered = on;
+      if (on) {
+        badge = buildDeleteBadge(conn, pathEl);
+        if (badge) g.appendChild(badge);
+      } else if (badge && badge.parentNode) {
+        badge.parentNode.removeChild(badge);
+        badge = null;
+      }
+      hoverConn = on ? connKey(conn) : null;
+    }
+
+    // mousemove rather than mouseenter, so hover still engages when the SVG is
+    // rebuilt beneath a stationary cursor
+    hit.addEventListener('mousemove', function() {
+      setHover(true);
+      armPreviewTimer(conn, pathEl);
+    });
+    g.addEventListener('mouseleave', function() {
+      setHover(false);
+      cancelPreviewTimer();
+      hidePreview();
+    });
+
+    if (hoverConn === connKey(conn)) setHover(true);
+  });
+
+  if (drag && ghostTarget !== null) {
+    var gt = findNode(ghostTarget);
+    var dir = gt ? resolveDirection(drag.node, gt) : null;
+    if (dir) drawArrow(svg, dir.p0, dir.tip, '#aaaaaa', '0.55', true);
+  }
+}
+
+/* ============================================================================
+   RESULTS PANEL — one renderer for every table
+   ============================================================================
+   Previously there were four: a count card, an average card, a student list, a
+   course breakdown, plus a separate Compare path. They rendered the same kinds
+   of thing in slightly different ways and had to be kept in step by hand. Every
+   result is now a table, so there is one function.                            */
+
+var DISPLAY_ROW_LIMIT = 50;
+
+function tableHTML(t, title, badge) {
+  if (t.columns.length === 0) {
+    return card(title, '<div class="cmp-empty">Nothing to show — this Output has no columns.</div>', badge);
+  }
+
+  var head = t.columns.map(function(c) {
+    return '<th' + (c.type === COLTYPE.NUMBER ? ' class="cmp-num"' : '') + '>' + esc(c.label) + '</th>';
   }).join('');
 
-  var rows = v.series.map(function(s) {
-    return '<tr>'+
-      '<td class="cmp-cell-label" title="'+esc(s.label)+'">'+esc(s.label)+'</td>'+
-      s.cells.map(function(c){ return '<td class="cmp-num">'+esc(c.text)+'</td>'; }).join('')+
-    '</tr>';
+  var body = t.rows.slice(0, DISPLAY_ROW_LIMIT).map(function(r) {
+    return '<tr>' + t.columns.map(function(c, i) {
+      var ttl = cellTitle(c, r[i]);
+      var cls = c.type === COLTYPE.NUMBER ? 'cmp-num'
+              : c.type === COLTYPE.COURSES ? 'cmp-num crs-cell' : '';
+      return '<td' + (cls ? ' class="' + cls + '"' : '') +
+        (ttl ? ' title="' + esc(ttl) + '"' : '') + '>' + esc(fmtCell(c, r[i])) + '</td>';
+    }).join('') + '</tr>';
   }).join('');
 
-  var notes = '';
-  if (v.keys.length === 0) notes += '<div class="cmp-empty">No columns ticked on the Compare node.</div>';
-  if (v.series.length === 1) notes += '<div class="cmp-empty">Only one branch — connect another to compare.</div>';
+  var more = t.rows.length > DISPLAY_ROW_LIMIT
+    ? '<tr><td colspan="' + t.columns.length + '" class="cmp-more">... ' +
+      (t.rows.length - DISPLAY_ROW_LIMIT) + ' more — Copy and Save include every row</td></tr>'
+    : '';
 
-  var html = '<div class="result-card">'+
-    '<div class="result-head">Comparison <span class="result-badge">'+v.series.length+' branches</span></div>'+
-    '<table class="rtable cmp-table">'+
-      '<thead><tr>'+head+'</tr></thead>'+
-      '<tbody>'+rows+'</tbody>'+
-    '</table>'+
-    notes+
+  var empty = t.rows.length === 0
+    ? '<div class="cmp-empty">No rows match this query.</div>' : '';
+
+  return card(title,
+    '<div style="overflow-x:auto"><table class="rtable">' +
+      '<thead><tr>' + head + '</tr></thead><tbody>' + body + more + '</tbody></table></div>' + empty,
+    badge);
+}
+
+function card(title, body, badge) {
+  return '<div class="result-card">' +
+    '<div class="result-head">' + esc(title) +
+      (badge ? ' <span class="result-badge">' + esc(badge) + '</span>' : '') + '</div>' +
+    body +
   '</div>';
+}
 
-  if (withRows) {
-    html += v.series.map(compareBranchListHTML).join('');
+// A 1x1 result still reads better as a headline number than as a one-cell
+// table, so scalars keep the large display. It is the same table underneath —
+// only the presentation differs, and the export path never sees this.
+function scalarHTML(t) {
+  var c = t.columns[0], r = t.rows[0] || [];
+  var extra = t.columns.length > 1
+    ? '<span class="big-sub">' + esc(t.columns[1].label + ': ' + fmtCell(t.columns[1], r[1])) + '</span>'
+    : '';
+  return '<div class="result-card">' +
+    '<div class="result-head">' + esc(c.label) + '</div>' +
+    '<div class="result-big"><span class="big-num">' + esc(fmtCell(c, r[0])) + '</span>' + extra + '</div>' +
+  '</div>';
+}
+
+function isScalar(t) { return t.rows.length === 1 && t.columns.length <= 2; }
+
+function resultHTML(node, r) {
+  var show = normaliseShow(node);
+  var t = outputTable(node, r.table);
+  var html;
+
+  if (show === 'count' || show === 'average') {
+    html = scalarHTML(t);
+  } else if (show === 'summary' || show === 'lists' || show === 'courses') {
+    var branches = (r.table.meta && r.table.meta.branches) || null;
+    if (branches) {
+      // Compare-fed: the summary first, then per-branch detail if asked for
+      html = tableHTML(t, 'Comparison', branches.length + ' branches');
+      if (show === 'lists') {
+        html += branches.map(function(b) {
+          return '<div class="cmp-branch-card">' +
+            tableHTML(b.table, b.label, String(b.table.rows.length)) + '</div>';
+        }).join('');
+      } else if (show === 'courses') {
+        html += branches.map(function(b) {
+          var bt = breakdownTable(b.table);
+          return '<div class="cmp-branch-card">' +
+            tableHTML(bt, b.label, bt.rows.length + ' courses') + '</div>';
+        }).join('');
+      }
+    } else {
+      html = tableHTML(t, show === 'courses' ? 'Course breakdown' : 'Rows',
+                       show === 'courses' ? t.rows.length + ' courses' : String(t.rows.length));
+    }
+  } else {
+    html = tableHTML(t, 'Rows', String(t.rows.length));
   }
   return html;
 }
 
-function outputValue(ot, data) {
-  if (ot === 'average') {
-    var avg = data.length===0 ? 0 : (data.reduce(function(s,r){return s+r.gradeAvg;},0)/data.length);
-    return avg.toFixed(1);
-  }
-  return data.length;
-}
-
 function runQuery() {
-  saveState();
-  var srcNodes = nodes.filter(function(n){return n.type==='source';});
-  var outNodes = nodes.filter(function(n){return n.type==='output';});
+  var srcNodes = nodes.filter(function(n){ return n.type === 'source'; });
+  var outNodes = nodes.filter(function(n){ return n.type === 'output'; });
 
-  if (srcNodes.length===0) { showError('Add a Source node.'); return; }
-  if (outNodes.length===0) { showError('Add an Output node.'); return; }
-  if (connections.length===0) {
+  if (srcNodes.length === 0) { showError('Add a Source node.'); return; }
+  if (outNodes.length === 0) { showError('Add an Output node.'); return; }
+  if (connections.length === 0) {
     showError('Drag nodes close together to connect them, then drop to confirm the connection.');
     return;
   }
 
   var ev = evaluateGraph();
   if (ev.error) { showError(ev.error); return; }
-  var res = ev.res;
 
-  lastResults = {};
   exportData = {};
   var html = '';
 
   outNodes.forEach(function(onode, oi) {
-    var r = res[onode.id] || { data: [], log: [], hasSource: false };
-    var body;
+    var r = ev.res[onode.id] || { table: makeTable([], []), log: [], hasSource: false };
+    var body, actions = '';
 
     if (!r.hasSource) {
       body = '<div class="error-box">Not connected to a Source — this Output has no data path.</div>';
-    } else if (r.table) {
-      // The Output decides how much detail; the Compare decided what's measured.
-      var cot = normaliseOutputType(onode);
-      onode._outputType = cot;
-      lastResults[onode.id] = r.table.series.length;
-      var tlog = r.log.concat(logEntry('OUTPUT', [{c:'val', s:cot}]));
-      exportData[onode.id] = {
-        index: oi + 1,
-        ot: cot,
-        log: tlog.map(logText),
-        data: r.data,
-        table: r.table
-      };
-      body = '<div class="query-log">'+tlog.map(logHTML).join('\n')+'</div>' +
-             compareCardHTML(r.table, cot === 'lists');
     } else {
-      var ot = onode._outputType || 'count';
-      lastResults[onode.id] = outputValue(ot, r.data);
-      var log = r.log.concat(logEntry('OUTPUT', [{c:'val', s:ot}]));
+      var show = normaliseShow(onode);
+      var log = r.log.concat(logEntry('OUTPUT', [{ c:'val', s:show }]));
+      var t = outputTable(onode, r.table);
+
       exportData[onode.id] = {
         index: oi + 1,
-        ot: ot,
-        log: log.map(logText),
-        data: r.data
+        show: show,
+        name: (onode.cfg && onode.cfg.filename && onode.cfg.filename.trim()) || ('output' + onode.id),
+        table: t,
+        source: r.table,          // pre-Output table, for the enrolments export
+        log: log.map(logText)
       };
-      body = '<div class="query-log">'+log.map(logHTML).join('\n')+'</div>' + outputCardHTML(ot, r.data);
+
+      body = '<div class="query-log">' + log.map(logHTML).join('\n') + '</div>' + resultHTML(onode, r);
+
+      // Individual course marks survive only in the long enrolment format — a
+      // student row carries codes and a breakdown carries averages. Offered
+      // only where that raw detail exists to be exported.
+      var canEnrol = !!toEnrolments(r.table);
+      actions = '<div class="result-actions">' +
+        '<button class="rbtn" onclick="copyOutput(' + onode.id + ',this)">Copy</button>' +
+        '<button class="rbtn" onclick="saveOutput(' + onode.id + ',this)">Save</button>' +
+        (canEnrol
+          ? '<button class="rbtn" title="One row per student-course pair, with individual marks" ' +
+            'onclick="saveEnrolments(' + onode.id + ',this)">Enrolments</button>'
+          : '') +
+      '</div>';
     }
 
-    // Export buttons only exist for blocks that actually hold a result.
-    // An empty result set is still a result and stays exportable.
-    var actions = r.hasSource
-      ? '<div class="result-actions">'+
-          '<button class="rbtn" onclick="copyOutput('+onode.id+',this)">Copy</button>'+
-          '<button class="rbtn" onclick="saveOutput('+onode.id+',this)">Save</button>'+
-        '</div>'
-      : '';
     var showLabel = outNodes.length > 1;
     var head = (showLabel || actions)
-      ? '<div class="result-block-head">'+
-          (showLabel ? '<div class="result-block-label">Output '+(oi+1)+'</div>' : '<div></div>')+
-          actions+
+      ? '<div class="result-block-head">' +
+          (showLabel ? '<div class="result-block-label">Output ' + (oi + 1) + '</div>' : '<div></div>') +
+          actions +
         '</div>'
       : '';
-
-    html += '<div class="result-block">'+ head + body +'</div>';
+    html += '<div class="result-block">' + head + body + '</div>';
   });
 
   setOutput(html);
   resultsFresh = true;
-  render();
 }
 
-/* EXPORT: CLIPBOARD + FILE
-   Results are only exportable while they still match the graph that produced
-   them. Any structural or config change calls markStale(), which dims the
-   panel and hides the buttons until the query is re-run. */
+/* ============================================================================
+   EXPORT — one serialiser, because there is one data shape
+   ============================================================================ */
 
 function markStale() {
   if (!resultsFresh) return;
@@ -1317,106 +1894,49 @@ function markStale() {
 }
 
 function pad2(n) { return (n < 10 ? '0' : '') + n; }
-
 function timeStamp(fileSafe) {
   var d = new Date();
-  var date = d.getFullYear() + '-' + pad2(d.getMonth()+1) + '-' + pad2(d.getDate());
+  var date = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
   var time = pad2(d.getHours()) + (fileSafe ? '' : ':') + pad2(d.getMinutes());
   return date + (fileSafe ? '-' : ' ') + time;
 }
-
-var EXPORT_COLS = ['ID','Gender','Year','GradeAvg','LetterGrade','Specialisation'];
-function rowOf(s) { return [s.id, s.gender, s.year, s.gradeAvg, s.letterGrade, s.specialisation]; }
 
 function csvCell(v) {
   var s = String(v);
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
-// A comparison exports as what's on screen. For count/average that's one row
-// per branch; for a list it's every student row with its branch name prepended,
-// which is the shape a pivot table wants.
-function compareDelim(t, withRows, sep, quote) {
+// The whole export layer, for every result shape the tool can produce.
+function serialiseTable(t, sep, quote) {
   var cell = quote ? csvCell : function(v){ return String(v); };
-  var v = compareView(t);
-
-  if (withRows) {
-    var lines = [['Branch'].concat(EXPORT_COLS).map(cell).join(sep)];
-    v.series.forEach(function(s) {
-      s.rows.forEach(function(r) {
-        lines.push([cell(s.label)].concat(rowOf(r).map(cell)).join(sep));
-      });
-    });
-    return lines.join('\n');
-  }
-
-  return [v.cols.map(cell).join(sep)]
-    .concat(v.series.map(function(s) {
-      return [cell(s.label)].concat(s.cells.map(function(c){ return cell(c.text); })).join(sep);
+  return [t.columns.map(function(c){ return cell(c.label); }).join(sep)]
+    .concat(t.rows.map(function(r) {
+      return t.columns.map(function(c, i){ return cell(exportCell(c, r[i])); }).join(sep);
     }))
     .join('\n');
 }
 
-// Tab-separated — pastes straight into Excel/Sheets as columns
-function tsvFor(e) {
-  if (e.table) return compareDelim(e.table, e.ot === 'lists', '\t', false);
-  return [EXPORT_COLS.join('\t')]
-    .concat(e.data.map(function(s){ return rowOf(s).join('\t'); }))
-    .join('\n');
+// Compare with per-branch detail exports long: one row per branch row, branch
+// name prepended. That is the shape a pivot table wants.
+function exportTableFor(e) {
+  var branches = e.source && e.source.meta && e.source.meta.branches;
+  if (!branches || e.show === 'summary') return e.table;
+
+  var per = branches.map(function(b) {
+    return { label: b.label, t: e.show === 'courses' ? breakdownTable(b.table) : b.table };
+  }).filter(function(x){ return x.t.columns.length; });
+  if (!per.length) return e.table;
+
+  var cols = [{ key:'branch', label:'Branch', type:COLTYPE.TEXT }].concat(per[0].t.columns);
+  var rows = [];
+  per.forEach(function(x) {
+    x.t.rows.forEach(function(r){ rows.push([x.label].concat(r)); });
+  });
+  return makeTable(cols, rows);
 }
 
-// Clean data only — no provenance rows, so imports don't need cleaning up
-function csvFor(e) {
-  if (e.table) return compareDelim(e.table, e.ot === 'lists', ',', true);
-  return [EXPORT_COLS.join(',')]
-    .concat(e.data.map(function(s){ return rowOf(s).map(csvCell).join(','); }))
-    .join('\n');
-}
-
-function resultLine(e) {
-  if (e.ot === 'average') {
-    var avg = e.data.length === 0 ? 0 : (e.data.reduce(function(a,r){return a+r.gradeAvg;},0)/e.data.length);
-    return 'Average: ' + avg.toFixed(1) + ' / 100  (' + e.data.length + ' records)';
-  }
-  if (e.ot === 'list') return 'Rows: ' + e.data.length;
-  return 'Count: ' + e.data.length;
-}
-
-// Readable text carrying the query that produced the number
-function scalarText(e) {
-  return [
-    'Student Data Analyser — Output ' + e.index,
-    'Generated: ' + timeStamp(false),
-    '',
-    'Query:',
-    e.log.map(function(l){ return '  ' + l; }).join('\n'),
-    '',
-    'Result:',
-    '  ' + resultLine(e)
-  ].join('\n');
-}
-
-// Returns {name, content, mime} for a Save action
-function fileFor(e) {
-  if (e.table) {
-    return {
-      name: 'output' + e.index + '-comparison-' + timeStamp(true) + '.csv',
-      content: csvFor(e),
-      mime: 'text/csv'
-    };
-  }
-  if (e.ot === 'list') {
-    return {
-      name: 'output' + e.index + '-list-' + timeStamp(true) + '.csv',
-      content: csvFor(e),
-      mime: 'text/csv'
-    };
-  }
-  return {
-    name: 'output' + e.index + '-' + e.ot + '-' + timeStamp(true) + '.txt',
-    content: scalarText(e),
-    mime: 'text/plain'
-  };
+function safeName(s) {
+  return String(s).trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-') || 'output';
 }
 
 function flashBtn(btn, msg) {
@@ -1431,8 +1951,8 @@ function flashBtn(btn, msg) {
   }, 1500);
 }
 
-// execCommand fallback — navigator.clipboard needs a secure context, which
-// isn't guaranteed when the page is opened straight off the filesystem
+// execCommand fallback — navigator.clipboard needs a secure context, which is
+// not guaranteed when the page is opened straight off the filesystem.
 function legacyCopy(text) {
   try {
     var ta = document.createElement('textarea');
@@ -1453,10 +1973,8 @@ function legacyCopy(text) {
 function writeClipboard(text, btn) {
   function done(ok) { flashBtn(btn, ok ? 'Copied ✓' : 'Copy failed'); }
   if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(
-      function() { done(true); },
-      function() { done(legacyCopy(text)); }
-    );
+    navigator.clipboard.writeText(text).then(function(){ done(true); },
+                                            function(){ done(legacyCopy(text)); });
   } else {
     done(legacyCopy(text));
   }
@@ -1477,7 +1995,7 @@ function downloadFile(name, content, mime) {
   } catch (err) { return false; }
 }
 
-// Guard shared by both actions: the payload must exist and still be current
+// Shared guard: the payload must exist and still match the graph that made it
 function exportEntry(id, btn) {
   var e = exportData[id];
   if (!e || !resultsFresh) { flashBtn(btn, 'Re-run first'); return null; }
@@ -1486,21 +2004,31 @@ function exportEntry(id, btn) {
 
 function copyOutput(id, btn) {
   var e = exportEntry(id, btn);
-  if (!e) return;
-  writeClipboard((e.table || e.ot === 'list') ? tsvFor(e) : scalarText(e), btn);
+  if (e) writeClipboard(serialiseTable(exportTableFor(e), '\t', false), btn);
 }
 
 function saveOutput(id, btn) {
   var e = exportEntry(id, btn);
   if (!e) return;
-  var f = fileFor(e);
-  flashBtn(btn, downloadFile(f.name, f.content, f.mime) ? 'Saved ✓' : 'Save failed');
+  var name = safeName(e.name) + '-' + timeStamp(true) + '.csv';
+  flashBtn(btn, downloadFile(name, serialiseTable(exportTableFor(e), ',', true), 'text/csv')
+    ? 'Saved ✓' : 'Save failed');
+}
+
+function saveEnrolments(id, btn) {
+  var e = exportEntry(id, btn);
+  if (!e) return;
+  var en = toEnrolments(e.source);
+  if (!en) { flashBtn(btn, 'No courses'); return; }
+  var name = safeName(e.name) + '-enrolments-' + timeStamp(true) + '.csv';
+  flashBtn(btn, downloadFile(name, serialiseTable(en, ',', true), 'text/csv')
+    ? 'Saved ✓' : 'Save failed');
 }
 
 function showError(msg) {
   exportData = {};
   resultsFresh = false;
-  setOutput('<div class="error-box">'+msg+'</div>');
+  setOutput('<div class="error-box">' + esc(msg) + '</div>');
 }
 function setOutput(html) {
   var pb = document.getElementById('panelBody');
@@ -1508,40 +2036,207 @@ function setOutput(html) {
   pb.innerHTML = html;
 }
 
+/* ============================================================================
+   SAVE / LOAD
+   ============================================================================
+   A query is an artefact you keep and re-run against next year's data, not
+   something you rebuild each session. That is why this matters: the saved file
+   describes the query, never the results, so loading it and pressing Run
+   re-evaluates against whatever the dataset now contains.
+
+   This was impossible before the config moved into the model. Scraping values
+   out of the DOM meant an unrendered panel was indistinguishable from an unset
+   one, so there was no complete picture of the graph to write down.           */
+
+var FILE_VERSION = 1;
+var FILE_KIND = 'student-data-analyser-query';
+
+function serialiseGraph() {
+  return {
+    kind: FILE_KIND,
+    version: FILE_VERSION,
+    savedAt: new Date().toISOString(),
+    // Positions are part of the query: a saved graph should open looking like
+    // the one that was saved, not re-scattered at random.
+    nodes: nodes.map(function(n) {
+      return { id:n.id, type:n.type, x:n.x, y:n.y, color:n.color, cfg:n.cfg };
+    }),
+    connections: connections.map(function(c) {
+      return { from:c.from, to:c.to, color:c.color };
+    })
+  };
+}
+
+function saveGraph(btn) {
+  if (nodes.length === 0) { flashBtn(btn, 'Nothing to save'); return; }
+  var json = JSON.stringify(serialiseGraph(), null, 2);
+  var name = 'query-' + timeStamp(true) + '.json';
+  flashBtn(btn, downloadFile(name, json, 'application/json') ? 'Saved ✓' : 'Save failed');
+}
+
+/* Validation is deliberately forgiving about detail and strict about structure.
+   A file with an unknown node type or an edge to a node that no longer exists
+   is repaired by dropping the offending part, because a query that loads with
+   three of its four nodes is more useful than a refusal. A file that is not a
+   query at all is rejected outright. */
+function deserialiseGraph(raw) {
+  var d;
+  try { d = JSON.parse(raw); }
+  catch (err) { return { error: 'That file isn\'t valid JSON.' }; }
+
+  if (!d || d.kind !== FILE_KIND) {
+    return { error: 'That doesn\'t look like a saved query from this tool.' };
+  }
+  if (typeof d.version !== 'number' || d.version > FILE_VERSION) {
+    return { error: 'That query was saved by a newer version of this tool.' };
+  }
+  if (!Array.isArray(d.nodes) || !Array.isArray(d.connections)) {
+    return { error: 'That query file is missing its nodes or connections.' };
+  }
+
+  var warnings = [];
+  var seen = {};
+  var loadedNodes = [];
+
+  d.nodes.forEach(function(n) {
+    if (!n || !CONNECT_RULES[n.type]) { warnings.push('unknown node type'); return; }
+    var id = parseInt(n.id, 10);
+    if (isNaN(id) || seen[id]) { warnings.push('duplicate node id'); return; }
+    seen[id] = true;
+    loadedNodes.push({
+      id: id,
+      type: n.type,
+      x: Number(n.x) || 0,
+      y: Number(n.y) || 0,
+      color: n.color || EDGE_PALETTE[0],
+      // Merge over the defaults so a file written before a config key existed
+      // still loads, with the new key at its default rather than undefined.
+      cfg: mergeCfg(defaultCfg(n.type), n.cfg)
+    });
+  });
+
+  var loadedConns = [];
+  d.connections.forEach(function(c) {
+    if (!c) return;
+    var from = parseInt(c.from, 10), to = parseInt(c.to, 10);
+    var a = loadedNodes.filter(function(n){ return n.id === from; })[0];
+    var b = loadedNodes.filter(function(n){ return n.id === to; })[0];
+    if (!a || !b) { warnings.push('connection to a missing node'); return; }
+    if (!canConnect(a.type, b.type)) { warnings.push('connection breaking the wiring rules'); return; }
+    if (loadedConns.some(function(x){ return x.from === from && x.to === to; })) return;
+    loadedConns.push({ from:from, to:to, color: c.color || EDGE_PALETTE[0] });
+  });
+
+  return { nodes: loadedNodes, connections: loadedConns, warnings: warnings };
+}
+
+// Shallow merge is enough: cfg is one level deep apart from criteria and labels,
+// and both of those are replaced wholesale when present.
+function mergeCfg(base, saved) {
+  if (!saved || typeof saved !== 'object') return base;
+  Object.keys(saved).forEach(function(k) { base[k] = saved[k]; });
+  if (base.criteria) {
+    base.criteria = (Array.isArray(base.criteria) ? base.criteria : []).map(function(c) {
+      var n = newCriterion();
+      if (c && typeof c === 'object') {
+        if (c.field) n.field = c.field;
+        if (c.course) n.course = c.course;
+        if (c.values && typeof c.values === 'object') n.values = c.values;
+        if (c.ops && typeof c.ops === 'object') n.ops = c.ops;
+      }
+      return n;
+    });
+    if (!base.criteria.length) base.criteria = [newCriterion()];
+  }
+  return base;
+}
+
+function applyGraph(g) {
+  nodes = g.nodes;
+  connections = g.connections;
+  // Keep the counter clear of every id in the file, so a node added after a
+  // load cannot collide with one that came from it.
+  idCtr = nodes.reduce(function(m, n){ return Math.max(m, n.id); }, 0);
+  edgeColorIndex = nodes.length;
+  exportData = {};
+  resultsFresh = false;
+  cancelPreviewTimer();
+  hidePreview();
+  render();
+}
+
+function loadGraphFromText(raw, btn) {
+  var g = deserialiseGraph(raw);
+  if (g.error) { showError(g.error); flashBtn(btn, 'Load failed'); return; }
+  applyGraph(g);
+
+  var msg = 'Loaded ' + g.nodes.length + ' node' + (g.nodes.length === 1 ? '' : 's') +
+    ' and ' + g.connections.length + ' connection' + (g.connections.length === 1 ? '' : 's') + '.';
+  if (g.warnings.length) {
+    msg += ' Skipped ' + g.warnings.length + ' item' + (g.warnings.length === 1 ? '' : 's') +
+      ' that no longer fit the graph: ' + g.warnings.filter(function(w, i, a){ return a.indexOf(w) === i; }).join(', ') + '.';
+  }
+  setOutput('<div class="placeholder">' + esc(msg) + ' Press Run Query to evaluate it.</div>');
+  flashBtn(btn, 'Loaded ✓');
+}
+
+function openGraphFile(btn) {
+  var input = document.getElementById('loadFile');
+  if (!input) return;
+  // Reset first, or choosing the same file twice in a row fires no change event
+  input.value = '';
+  input._btn = btn;
+  input.click();
+}
+
+function onGraphFileChosen(e) {
+  var input = e.target;
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var btn = input._btn;
+  var reader = new FileReader();
+  reader.onload = function(){ loadGraphFromText(String(reader.result), btn); };
+  reader.onerror = function(){ showError('Could not read that file.'); flashBtn(btn, 'Load failed'); };
+  reader.readAsText(file);
+}
+
 /* PROCESSING MENU
-   The toolbar holds one button per pipeline stage. Processing nodes are a
-   growing family, so they live behind a single dropdown rather than adding a
-   button each — the toolbar stays readable as more are added. */
-
+   One toolbar button per pipeline stage. Processing nodes are a growing family,
+   so they live behind a single dropdown rather than adding a button each. */
 function procMenuEl() { return document.getElementById('procMenu'); }
-
 function closeProcMenu() {
   var m = procMenuEl();
   if (m) m.classList.remove('open');
 }
-
 function toggleProcMenu(e) {
-  // Without this the document listener below sees the same click and closes
-  // the menu in the same tick it was opened.
+  // Without this the document listener below sees the same click and closes the
+  // menu in the tick it was opened.
   if (e) e.stopPropagation();
   var m = procMenuEl();
   if (m) m.classList.toggle('open');
 }
-
 function addProcNode(type) {
   closeProcMenu();
   addNode(type);
 }
+
+/* WIRING */
+var canvasEl = document.getElementById('canvas');
+canvasEl.addEventListener('change', onConfigInput);
+canvasEl.addEventListener('input', onConfigInput);
+
+var loadInput = document.getElementById('loadFile');
+if (loadInput) loadInput.addEventListener('change', onGraphFileChosen);
 
 document.addEventListener('click', closeProcMenu);
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') closeProcMenu();
 });
 
-/* GLOBALS */
+/* GLOBALS — referenced by inline onclick handlers in the toolbar and panels */
 window.addNode = addNode;
-window.toggleProcMenu = toggleProcMenu;
 window.addProcNode = addProcNode;
+window.toggleProcMenu = toggleProcMenu;
 window.removeNode = removeNode;
 window.addCriterion = addCriterion;
 window.removeCriterion = removeCriterion;
@@ -1549,6 +2244,9 @@ window.clearAll = clearAll;
 window.runQuery = runQuery;
 window.copyOutput = copyOutput;
 window.saveOutput = saveOutput;
+window.saveEnrolments = saveEnrolments;
+window.saveGraph = saveGraph;
+window.openGraphFile = openGraphFile;
 
 render();
 })();
