@@ -232,9 +232,35 @@ select:focus, input:focus { outline: none; border-color: #2a5aaa; }
   grid-template-columns: 80px 38px 1fr;
   align-items: center;
 }
-/* two-col variant: field | value (year, gender) */
+/* two-col variant: field | value (year, gender, subject) */
 .criterion-controls.two-col {
   grid-template-columns: 80px 1fr;
+}
+/* stacked variant: course pickers carry a code and a full title, which will not
+   survive an 80px column — each control gets the panel's whole width instead. */
+.criterion-controls.stack {
+  grid-template-columns: 1fr;
+}
+.criterion-controls.stack .cc-pair {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  gap: 4px;
+  align-items: center;
+}
+.course-sel {
+  font-variant-numeric: tabular-nums;
+}
+/* optgroup headers inherit the page background otherwise, which renders them
+   as unreadable dark-on-dark in most engines */
+select optgroup {
+  background: #141414;
+  color: #6a6a6a;
+  font-style: normal;
+  font-size: 10px;
+}
+select option {
+  background: #141414;
+  color: #c8c8c8;
 }
 .criterion-value-sel { /* full-width, sits in its grid cell */ }
 .add-criterion-btn {
@@ -456,4 +482,254 @@ select:focus, input:focus { outline: none; border-color: #2a5aaa; }
 .ghost-arrow {
   fill: #555;
   opacity: 0.7;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   PROCESSING FAMILY — toolbar dropdown + Compare node
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── PROCESSING DROPDOWN ─────────────────────────────────── */
+.proc-wrap { position: relative; display: inline-flex; }
+.add-btn.processing {
+  border-color: #5a3a7a;
+  color: #b48ce0;
+  /* inline-flex so the caret centres on the label's optical midline rather
+     than sitting on the text baseline */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.add-btn.processing:hover { background: #180e22; }
+.caret {
+  font-size: 13px;
+  line-height: 1;
+  opacity: 0.85;
+  display: block;
+  transform: translateY(0.5px);
+}
+
+.proc-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 0;
+  min-width: 208px;
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 4px;
+  display: none;
+  z-index: 200;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.7);
+}
+.proc-menu.open { display: block; }
+
+.proc-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 7px 9px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.proc-item:hover { background: #1c1226; }
+.proc-name { font-size: 11px; color: #b48ce0; }
+.proc-desc { font-size: 10px; color: #4e4e4e; }
+
+/* ── COMPARE SHAPE ───────────────────────────────────────── */
+.shape-compare {
+  width: 112px; height: 78px;
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 6px;
+}
+.shape-compare:active { cursor: grabbing; }
+
+/* Three unequal bars — reads as "several series" next to the Filter rectangle */
+.cmp-glyph { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.cmp-glyph i { display: block; height: 3px; border-radius: 1px; background: #b48ce0; opacity: 0.7; }
+
+/* ── COMPARE CONFIG PANEL ────────────────────────────────── */
+.cmp-hint {
+  font-size: 10px;
+  color: #5a5a5a;
+  line-height: 1.5;
+  padding: 2px 0 1px;
+}
+.cmp-branches { display: flex; flex-direction: column; gap: 4px; }
+.cmp-branch { display: flex; align-items: center; gap: 6px; }
+.cmp-swatch {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.cmp-label-input {
+  background: #141414;
+  border: 1px solid #282828;
+  border-radius: 4px;
+  color: #c8c8c8;
+  padding: 4px 6px;
+  font-size: 11px;
+  font-family: inherit;
+  width: 100%;
+  min-width: 0;
+}
+.cmp-label-input::placeholder { color: #3e3e3e; }
+.cmp-label-input:focus { outline: none; border-color: #5a3a7a; }
+
+/* ── COMPARE RESULT TABLE ────────────────────────────────── */
+.cmp-table { table-layout: fixed; }
+.cmp-table th { background: #060606; }
+
+.cmp-cell-label {
+  color: #8a8a8a !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmp-num {
+  text-align: right;
+  color: #b48ce0 !important;
+  white-space: nowrap;
+  width: 58px;
+}
+th.cmp-num { color: #383838 !important; }
+.cmp-empty {
+  padding: 8px 11px;
+  font-size: 10px;
+  color: #4a4a4a;
+  border-top: 1px solid #141414;
+}
+
+/* Per-branch student lists, shown under the summary when Output type = List */
+.cmp-branch-card { margin-top: 8px; }
+.cmp-branch-card .result-head {
+  color: #8a7ab0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 11px;
+}
+.cmp-more {
+  color: #333333 !important;
+  padding: 5px 9px !important;
+  font-size: 10px;
+}
+
+/* Measure column checkboxes on the Compare panel */
+.cmp-measures {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 1px 0 2px;
+}
+.cmp-measure {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: #a8a8a8;
+  cursor: pointer;
+  user-select: none;
+}
+.cmp-measure input[type=checkbox] {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: #5a3a7a;
+  cursor: pointer;
+}
+.cmp-measure:hover { color: #d0d0d0; }
+
+/* COURSE CELLS
+   The enrolment count sits in the student table with the full transcript in a
+   tooltip; the dotted underline is the only affordance saying so. */
+.crs-cell {
+  cursor: help;
+  border-bottom: 1px dotted #333 !important;
+}
+.crs-cell:hover { color: #7ab3ff; }
+
+/* Course breakdown tables reuse .rtable/.cmp-table. The code column is fixed so
+   the two numeric columns keep a stable position down the list. */
+.crs-table th:first-child { width: 44%; }
+.result-card .cmp-table td.cmp-cell-label {
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+}
+
+/* SAVE / LOAD
+   Query-file actions are neither destructive like Clear nor primary like Run,
+   so they sit between the two in weight. */
+.file-btn {
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  color: #9a9a9a;
+  font-size: 11px;
+  padding: 5px 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color .12s, color .12s;
+}
+.file-btn:hover { border-color: #3d3d3d; color: #d0d0d0; }
+.file-btn:active { background: #1a1a1a; }
+
+/* EXPORT FILE NAME
+   Lives in the results panel beside Copy and Save, because it names the file
+   those buttons produce. Styled as a quiet inline field rather than a form
+   control: it is optional, and a heavier treatment would imply it needs filling
+   in before exporting. */
+.export-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 6px;
+  padding: 3px 6px;
+  background: #121212;
+  border: 1px solid #262626;
+  border-radius: 4px;
+  transition: border-color .12s;
+}
+.export-name:focus-within { border-color: #3d3d3d; }
+
+.export-name input {
+  width: 108px;
+  background: transparent;
+  border: none;
+  color: #c8c8c8;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 0;
+}
+.export-name input:focus { outline: none; }
+.export-name input::placeholder { color: #4a4a4a; }
+
+/* The extension is shown but not editable — it follows the format, not the
+   user's choice, and letting it be typed would invite ".csv.csv". */
+.export-ext {
+  color: #4a4a4a;
+  font-size: 11px;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* The actions row now holds a field as well as buttons, so it needs to wrap
+   rather than push the buttons off a narrow panel. */
+.result-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
 }

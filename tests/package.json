@@ -1,0 +1,13 @@
+{
+  "name": "student-data-analyser-tests",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Test suite for the node-based student data analyser",
+  "scripts": {
+    "test": "node run.js",
+    "test:verbose": "node run.js --verbose"
+  },
+  "devDependencies": {
+    "jsdom": "^24.0.0"
+  }
+}
