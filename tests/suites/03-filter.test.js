@@ -96,13 +96,29 @@ module.exports = ({ describe, test }) => {
       assert.equal(r.count(), S.filter(x => x.gender === 'F').length);
     });
 
-    test('year compares a string control against numeric data', () => {
+    test('year is not offered as a filter — the Source scopes it', () => {
+      /* Deliberate: the Source already restricts the population by year, and
+         offering it in both places allowed a graph that said 2022 upstream and
+         2023 downstream. The column still exists and is displayed, exported and
+         grouped on — it just cannot be filtered here. */
       const r = rig();
-      const y = r.app.YEARS[0];
-      r.set(r.f.id, 'crit.0.field', 'year');
-      r.set(r.f.id, 'crit.0.value:year', String(y));
-      assert.equal(r.count(), S.filter(x => x.year === y).length,
-        'a strict === between "2022" and 2022 would return zero here');
+      assert.excludes(r.qa('.ft-sel option').map(o => o.value), 'year');
+      const enrol = rig('enrolments');
+      assert.excludes(enrol.qa('.ft-sel option').map(o => o.value), 'year',
+        'the exclusion should hold at both granularities');
+    });
+
+    test('a filterable enum compares by string, so "2022" would match 2022', () => {
+      /* The coercion this protects used to be exercised through the year field.
+         Tested directly now that year is excluded, because the comparison rule
+         still applies to any enum whose values are numeric. */
+      const { app } = boot();
+      const col = { key: 'code', label: 'Code', type: app.COLTYPE.ENUM, values: [2022, 2023] };
+      const t = app.makeTable([col], [[2022], [2023], [2022]]);
+      const crit = { field: 'code', values: { code: '2022' }, ops: { code: 'eq' } };
+      const out = app.applyFilter({ cfg: { criteria: [crit] } }, t, []);
+      assert.equal(out.table.rows.length, 2,
+        'a strict === between the control string and the numeric cell returns zero');
     });
 
     test('every offered enum option is selectable and yields a sane count', () => {

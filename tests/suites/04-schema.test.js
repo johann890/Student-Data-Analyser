@@ -63,9 +63,10 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, f] = h.build('source', 'filter');
       const opts = h.qa('.ft-sel option').map(o => o.value);
-      ['gradeAvg', 'specialisation', 'gender', 'year',
+      ['gradeAvg', 'specialisation', 'gender',
        'courses.subject', 'courses.code', 'courses.mark'].forEach(k => assert.includes(opts, k));
       assert.excludes(opts, 'mark');
+      assert.excludes(opts, 'year', 'year is scoped at the Source, not filtered here');
     });
 
     test('enrolment rows offer course fields and drop the nested predicates', () => {
@@ -76,6 +77,23 @@ module.exports = ({ describe, test }) => {
       ['mark', 'code', 'subject', 'points'].forEach(k => assert.includes(opts, k));
       assert.excludes(opts, 'courses.subject', 'nested predicates make no sense once unfolded');
       assert.excludes(opts, 'gradeAvg');
+    });
+
+    test('a column marked filter:false is displayed but not filterable', () => {
+      const { app } = boot();
+      const t = app.studentsTable(app.STUDENTS.slice(0, 2));
+      assert.ok(app.hasCol(t, 'year'), 'the column must still exist');
+      assert.excludes(app.filterFields(t).map(f => f.key), 'year');
+      // and it still carries data, so Output and export are unaffected
+      assert.equal(app.cellAt(t, t.rows[0], 'year'), app.STUDENTS[0].year);
+    });
+
+    test('the flag survives the unfold to enrolments', () => {
+      const { app } = boot();
+      const en = app.toEnrolments(app.studentsTable(app.STUDENTS.slice(0, 2)));
+      assert.ok(app.hasCol(en, 'year'));
+      assert.excludes(app.filterFields(en).map(f => f.key), 'year',
+        'rebuilding the column descriptors must not drop filter:false');
     });
 
     test('filterFields turns a nested column into three predicates', () => {

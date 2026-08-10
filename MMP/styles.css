@@ -1,5 +1,9 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Without this, macOS draws form controls, scrollbars and focus rings in light
+   mode regardless of the colours set below. */
+:root { color-scheme: dark; }
+
 body {
   font-family: system-ui, sans-serif;
   background: #111;
@@ -198,7 +202,14 @@ body {
   margin-bottom: 1px;
 }
 
-select, input[type=number] {
+/* Every control in a node panel, not just selects and number boxes. A text
+   input was previously unstyled: it rendered at the browser's default width
+   with a light background, and — because a grid item defaults to min-width:auto
+   — refused to shrink into its column, so it spilled past the panel edge.
+   Filtering by Grade (a text column) hit exactly that. */
+select,
+input[type=number],
+input[type=text] {
   background: #141414;
   border: 1px solid #282828;
   border-radius: 4px;
@@ -208,9 +219,19 @@ select, input[type=number] {
   font-family: inherit;
   width: 100%;
   appearance: none;
-  min-width: 0;
+  min-width: 0;   /* lets a grid or flex item shrink below its intrinsic width */
 }
 select:focus, input:focus { outline: none; border-color: #2a5aaa; }
+
+/* Number spinners are drawn by the browser, not by this stylesheet, so they
+   ignore the colours above and render light on a dark panel. They also eat
+   horizontal space the value needs. */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] { -moz-appearance: textfield; }
 
 /* FILTER CRITERIA ROWS */
 .criteria-list {
@@ -451,7 +472,11 @@ select option {
   position: absolute;
   z-index: 50;
   pointer-events: none; /* never steals hover from the line beneath it */
-  width: 210px;
+  width: 230px;
+  max-width: 230px;
+  /* The table inside sizes to its content by default, so a wide row pushed
+     straight through this border instead of being clipped by it. */
+  overflow: hidden;
   background: #0b0b0c;
   border: 1px solid #2a2a2e;
   border-radius: 6px;
@@ -462,7 +487,25 @@ select option {
 }
 .ep-count { font-size: 10px; color: #6a6a6a; margin-bottom: 6px; letter-spacing: 0.03em; }
 .ep-num { color: #3db8ff; font-size: 14px; font-weight: 600; }
-.ep-table { width: 100%; border-collapse: collapse; }
+/* Fixed layout divides the available width evenly instead of letting the
+   longest value dictate the column, which is what let the table outgrow the
+   panel. Cells then need explicit truncation, since fixed layout clips rather
+   than wraps. */
+.ep-table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.ep-table th,
+.ep-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The trailing "more columns" marker only needs room for an ellipsis. */
+.ep-table th.ep-more-col,
+.ep-table td.ep-more-col { width: 18px; text-align: center; color: #3a3a3a; }
 .ep-table th {
   text-align: left; font-weight: 500; color: #4a4a4a;
   border-bottom: 1px solid #1e1e1e; padding: 2px 5px; font-size: 9px;

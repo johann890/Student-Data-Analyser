@@ -275,7 +275,7 @@ var YEARS = STUDENTS.map(function(s){ return s.year; })
 var STUDENT_COLUMNS = [
   { key:'id',             label:'ID',             type:COLTYPE.NUMBER, def:'1001' },
   { key:'gender',         label:'Gender',         type:COLTYPE.ENUM,   values:['M','F'] },
-  { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS },
+  { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS, filter:false },
   { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
   { key:'gradeAvg',       label:'Avg',            type:COLTYPE.NUMBER, def:'70' },
   { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT },
@@ -285,7 +285,7 @@ var STUDENT_COLUMNS = [
 var ENROLMENT_COLUMNS = [
   { key:'studentId',      label:'Student',        type:COLTYPE.NUMBER, def:'1001' },
   { key:'gender',         label:'Gender',         type:COLTYPE.ENUM,   values:['M','F'] },
-  { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS },
+  { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS, filter:false },
   { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
   { key:'code',           label:'Course',         type:COLTYPE.ENUM,   values:COURSES.map(function(c){ return c.code; }) },
   { key:'name',           label:'Course name',    type:COLTYPE.TEXT },
@@ -338,7 +338,8 @@ function toEnrolments(t) {
     .filter(function(k){ return hasCol(t, k) && colByKey(t, k).type !== COLTYPE.COURSES; });
   var cols = carry.map(function(k) {
     var c = colByKey(t, k);
-    return { key: k === 'id' ? 'studentId' : k, label: c.label, type: c.type, values: c.values };
+    return { key: k === 'id' ? 'studentId' : k, label: c.label, type: c.type,
+             values: c.values, filter: c.filter };
   }).concat([
     { key:'code',        label:'Course',      type:COLTYPE.ENUM, values:COURSES.map(function(c){ return c.code; }) },
     { key:'name',        label:'Course name', type:COLTYPE.TEXT },
@@ -741,9 +742,16 @@ function courseFields() {
   ];
 }
 
+/* A column can opt out of being filterable with `filter: false`. Year does:
+   the Source already scopes the population by year, and offering it twice
+   invited a graph that says 2022 in one place and 2023 in another. The column
+   still exists — it is displayed, exported and grouped on like any other. */
 function filterFields(schema) {
   var out = [];
   schema.columns.forEach(function(c) {
+    if (c.filter === false) {
+      return;
+    }
     if (c.type === COLTYPE.COURSES) {
       out.push.apply(out, courseFields());
     } else {
@@ -1630,19 +1638,44 @@ function edgeData(conn) {
 
 // Preview columns are capped, not chosen: an enrolment table is ten columns
 // wide and would overflow the floating panel.
-var PREVIEW_COLS = 5;
+var PREVIEW_COLS = 4;
 var PREVIEW_ROWS = 5;
 
+/* Which columns to show is a choice, not just a slice. Long free-text columns —
+   a course title, a specialisation — consume the whole panel and tell you least
+   about whether the right rows are flowing, so they yield to shorter ones. The
+   count above the table is the real signal; these rows are texture. */
+function previewColumns(t) {
+  var wide = [], narrow = [];
+  t.columns.forEach(function(c) {
+    (c.type === COLTYPE.TEXT || c.key === 'specialisation' ? wide : narrow).push(c);
+  });
+  var picked = narrow.slice(0, PREVIEW_COLS);
+  for (var i = 0; picked.length < PREVIEW_COLS && i < wide.length; i++) picked.push(wide[i]);
+  // Keep the table's own left-to-right order rather than the order picked in
+  return t.columns.filter(function(c){ return picked.indexOf(c) !== -1; });
+}
+
 function previewTableHTML(t) {
-  var cols = t.columns.slice(0, PREVIEW_COLS);
-  var head = cols.map(function(c){ return '<th>' + esc(c.label) + '</th>'; }).join('') +
-    (t.columns.length > cols.length ? '<th>…</th>' : '');
+  var cols = previewColumns(t);
+  var hidden = t.columns.length - cols.length;
+  var moreHead = hidden > 0 ? '<th class="ep-more-col" title="' + hidden + ' more columns">…</th>' : '';
+  var moreCell = hidden > 0 ? '<td class="ep-more-col">…</td>' : '';
+
+  var head = cols.map(function(c) {
+    return '<th title="' + esc(c.label) + '">' + esc(c.label) + '</th>';
+  }).join('') + moreHead;
+
   var body = t.rows.slice(0, PREVIEW_ROWS).map(function(r) {
-    return '<tr>' + cols.map(function(c, i) {
-      var ttl = cellTitle(c, r[i]);
-      return '<td' + (ttl ? ' title="' + esc(ttl) + '"' : '') + '>' + esc(fmtCell(c, r[i])) + '</td>';
-    }).join('') + (t.columns.length > cols.length ? '<td>…</td>' : '') + '</tr>';
+    return '<tr>' + cols.map(function(c) {
+      var v = r[colIndex(t, c.key)];
+      var shown = fmtCell(c, v);
+      // Truncation is visual only, so the full value goes in the tooltip
+      var ttl = cellTitle(c, v) || shown;
+      return '<td title="' + esc(ttl) + '">' + esc(shown) + '</td>';
+    }).join('') + moreCell + '</tr>';
   }).join('');
+
   return '<table class="ep-table"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>';
 }
 
