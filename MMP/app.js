@@ -25,13 +25,6 @@ function letterGrade(g) {
    requires no other change: the filter dropdowns, the subject criterion and
    the breakdown tables all read from it. */
 var COURSES = [
-  { code:'COMP409', name:'Advanced Concurrency and Parallelism' },
-  { code:'COMP421', name:'Machine Learning' },
-  { code:'COMP422', name:'Data Mining and Knowledge Engineering' },
-  { code:'COMP423', name:'Advanced Computer Graphics' },
-  { code:'COMP424', name:'Advanced Algorithms' },
-  { code:'COMP440', name:'Artificial Intelligence Research' },
-
   { code:'SWEN421', name:'Formal Foundations of Software Engineering' },
   { code:'SWEN422', name:'Human Computer Interaction' },
   { code:'SWEN423', name:'Software Design and Architecture' },
@@ -52,16 +45,9 @@ var COURSES = [
   { code:'AIML427', name:'Big Data' },
   { code:'AIML428', name:'Text Mining' },
 
-  { code:'NWEN406', name:'Advanced Network Applications' },
-  { code:'NWEN438', name:'Distributed Systems' },
-  { code:'NWEN439', name:'Special Topic: Network Engineering' },
-
   { code:'CYBR471', name:'Cybersecurity Risk Management' },
   { code:'CYBR472', name:'Applied Cryptography' },
-  { code:'CYBR473', name:'Malware and Reverse Engineering' },
-
-  { code:'DATA471', name:'Data Science in Practice' },
-  { code:'DATA472', name:'Data Engineering' }
+  { code:'CYBR473', name:'Malware and Reverse Engineering' }
 ];
 
 var COURSE_POINTS = 15;   // every 400-level course in the catalogue
@@ -85,12 +71,12 @@ var CORE_COURSES = ['ENGR489', 'ENGR401'];
 // listed still has a small chance of being picked, so cohorts overlap rather
 // than splitting into six disjoint groups.
 var SPEC_SUBJECTS = {
-  'Software Engineering':    ['SWEN', 'COMP', 'ENGR'],
-  'Computer Science':        ['COMP', 'SWEN', 'AIML'],
-  'Information Technology':  ['NWEN', 'SWEN', 'COMP'],
-  'Data Science':            ['DATA', 'AIML', 'COMP'],
-  'Cybersecurity':           ['CYBR', 'NWEN', 'COMP'],
-  'Artificial Intelligence': ['AIML', 'COMP', 'DATA']
+  'Software Engineering':    ['SWEN', 'ENGR', 'AIML'],
+  'Computer Science':        ['SWEN', 'AIML', 'ENGR'],
+  'Information Technology':  ['SWEN', 'CYBR', 'ENGR'],
+  'Data Science':            ['AIML', 'SWEN', 'ENGR'],
+  'Cybersecurity':           ['CYBR', 'SWEN', 'ENGR'],
+  'Artificial Intelligence': ['AIML', 'SWEN', 'CYBR']
 };
 var SUBJECT_WEIGHTS = [7, 3, 2]; // by rank in the list above; 1 for everything else
 
@@ -329,6 +315,19 @@ function enrolmentsTable(list) {
 /* Unfold a student table into one row per student-course pair. Returns null if
    the table has no course information at all, so callers can degrade rather
    than guess. Already-enrolment tables pass straight through. */
+// Can this table be unfolded at all? Checked before building anything, since
+// runQuery only needs the answer to decide whether to offer the export button.
+// True when a breakdown would have to unfold nested enrolments — i.e. the rows
+// arriving are students, not enrolments. False when the table is already at
+// enrolment granularity and grouping changes nothing about row identity.
+function explodesHere(t) {
+  return coursesColIndex(t) !== -1 && !(hasCol(t, 'code') && hasCol(t, 'mark'));
+}
+
+function canExplode(t) {
+  return (hasCol(t, 'code') && hasCol(t, 'mark')) || coursesColIndex(t) !== -1;
+}
+
 function toEnrolments(t) {
   if (hasCol(t, 'code') && hasCol(t, 'mark')) return t;
   var ci = coursesColIndex(t);
@@ -707,7 +706,11 @@ function unionTables(tables) {
   var first = schemaKey(tables[0]);
   for (var i = 1; i < tables.length; i++) {
     if (schemaKey(tables[i]) !== first) {
-      return { error: 'Merged inputs have different columns — a Source set to Students and one set to Enrolments cannot feed the same node.' };
+      // Quote the option labels verbatim, so the message points at the control
+      // to change rather than at an abstraction the user has to translate.
+      return { error: 'Merged inputs have different columns. A Source set to ' +
+        '"One per student" and one set to "One per enrolment" cannot feed the same node — ' +
+        'set both to the same Rows option, or give them separate Outputs.' };
     }
   }
   var seen = {}, rows = [];
@@ -727,9 +730,14 @@ function unionTables(tables) {
    records is hardcoded here. */
 function courseFields() {
   return [
-    { key:'courses.subject', label:'Course subject', kind:'courseSubject' },
+    // Named for what they do to a ROW, not for the field they inspect. On a
+    // student table these keep whole students — a student who took one SWEN
+    // course is kept with all eight of their enrolments intact. Calling this
+    // "Course subject" invited it to be read as "keep only SWEN enrolments",
+    // which is what the same filter does at enrolment granularity.
+    { key:'courses.subject', label:'Took subject',   kind:'courseSubject' },
     { key:'courses.code',    label:'Took course',    kind:'courseCode' },
-    { key:'courses.mark',    label:'Course mark',    kind:'courseMark' }
+    { key:'courses.mark',    label:'Mark in course', kind:'courseMark' }
   ];
 }
 
@@ -797,7 +805,8 @@ function applyCriterion(t, c, f, log) {
       return list.some(function(e){ return e[prop] === want; });
     });
     log.push(logEntry('FILTER', [
-      {s: prop === 'subject' ? 'subject' : 'course'}, {c:'op', s:'has'}, {c:'val', s:'"'+want+'"'}
+      {s:'student'}, {c:'op', s:'took'},
+      {s: prop === 'subject' ? 'subject' : 'course'}, {c:'val', s:'"'+want+'"'}
     ]));
     return { table: makeTable(t.columns, rows) };
   }
@@ -820,7 +829,8 @@ function applyCriterion(t, c, f, log) {
       return false;
     });
     log.push(logEntry('FILTER', [
-      {s: code + '.mark'}, {c:'op', s:(OP_SYM[op] || '>=')}, {c:'val', s:num}
+      {s:'student'}, {c:'op', s:'took'}, {s: code + '.mark'},
+      {c:'op', s:(OP_SYM[op] || '>=')}, {c:'val', s:num}
     ]));
     return { table: makeTable(t.columns, mrows) };
   }
@@ -867,7 +877,9 @@ var DEFAULT_MEASURES = ['count', 'average'];
 
 function measuresOf(node) {
   var m = node.cfg && node.cfg.measures;
-  return m && m.length !== undefined ? m : DEFAULT_MEASURES;
+  // Array.isArray, not a truthy length check: a string has .length, and a
+  // loaded file with measures:"count" would silently yield zero columns.
+  return Array.isArray(m) ? m : DEFAULT_MEASURES;
 }
 
 /* Which column "average" refers to, chosen from the table rather than assumed.
@@ -1011,10 +1023,13 @@ function outputTable(node, t) {
                      [[t.rows.length]]);
   }
   if (show === 'average') {
-    var key = (node.cfg && node.cfg.avgCol) || defaultAvgCol(t);
+    // A saved avgCol can outlive its column — rewiring from a student Source to
+    // an enrolment one is enough. Fall back rather than averaging nothing.
+    var key = (node.cfg && node.cfg.avgCol) || '';
+    if (!key || !hasCol(t, key)) key = defaultAvgCol(t);
     var col = colByKey(t, key);
     return makeTable(
-      [{ key:'average', label:'Average ' + (col ? col.label : ''), type:COLTYPE.NUMBER },
+      [{ key:'average', label: col ? ('Average ' + col.label) : 'Average', type:COLTYPE.NUMBER },
        { key:'n',       label:'Rows',                              type:COLTYPE.NUMBER }],
       [[meanOf(t, key), t.rows.length]]
     );
@@ -1198,17 +1213,23 @@ function criterionHTML(node, ci, c, schema) {
 
   } else if (cur.kind === COLTYPE.ENUM) {
     var vals = (cur.column && cur.column.values) || [];
-    // Long option text (specialisations, course names) will not survive the
-    // 80px field column, so those get a row of their own.
-    var wide = vals.some(function(v){ return String(v).length > 8; });
+    // Enum criteria carry an operator too. Without one, "specialisation is NOT
+    // Data Science" is unaskable — the engine has always supported it, but
+    // there was no control to reach it with.
+    var enumOp = opSelect(nid, oKey, ENUM_OPS, critOp(c, cur.key, 'eq'));
     var valSel = '<select' + ctl(nid, vKey) + '>' +
       vals.map(function(v){ return opt(v, critValue(c, cur.key, cur.column)); }).join('') + '</select>';
+    // Long option text (specialisations, course names) will not survive the
+    // 80px field column, so those wrap onto their own row.
+    var wide = vals.some(function(v){ return String(v).length > 8; });
     body = wide
-      ? '<div class="criterion-controls stack">' + fieldSel + valSel + '</div>'
-      : '<div class="criterion-controls two-col">' + fieldSel + valSel + '</div>';
+      ? '<div class="criterion-controls stack">' + fieldSel +
+          '<div class="cc-pair">' + enumOp + valSel + '</div></div>'
+      : '<div class="criterion-controls">' + fieldSel + enumOp + valSel + '</div>';
 
   } else {
-    body = '<div class="criterion-controls two-col">' + fieldSel +
+    body = '<div class="criterion-controls">' + fieldSel +
+      opSelect(nid, oKey, ENUM_OPS, critOp(c, cur.key, 'eq')) +
       '<input type="text" value="' + esc(critValue(c, cur.key, cur.column)) + '"' + ctl(nid, vKey) + '>' +
     '</div>';
   }
@@ -1303,6 +1324,12 @@ function configHTML(node, schemas) {
     }
     html += '</select>';
 
+    if (show === 'courses' && explodesHere(schema)) {
+      html += '<div class="cmp-hint">Counts every enrolment of the students that arrive, ' +
+        'including courses outside a row filter. Set Rows to “One per enrolment” on the ' +
+        'Source to narrow it.</div>';
+    }
+
     // Average is no longer hardwired to gradeAvg — the column list comes from
     // whatever is arriving, so it works on an enrolment stream too.
     if (show === 'average') {
@@ -1317,9 +1344,9 @@ function configHTML(node, schemas) {
           : '<div class="cmp-hint">No numeric column upstream.</div>');
     }
 
-    html += '<div class="cfg-label">File name</div>' +
-      '<input type="text" class="fname-input" placeholder="output' + id + '" ' +
-        'value="' + esc(cfg.filename || '') + '"' + ctl(id, 'filename') + '>';
+    // The file name deliberately lives with the Copy/Save buttons in the results
+    // panel rather than here. It describes the exported file, not the query, and
+    // putting it on the node implied it was part of what gets computed.
   }
 
   return html + '</div>';
@@ -1383,7 +1410,13 @@ function onConfigInput(e) {
   markStale();
 
   var reshapes = el.tagName === 'SELECT' || el.type === 'checkbox';
-  if (reshapes && e.type === 'change') render();
+  if (reshapes && e.type === 'change') {
+    render();
+    // render() replaces the element that was just used, so the control loses
+    // focus mid-interaction. Put it back on its replacement.
+    var again = document.querySelector('[data-node="' + nid + '"][data-key="' + key.replace(/"/g, '\\"') + '"]');
+    if (again && again.focus) again.focus();
+  }
 }
 
 /* ARROWS */
@@ -1763,16 +1796,37 @@ function card(title, body, badge) {
 // only the presentation differs, and the export path never sees this.
 function scalarHTML(t) {
   var c = t.columns[0], r = t.rows[0] || [];
+  // The mean of nothing is undefined, not zero. Printing "0" asserts something
+  // false about the data; an em dash says there was nothing to average.
+  var blank = c.key === 'average' && t.columns.length > 1 && Number(r[1]) === 0;
   var extra = t.columns.length > 1
     ? '<span class="big-sub">' + esc(t.columns[1].label + ': ' + fmtCell(t.columns[1], r[1])) + '</span>'
     : '';
   return '<div class="result-card">' +
     '<div class="result-head">' + esc(c.label) + '</div>' +
-    '<div class="result-big"><span class="big-num">' + esc(fmtCell(c, r[0])) + '</span>' + extra + '</div>' +
+    '<div class="result-big"><span class="big-num">' + (blank ? '&mdash;' : esc(fmtCell(c, r[0]))) + '</span>' + extra + '</div>' +
   '</div>';
 }
 
-function isScalar(t) { return t.rows.length === 1 && t.columns.length <= 2; }
+/* The note under a breakdown states what was aggregated and, when the rows were
+   students, warns that the unfold widens the result past any row-level filter —
+   with the concrete fix rather than just a caution. */
+function breakdownNote(inTable, outTable) {
+  var enrolments = outTable.rows.reduce(function(a, r){ return a + (Number(r[3]) || 0); }, 0);
+  var n = inTable.rows.length;
+
+  if (explodesHere(inTable)) {
+    return '<div class="cmp-empty">' +
+      'Every course taken by these ' + n + ' student' + (n === 1 ? '' : 's') +
+      ' — ' + enrolments + ' enrolments across ' + outTable.rows.length + ' courses. ' +
+      'A student-level filter keeps whole students, so courses outside it still appear here. ' +
+      'To count only certain courses, set the Source to <b>One per enrolment</b> and filter there.' +
+      '</div>';
+  }
+  return '<div class="cmp-empty">' + n + ' enrolment' + (n === 1 ? '' : 's') +
+    ' across ' + outTable.rows.length + ' course' + (outTable.rows.length === 1 ? '' : 's') +
+    '. Ordered by popularity.</div>';
+}
 
 function resultHTML(node, r) {
   var show = normaliseShow(node);
@@ -1795,12 +1849,15 @@ function resultHTML(node, r) {
         html += branches.map(function(b) {
           var bt = breakdownTable(b.table);
           return '<div class="cmp-branch-card">' +
-            tableHTML(bt, b.label, bt.rows.length + ' courses') + '</div>';
+            tableHTML(bt, b.label, bt.rows.length + ' courses') +
+            breakdownNote(b.table, bt) + '</div>';
         }).join('');
       }
+    } else if (show === 'courses') {
+      html = tableHTML(t, 'Course breakdown', t.rows.length + ' courses') +
+             breakdownNote(r.table, t);
     } else {
-      html = tableHTML(t, show === 'courses' ? 'Course breakdown' : 'Rows',
-                       show === 'courses' ? t.rows.length + ' courses' : String(t.rows.length));
+      html = tableHTML(t, 'Rows', String(t.rows.length));
     }
   } else {
     html = tableHTML(t, 'Rows', String(t.rows.length));
@@ -1833,13 +1890,27 @@ function runQuery() {
       body = '<div class="error-box">Not connected to a Source — this Output has no data path.</div>';
     } else {
       var show = normaliseShow(onode);
-      var log = r.log.concat(logEntry('OUTPUT', [{ c:'val', s:show }]));
       var t = outputTable(onode, r.table);
+
+      /* A course breakdown is not one operation. It unfolds each row into its
+         enrolments, groups those by course and counts them — three steps the
+         Output used to perform silently. Logging them is what makes the
+         surprising case legible: filtering "Took subject = SWEN" keeps whole
+         students, so the unfold brings their non-SWEN enrolments along too, and
+         the breakdown lists every course rather than only SWEN ones. The log
+         now shows exactly where that widening happened.
+         (When SelectFor lands these become real nodes and this goes away.) */
+      var log = r.log.slice();
+      if (show === 'courses') {
+        if (explodesHere(r.table)) log.push(logEntry('EXPLODE', [{s:'one row per enrolment'}]));
+        log.push(logEntry('GROUP BY', [{s:'course'}]));
+      }
+      log.push(logEntry('OUTPUT', [{ c:'val', s:show }]));
 
       exportData[onode.id] = {
         index: oi + 1,
         show: show,
-        name: (onode.cfg && onode.cfg.filename && onode.cfg.filename.trim()) || ('output' + onode.id),
+        name: exportNameOf(onode, oi + 1),
         table: t,
         source: r.table,          // pre-Output table, for the enrolments export
         log: log.map(logText)
@@ -1850,8 +1921,9 @@ function runQuery() {
       // Individual course marks survive only in the long enrolment format — a
       // student row carries codes and a breakdown carries averages. Offered
       // only where that raw detail exists to be exported.
-      var canEnrol = !!toEnrolments(r.table);
+      var canEnrol = canExplode(r.table);
       actions = '<div class="result-actions">' +
+        exportNameHTML(onode, oi + 1) +
         '<button class="rbtn" onclick="copyOutput(' + onode.id + ',this)">Copy</button>' +
         '<button class="rbtn" onclick="saveOutput(' + onode.id + ',this)">Save</button>' +
         (canEnrol
@@ -1873,6 +1945,48 @@ function runQuery() {
 
   setOutput(html);
   resultsFresh = true;
+}
+
+/* EXPORT FILE NAME
+   Sits next to Copy and Save because that is where it is used. The value is
+   still stored on the node, so it travels with a saved query — the model owns
+   it, only the control moved.
+
+   Editing it must NOT mark the results stale. The name has no bearing on what
+   was computed, and invalidating the run would leave the user unable to press
+   the very Save button they were naming the file for. */
+function defaultExportName(index) { return 'output' + index; }
+
+function exportNameOf(node, index) {
+  var v = node.cfg && node.cfg.filename;
+  return (v && String(v).trim()) ? String(v).trim() : defaultExportName(index);
+}
+
+function exportNameHTML(node, index) {
+  return '<label class="export-name" ' +
+    'title="File name for Save. Leave blank to use the default.">' +
+    '<input type="text" spellcheck="false" ' +
+      'placeholder="' + esc(defaultExportName(index)) + '" ' +
+      'value="' + esc((node.cfg && node.cfg.filename) || '') + '" ' +
+      'data-export-name="' + node.id + '">' +
+    '<span class="export-ext">.csv</span>' +
+  '</label>';
+}
+
+/* Delegated on the results panel, which is rebuilt on every run — per-element
+   listeners would be re-attached each time and leak. */
+function onExportNameInput(e) {
+  var el = e.target;
+  if (!el || !el.getAttribute) return;
+  var id = el.getAttribute('data-export-name');
+  if (!id) return;
+  var node = findNode(parseInt(id, 10));
+  if (!node) return;
+  node.cfg = node.cfg || defaultCfg(node.type);
+  node.cfg.filename = el.value;
+  var entry = exportData[node.id];
+  if (entry) entry.name = exportNameOf(node, entry.index);
+  // No markStale() here, by design — see the note above.
 }
 
 /* ============================================================================
@@ -1927,6 +2041,13 @@ function exportTableFor(e) {
   }).filter(function(x){ return x.t.columns.length; });
   if (!per.length) return e.table;
 
+  // Branches reach a Compare independently, so two of them can carry different
+  // headers (one student stream, one enrolment stream). Stacking those would
+  // emit rows whose cells do not line up with the header. Only branches
+  // matching the first are included; the summary still counts all of them.
+  var want = schemaKey(per[0].t);
+  per = per.filter(function(x){ return schemaKey(x.t) === want; });
+
   var cols = [{ key:'branch', label:'Branch', type:COLTYPE.TEXT }].concat(per[0].t.columns);
   var rows = [];
   per.forEach(function(x) {
@@ -1935,8 +2056,16 @@ function exportTableFor(e) {
   return makeTable(cols, rows);
 }
 
+/* Strip path separators and characters Windows rejects, collapse whitespace,
+   then trim the separators back off the ends — otherwise a name made entirely
+   of slashes sanitises to a lone "-" rather than falling back. */
 function safeName(s) {
-  return String(s).trim().replace(/[\\/:*?"<>|]+/g, '-').replace(/\s+/g, '-') || 'output';
+  var out = String(s).trim()
+    .replace(/[\\/:*?"<>|]+/g, '-')
+    .replace(/\s+/g, '-')
+    .replace(/-{2,}/g, '-')
+    .replace(/^-+|-+$/g, '');
+  return out || 'output';
 }
 
 function flashBtn(btn, msg) {
@@ -2134,8 +2263,27 @@ function deserialiseGraph(raw) {
 // and both of those are replaced wholesale when present.
 function mergeCfg(base, saved) {
   if (!saved || typeof saved !== 'object') return base;
+  var wantsCriteria = Object.prototype.hasOwnProperty.call(base, 'criteria');
   Object.keys(saved).forEach(function(k) { base[k] = saved[k]; });
-  if (base.criteria) {
+
+  // Scalar settings are read straight into HTML attributes and comparisons, so
+  // a file supplying an object or array where a string belongs is coerced
+  // rather than trusted.
+  ['pop','rows','show','avgCol','filename','sort'].forEach(function(k) {
+    if (base[k] !== undefined && typeof base[k] !== 'string') {
+      base[k] = (base[k] === null || typeof base[k] === 'object') ? '' : String(base[k]);
+    }
+  });
+  if (base.labels === null || typeof base.labels !== 'object' || Array.isArray(base.labels)) {
+    if (Object.prototype.hasOwnProperty.call(base, 'labels')) base.labels = {};
+  }
+  if (Object.prototype.hasOwnProperty.call(base, 'measures') && !Array.isArray(base.measures)) {
+    base.measures = DEFAULT_MEASURES.slice();
+  }
+
+  // Only filter nodes carry criteria — a file that attaches them to an Output
+  // must not have them normalised into existence there.
+  if (wantsCriteria) {
     base.criteria = (Array.isArray(base.criteria) ? base.criteria : []).map(function(c) {
       var n = newCriterion();
       if (c && typeof c === 'object') {
@@ -2225,6 +2373,9 @@ var canvasEl = document.getElementById('canvas');
 canvasEl.addEventListener('change', onConfigInput);
 canvasEl.addEventListener('input', onConfigInput);
 
+var panelEl = document.getElementById('panelBody');
+if (panelEl) panelEl.addEventListener('input', onExportNameInput);
+
 var loadInput = document.getElementById('loadFile');
 if (loadInput) loadInput.addEventListener('change', onGraphFileChosen);
 
@@ -2247,6 +2398,53 @@ window.saveOutput = saveOutput;
 window.saveEnrolments = saveEnrolments;
 window.saveGraph = saveGraph;
 window.openGraphFile = openGraphFile;
+
+/* TEST HOOK
+   Set window.__QB_TEST__ = true *before* loading app.js to expose internals to
+   the test suite. In normal use the flag is undefined and nothing is exported,
+   so this costs one branch at start-up and leaks nothing.
+
+   The alternative — having the tests reach in by rewriting the source text — is
+   silently broken by any edit near the end of this file, and a test suite that
+   fails for reasons unrelated to the code under test is worse than none. */
+if (typeof window !== 'undefined' && window.__QB_TEST__) {
+  window.__qb = {
+    // live state
+    nodes: function(){ return nodes; },
+    connections: function(){ return connections; },
+    exportData: function(){ return exportData; },
+    isFresh: function(){ return resultsFresh; },
+    findNode: findNode,
+    setCfg: setCfg,
+    render: render,
+    // test convenience: wire two nodes without simulating a drag
+    connect: function(a, b, color) { connections.push({ from:a, to:b, color: color || '#ffffff' }); },
+
+    // data layer
+    STUDENTS: STUDENTS, COURSES: COURSES, SUBJECTS: SUBJECTS, SPECS: SPECS, YEARS: YEARS,
+    COURSE_BY_CODE: COURSE_BY_CODE, CORE_COURSES: CORE_COURSES, COURSES_PER_YEAR: COURSES_PER_YEAR,
+
+    // table primitives
+    COLTYPE: COLTYPE, makeTable: makeTable, colIndex: colIndex, colByKey: colByKey,
+    hasCol: hasCol, cellAt: cellAt, headerOnly: headerOnly, numericCols: numericCols,
+    coursesColIndex: coursesColIndex, studentsTable: studentsTable, enrolmentsTable: enrolmentsTable,
+    toEnrolments: toEnrolments, canExplode: canExplode, explodesHere: explodesHere,
+    breakdownTable: breakdownTable, fmtCell: fmtCell, exportCell: exportCell, schemaKey: schemaKey,
+
+    // engine
+    topoSort: topoSort, evaluateGraph: evaluateGraph, computeSchemas: computeSchemas,
+    inputSchema: inputSchema, unionTables: unionTables, filterFields: filterFields,
+    fieldByKey: fieldByKey, newCriterion: newCriterion, defaultCfg: defaultCfg,
+    normaliseShow: normaliseShow, outputTable: outputTable, defaultAvgCol: defaultAvgCol,
+    meanOf: meanOf, MEASURES: MEASURES,
+
+    // export + persistence
+    serialiseTable: serialiseTable, exportTableFor: exportTableFor, safeName: safeName,
+    serialiseGraph: serialiseGraph, deserialiseGraph: deserialiseGraph,
+    applyGraph: applyGraph, loadGraphFromText: loadGraphFromText,
+    FILE_KIND: FILE_KIND, FILE_VERSION: FILE_VERSION
+  };
+}
 
 render();
 })();

@@ -686,18 +686,50 @@ th.cmp-num { color: #383838 !important; }
 .file-btn:hover { border-color: #3d3d3d; color: #d0d0d0; }
 .file-btn:active { background: #1a1a1a; }
 
-/* Output file name — a plain field, so it reads as a value rather than a
-   choice, unlike the selects stacked above it. */
-.fname-input {
-  width: 100%;
+/* EXPORT FILE NAME
+   Lives in the results panel beside Copy and Save, because it names the file
+   those buttons produce. Styled as a quiet inline field rather than a form
+   control: it is optional, and a heavier treatment would imply it needs filling
+   in before exporting. */
+.export-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 6px;
+  padding: 3px 6px;
   background: #121212;
   border: 1px solid #262626;
+  border-radius: 4px;
+  transition: border-color .12s;
+}
+.export-name:focus-within { border-color: #3d3d3d; }
+
+.export-name input {
+  width: 108px;
+  background: transparent;
+  border: none;
   color: #c8c8c8;
   font-family: inherit;
   font-size: 11px;
-  padding: 4px 6px;
-  border-radius: 3px;
-  box-sizing: border-box;
+  padding: 0;
 }
-.fname-input:focus { outline: none; border-color: #3d3d3d; }
-.fname-input::placeholder { color: #454545; }
+.export-name input:focus { outline: none; }
+.export-name input::placeholder { color: #4a4a4a; }
+
+/* The extension is shown but not editable — it follows the format, not the
+   user's choice, and letting it be typed would invite ".csv.csv". */
+.export-ext {
+  color: #4a4a4a;
+  font-size: 11px;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* The actions row now holds a field as well as buttons, so it needs to wrap
+   rather than push the buttons off a narrow panel. */
+.result-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}

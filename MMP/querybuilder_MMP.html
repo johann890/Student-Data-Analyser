@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ENGR489 Honours Project - Student Data Analyser
+</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="toolbar">
+  <span class="tlabel">Add</span>
+  <button class="add-btn source" onclick="addNode('source')">Source</button>
+  <button class="add-btn filter" onclick="addNode('filter')">Filter</button>
+  <div class="proc-wrap">
+    <button class="add-btn processing" onclick="toggleProcMenu(event)">Processing <span class="caret">&#9662;</span></button>
+    <div class="proc-menu" id="procMenu" onclick="event.stopPropagation()">
+      <button class="proc-item" onclick="addProcNode('compare')">
+        <span class="proc-name">Compare</span>
+        <span class="proc-desc">Put branches side by side</span>
+      </button>
+    </div>
+  </div>
+  <button class="add-btn output" onclick="addNode('output')">Output</button>
+  <div class="sep"></div>
+  <span class="tlabel">Query</span>
+  <button class="file-btn" onclick="saveGraph(this)" title="Save this query as a file you can re-open and re-run">Save</button>
+  <button class="file-btn" onclick="openGraphFile(this)" title="Open a saved query">Load</button>
+  <input type="file" id="loadFile" accept="application/json,.json" hidden>
+  <div class="sep"></div>
+  <button class="clear-btn" onclick="clearAll()">Clear</button>
+  <button class="run-btn" onclick="runQuery()">Run Query</button>
+</div>
+
+<div class="main">
+  <div class="canvas" id="canvas">
+    <div class="canvas-hint" id="hint">Add nodes using the toolbar above<br><span style="font-size:11px">Source &rarr; Filter &rarr; Output</span></div>
+    <svg id="svg"></svg>
+  </div>
+  <div class="output-panel">
+    <div class="panel-head">Results</div>
+    <div class="panel-body" id="panelBody">
+      <div class="placeholder">Run a query to see results</div>
+    </div>
+  </div>
+</div>
+
+
+<script src="app.js"></script>
+</body>
+</html>
