@@ -448,12 +448,18 @@ var SHAPE = {
   source:  { w:100, h:100 },
   filter:  { w:106, h:84 },
   compare: { w:112, h:78 },
+  take:    { w:106, h:72 },
   output:  { w:106, h:66 }
 };
 
+/* Take sits anywhere a row stream does: it neither reads nor writes column
+   structure, so anything that could feed a Filter can feed a Take and vice
+   versa. Compare stays output-only — it is superseded, and widening its
+   downstream reach now would be work thrown away when it retires. */
 var CONNECT_RULES = {
-  source:  ['filter', 'compare', 'output'],
-  filter:  ['filter', 'compare', 'output'],
+  source:  ['filter', 'take', 'compare', 'output'],
+  filter:  ['filter', 'take', 'compare', 'output'],
+  take:    ['filter', 'take', 'compare', 'output'],
   compare: ['output'],
   output:  []
 };
@@ -493,6 +499,7 @@ function defaultCfg(type) {
   if (type === 'source')  return { pop:'all', rows:'students' };
   if (type === 'filter')  return { criteria:[newCriterion()] };
   if (type === 'compare') return { measures:DEFAULT_MEASURES.slice(), sort:'wired', labels:{} };
+  if (type === 'take')    return { n: String(TAKE_DEFAULT) };
   if (type === 'output')  return { show:'rows', avgCol:'', filename:'' };
   return {};
 }
@@ -875,6 +882,52 @@ function applyCriterion(t, c, f, log) {
    working here so the table refactor changes no behaviour, but new work should
    go into SelectFor rather than into extending this.                          */
 
+/* TAKE
+   Keeps the first N rows and discards the rest. It is the whole node: no
+   column is added, removed, renamed or retyped, so the outgoing header is the
+   incoming header and computeSchemas() needs no case for it.
+
+   Deliberately not a sort. "Top 10 by mark" is Sort then Take, two nodes doing
+   one thing each, which is why the supervisor asked for Take as its own node
+   rather than a Top-N that quietly sorts on your behalf. Behind an unsorted
+   input this returns the first ten rows in whatever order they arrived — which
+   is a legitimate thing to want (a sample to eyeball) and is stated in the
+   panel so it cannot be mistaken for a ranking.
+
+   N is stored as typed, never parsed on write. A number input yields '' while
+   the field is mid-edit and '1e3' if pasted; coercing on write would have to
+   pick a number for text the user has not finished typing, and would then feed
+   that guess back into the control. Coercion happens once, on read. */
+var TAKE_DEFAULT = 10;
+var TAKE_MIN = 1;
+
+function takeCount(node) {
+  var raw = node && node.cfg ? node.cfg.n : undefined;
+  var n = parseInt(raw, 10);
+  // Blank, non-numeric or out of range all fall back rather than throwing: a
+  // half-typed field must not break a Run, and a saved file written by hand
+  // must not be able to produce a negative slice.
+  if (!isFinite(n) || n < TAKE_MIN) return TAKE_DEFAULT;
+  return Math.floor(n);
+}
+
+function applyTake(node, t, log) {
+  var n = takeCount(node);
+  var before = t.rows.length;
+
+  // Log what actually happened, not what was asked for. "first 10" above a
+  // seven-row table reads as a bug in the tool; saying all 7 were kept shows
+  // the node ran and the input was simply short.
+  log.push(logEntry('TAKE', before <= n
+    ? [{s:'first'}, {c:'val', s:n}, {s:'rows — kept all'}, {c:'val', s:before}]
+    : [{s:'first'}, {c:'val', s:n}, {s:'rows of'}, {c:'val', s:before}]));
+
+  if (before <= n) return t;
+  // meta is carried through: Take is a row operation and has no opinion about
+  // whatever a producer upstream recorded there.
+  return makeTable(t.columns, t.rows.slice(0, n), t.meta);
+}
+
 var MEASURES = [
   { key:'count',   label:'Students',         head:'Students'  },
   { key:'average', label:'Avg grade',        head:'Avg grade' },
@@ -1085,6 +1138,8 @@ function evaluateGraph() {
           var out = applyFilter(node, table, log);
           if (out.error) return { error: out.error };
           table = out.table;
+        } else if (node.type === 'take') {
+          table = applyTake(node, table, log);
         }
       }
     }
@@ -1315,6 +1370,17 @@ function configHTML(node, schemas) {
     '<div class="cmp-hint">Highest and lowest use the first ticked column.</div>';
   }
 
+  if (node.type === 'take') {
+    // Bound to cfg.n verbatim, so a partially typed value is preserved between
+    // renders. The engine's fallback is what protects the Run, not the control.
+    html += '<div class="cfg-label">Keep first</div>' +
+      '<input type="number" min="' + TAKE_MIN + '" step="1" ' +
+        'value="' + esc(cfg.n === undefined ? '' : cfg.n) + '"' + ctl(id, 'n') + '>' +
+      '<div class="cmp-hint">Rows are kept in the order they arrive. ' +
+        'This node does not rank — put the ordering upstream if you want a top ' +
+        takeCount(node) + '.</div>';
+  }
+
   if (node.type === 'output') {
     var show = normaliseShow(node);
     cfg.show = show;
@@ -1368,6 +1434,13 @@ function shapeHTML(node) {
     var glyph = '<span class="cmp-glyph"><i style="width:26px"></i><i style="width:16px"></i><i style="width:21px"></i></span>';
     return '<div class="shape-compare">' + removeBtn + glyph + 'Compare</div>';
   }
+  if (node.type === 'take') {
+    // Three kept bars above the cut, one dropped below it — the glyph says
+    // "first few, rest discarded" without repeating the word on the label.
+    var bars = '<span class="take-glyph">' +
+      '<i></i><i></i><i></i><b></b><i class="cut"></i></span>';
+    return '<div class="shape-take">' + removeBtn + bars + 'Take</div>';
+  }
   if (node.type === 'output') return '<div class="shape-output">' + removeBtn + 'Output</div>';
   return '';
 }
@@ -1390,7 +1463,7 @@ function render() {
     cv.appendChild(el);
     nodeEls[node.id] = el;
 
-    var shape = el.querySelector('.shape-source, .shape-filter, .shape-compare, .shape-output');
+    var shape = el.querySelector('.shape-source, .shape-filter, .shape-compare, .shape-take, .shape-output');
     if (shape) {
       shape.addEventListener('mousedown', function(e){ startDrag(e, node.id); });
     }
@@ -2470,6 +2543,11 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     fieldByKey: fieldByKey, newCriterion: newCriterion, defaultCfg: defaultCfg,
     normaliseShow: normaliseShow, outputTable: outputTable, defaultAvgCol: defaultAvgCol,
     meanOf: meanOf, MEASURES: MEASURES,
+
+    // take
+    applyTake: applyTake, takeCount: takeCount,
+    TAKE_DEFAULT: TAKE_DEFAULT, TAKE_MIN: TAKE_MIN,
+    canConnect: canConnect, CONNECT_RULES: CONNECT_RULES,
 
     // export + persistence
     serialiseTable: serialiseTable, exportTableFor: exportTableFor, safeName: safeName,

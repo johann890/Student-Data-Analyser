@@ -776,3 +776,35 @@ th.cmp-num { color: #383838 !important; }
   flex-wrap: wrap;
   gap: 4px;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   TAKE NODE
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Same palette as Compare — both are Processing-family nodes and arrive from
+   the same dropdown — but a squatter shape with its own glyph, so the two are
+   told apart at a glance on a crowded canvas. */
+.shape-take {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-take:active { cursor: grabbing; }
+
+/* Three solid bars = kept, a rule, then one faded bar = discarded */
+.take-glyph { display: flex; flex-direction: column; gap: 2px; align-items: stretch; width: 24px; }
+.take-glyph i { display: block; height: 3px; border-radius: 1px; background: #b48ce0; opacity: 0.75; }
+.take-glyph i.cut { opacity: 0.22; }
+.take-glyph b {
+  display: block; height: 0;
+  border-top: 1px dashed #b48ce0;
+  opacity: 0.45;
+  margin: 1px 0;
+}
