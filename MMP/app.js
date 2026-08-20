@@ -9,6 +9,11 @@ var SPECS = ["Software Engineering","Computer Science","Information Technology",
 var G22 = [78,82,91,65,88,72,95,55,83,70,61,79,86,73,90,68,77,84,62,92,75,80,58,87,71,94,66,85,76,89,63,74,81,93,69,78,85,72,60,88];
 var G23 = [82,85,78,70,91,76,88,60,86,74,65,83,89,77,92,71,80,87,66,95,78,84,62,90,75,97,70,88,80,93,67,78,84,96,73,82,88,76,63,91];
 
+/* Best to worst. Declared once and attached to every letterGrade column so a
+   Sort can order grades the way a reader means them: as text, 'A+' falls
+   between 'A' and 'A-' because '+' precedes '-' in ASCII. */
+var GRADE_ORDER = ['A+','A','A-','B+','B','B-','C+','C','D'];
+
 function letterGrade(g) {
   if (g>=90) return 'A+'; if (g>=85) return 'A'; if (g>=80) return 'A-';
   if (g>=75) return 'B+'; if (g>=70) return 'B'; if (g>=65) return 'B-';
@@ -278,7 +283,7 @@ var STUDENT_COLUMNS = [
   { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS, filter:false },
   { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
   { key:'gradeAvg',       label:'Avg',            type:COLTYPE.NUMBER, def:'70' },
-  { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT },
+  { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT,   order:GRADE_ORDER },
   { key:'courses',        label:'Courses',        type:COLTYPE.COURSES }
 ];
 
@@ -292,7 +297,7 @@ var ENROLMENT_COLUMNS = [
   { key:'subject',        label:'Subject',        type:COLTYPE.ENUM,   values:SUBJECTS },
   { key:'points',         label:'Points',         type:COLTYPE.NUMBER, def:'15' },
   { key:'mark',           label:'Mark',           type:COLTYPE.NUMBER, def:'70' },
-  { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT }
+  { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT,   order:GRADE_ORDER }
 ];
 
 function studentsTable(list) {
@@ -448,6 +453,7 @@ var SHAPE = {
   source:  { w:100, h:100 },
   filter:  { w:106, h:84 },
   compare: { w:112, h:78 },
+  sort:    { w:106, h:72 },
   take:    { w:106, h:72 },
   output:  { w:106, h:66 }
 };
@@ -457,9 +463,10 @@ var SHAPE = {
    versa. Compare stays output-only — it is superseded, and widening its
    downstream reach now would be work thrown away when it retires. */
 var CONNECT_RULES = {
-  source:  ['filter', 'take', 'compare', 'output'],
-  filter:  ['filter', 'take', 'compare', 'output'],
-  take:    ['filter', 'take', 'compare', 'output'],
+  source:  ['filter', 'sort', 'take', 'compare', 'output'],
+  filter:  ['filter', 'sort', 'take', 'compare', 'output'],
+  sort:    ['filter', 'sort', 'take', 'compare', 'output'],
+  take:    ['filter', 'sort', 'take', 'compare', 'output'],
   compare: ['output'],
   output:  []
 };
@@ -499,6 +506,7 @@ function defaultCfg(type) {
   if (type === 'source')  return { pop:'all', rows:'students' };
   if (type === 'filter')  return { criteria:[newCriterion()] };
   if (type === 'compare') return { measures:DEFAULT_MEASURES.slice(), sort:'wired', labels:{} };
+  if (type === 'sort')    return { keys: [newSortKey()] };
   if (type === 'take')    return { n: String(TAKE_DEFAULT) };
   if (type === 'output')  return { show:'rows', avgCol:'', filename:'' };
   return {};
@@ -542,6 +550,14 @@ function setCfg(nodeId, key, value) {
     else if (sub === 'course') c.course = value;
     else if (sub.indexOf('value:') === 0) { c.values = c.values || {}; c.values[sub.slice(6)] = value; }
     else if (sub.indexOf('op:') === 0)    { c.ops = c.ops || {};       c.ops[sub.slice(3)] = value; }
+    return;
+  }
+  var sk = key.match(/^sort\.(\d+)\.(col|dir)$/);
+  if (sk) {
+    var list = n.cfg.keys || (n.cfg.keys = []);
+    var k = list[parseInt(sk[1], 10)];
+    if (!k) return;
+    k[sk[2]] = value;
     return;
   }
   if (key.indexOf('label:') === 0) {
@@ -615,6 +631,26 @@ function removeCriterion(nodeId, idx) {
   var n = findNode(nodeId);
   if (!n || n.type !== 'filter') return;
   n.cfg.criteria.splice(idx, 1);
+  markStale();
+  render();
+}
+
+/* Sort keys use the same add/remove shape as filter criteria — one list, the
+   first row not removable — so the two panels behave identically. Priority is
+   list position: the first key decides, later ones break ties. */
+function addSortKey(nodeId) {
+  var n = findNode(nodeId);
+  if (!n || n.type !== 'sort') return;
+  n.cfg.keys = n.cfg.keys || [];
+  n.cfg.keys.push(newSortKey());
+  markStale();
+  render();
+}
+function removeSortKey(nodeId, idx) {
+  var n = findNode(nodeId);
+  if (!n || n.type !== 'sort') return;
+  n.cfg.keys.splice(idx, 1);
+  if (!n.cfg.keys.length) n.cfg.keys.push(newSortKey());
   markStale();
   render();
 }
@@ -882,6 +918,156 @@ function applyCriterion(t, c, f, log) {
    working here so the table refactor changes no behaviour, but new work should
    go into SelectFor rather than into extending this.                          */
 
+/* SORT
+   Reorders rows by one or more columns with a priority, the way Excel's sort
+   dialog does: the first key decides, the second breaks its ties, and so on.
+   Like Take it is a pure row operation — same columns out as in — so
+   computeSchemas() needs no case for it either.
+
+   This is the first node that visibly earns the uniform table model. It sorts
+   a student list, an enrolment list and (once Histogram lands) a histogram
+   with no knowledge of any of them: it asks the incoming table for its columns
+   and their types, and everything else follows from that. */
+
+// COURSES cells hold an array of enrolment objects. There is no defensible
+// ordering on "eight courses" — by count? by first code? — so the column is
+// offered nowhere rather than sorted arbitrarily.
+function sortableCols(t) {
+  return t.columns.filter(function(c){ return c.type !== COLTYPE.COURSES; });
+}
+
+/* Declared order beats lexical order. Specialisation and Year are ENUMs whose
+   `values` array is already the order a reader expects, and letterGrade now
+   carries an explicit `order` for the same reason: sorted as text, an A+ lands
+   between A and A- because '+' precedes '-' in ASCII. Any column may opt in by
+   declaring `order`; columns that declare neither fall back to comparison by
+   value. */
+function ordinalsFor(col) {
+  if (col && col.order) return col.order;
+  if (col && col.type === COLTYPE.ENUM && col.values) return col.values;
+  return null;
+}
+
+function isBlank(v) {
+  return v === undefined || v === null || v === '' ||
+         (typeof v === 'number' && !isFinite(v));
+}
+
+/* One comparator per column, built once per sort rather than per comparison. */
+function comparatorFor(col) {
+  var ord = ordinalsFor(col);
+  if (ord) {
+    var rank = {};
+    ord.forEach(function(v, i){ rank[String(v)] = i; });
+    return function(a, b) {
+      // A value absent from the declared order sorts after every declared one,
+      // then alphabetically among its peers — so a course prefix added to the
+      // catalogue without being added to the order still lands somewhere
+      // predictable instead of at the front.
+      var ra = rank[String(a)], rb = rank[String(b)];
+      if (ra === undefined && rb === undefined) return String(a) < String(b) ? -1 : (String(a) > String(b) ? 1 : 0);
+      if (ra === undefined) return 1;
+      if (rb === undefined) return -1;
+      return ra - rb;
+    };
+  }
+  if (col && col.type === COLTYPE.NUMBER) {
+    return function(a, b){ return Number(a) - Number(b); };
+  }
+  // numeric:true so SWEN430 precedes SWEN4300, sensitivity:'base' so case does
+  // not split otherwise-equal values into two groups.
+  return function(a, b) {
+    return String(a).localeCompare(String(b), undefined, { numeric:true, sensitivity:'base' });
+  };
+}
+
+var SORT_DIRS = ['asc', 'desc'];
+
+// Direction labels follow the column type: "A → Z" is meaningless on a mark and
+// "high → low" is meaningless on a name.
+function dirLabel(col, dir) {
+  if (col && col.type === COLTYPE.NUMBER) return dir === 'desc' ? 'high → low' : 'low → high';
+  if (ordinalsFor(col))                   return dir === 'desc' ? 'last → first' : 'first → last';
+  return dir === 'desc' ? 'Z → A' : 'A → Z';
+}
+
+function newSortKey() { return { col:'', dir:'asc' }; }
+
+/* Resolve the configured keys against a table. A key naming a column that is
+   no longer there — rewire a Source from students to enrolments and 'gradeAvg'
+   simply stops existing — is reported rather than silently dropped, because a
+   sort that quietly stopped happening looks identical to one that ran. */
+function resolveSortKeys(node, t) {
+  var cfg = (node && node.cfg) || defaultCfg('sort');
+  var avail = sortableCols(t);
+  var out = [];
+  (cfg.keys || []).forEach(function(k) {
+    var key = k && k.col;
+    if (!key) { if (avail.length) out.push({ col:avail[0], dir:(k && k.dir) || 'asc' }); return; }
+    var col = colByKey(t, key);
+    if (!col || col.type === COLTYPE.COURSES) { out.push({ missing:key }); return; }
+    out.push({ col:col, dir:(k.dir === 'desc' ? 'desc' : 'asc') });
+  });
+  return out;
+}
+
+/* Compares two decorated rows {row, i} against a plan of resolved keys. Pulled
+   out of applySort so the tie rule is a testable function rather than a
+   property of whichever engine runs Array.sort. */
+function sortRowComparator(plan) {
+  return function(A, B) {
+    for (var p = 0; p < plan.length; p++) {
+      var a = A.row[plan[p].idx], b = B.row[plan[p].idx];
+      // Blanks sink to the bottom under both directions. Reversing a sort
+      // should not drag empty cells to the top of the report.
+      var ba = isBlank(a), bb = isBlank(b);
+      if (ba || bb) { if (ba && bb) continue; return ba ? 1 : -1; }
+      var c = plan[p].cmp(a, b);
+      if (c) return c * plan[p].sign;
+    }
+    return A.i - B.i;   // fully tied: arrival order decides
+  };
+}
+
+function applySort(node, t, log) {
+  var keys = resolveSortKeys(node, t);
+  var missing = keys.filter(function(k){ return k.missing; });
+  var live    = keys.filter(function(k){ return k.col; });
+
+  missing.forEach(function(k) {
+    log.push(logEntry('SORT', [{s:'skipped'}, {c:'val', s:k.missing},
+                               {s:'— not a column in this table'}]));
+  });
+  if (!live.length) return t;
+
+  log.push(logEntry('SORT', live.reduce(function(parts, k, i) {
+    if (i) parts.push({s:'then'});
+    parts.push({c:'val', s:k.col.label}, {s:dirLabel(k.col, k.dir)});
+    return parts;
+  }, [])));
+
+  var plan = live.map(function(k) {
+    return { idx: colIndex(t, k.col.key), cmp: comparatorFor(k.col), sign: k.dir === 'desc' ? -1 : 1 };
+  });
+
+  /* Decorated with the arrival position and compared on it last. Array.sort is
+     specified stable since ES2019, but relying on that would make the tie
+     behaviour a property of the engine rather than of this node — and ties are
+     the normal case here, not the edge case (sorting 80 students by Year gives
+     two groups of forty). The comparator is extracted so a test can assert the
+     tiebreak directly: an engine that is already stable hides the difference,
+     so exercising it through sort() alone would prove nothing. */
+  var cmpRows = sortRowComparator(plan);
+  var decorated = t.rows.map(function(row, i){ return { row:row, i:i }; });
+  decorated.sort(cmpRows);
+
+  /* A new rows array, never an in-place sort. One node's result object is read
+     by every node wired downstream of it, so sorting t.rows in place would
+     reorder a sibling branch's data as a side effect — and the bug would only
+     appear on graphs that fork. */
+  return makeTable(t.columns, decorated.map(function(d){ return d.row; }), t.meta);
+}
+
 /* TAKE
    Keeps the first N rows and discards the rest. It is the whole node: no
    column is added, removed, renamed or retyped, so the outgoing header is the
@@ -1138,6 +1324,8 @@ function evaluateGraph() {
           var out = applyFilter(node, table, log);
           if (out.error) return { error: out.error };
           table = out.table;
+        } else if (node.type === 'sort') {
+          table = applySort(node, table, log);
         } else if (node.type === 'take') {
           table = applyTake(node, table, log);
         }
@@ -1370,6 +1558,47 @@ function configHTML(node, schemas) {
     '<div class="cmp-hint">Highest and lowest use the first ticked column.</div>';
   }
 
+  if (node.type === 'sort') {
+    var scols = sortableCols(schema);
+    if (!scols.length) {
+      html += '<div class="cmp-hint">No sortable columns upstream — connect a Source.</div>';
+    } else {
+      var skeys = cfg.keys && cfg.keys.length ? cfg.keys : [newSortKey()];
+      html += '<div class="cfg-label">Sort by</div><div class="sort-list">' +
+        skeys.map(function(k, si) {
+          // A saved key can outlive its column — rewiring a Source from students
+          // to enrolments is enough. Show the fallback the engine will actually
+          // use, rather than a select silently displaying option one while the
+          // model still says something else.
+          var kc = k.col ? colByKey(schema, k.col) : null;
+          var chosen = (kc && kc.type !== COLTYPE.COURSES) ? k.col : scols[0].key;
+          var scol = colByKey(schema, chosen);
+          var sdir = k.dir === 'desc' ? 'desc' : 'asc';
+          return '<div class="sort-row">' +
+            '<span class="sort-rank">' + (si + 1) + '</span>' +
+            '<select class="sort-col"' + ctl(id, 'sort.' + si + '.col') + '>' +
+              scols.map(function(c){ return opt(c.key, chosen, c.label); }).join('') +
+            '</select>' +
+            '<select class="sort-dir"' + ctl(id, 'sort.' + si + '.dir') + '>' +
+              SORT_DIRS.map(function(d){ return opt(d, sdir, dirLabel(scol, d)); }).join('') +
+            '</select>' +
+            (si > 0
+              ? '<button class="remove-criterion-btn" onclick="removeSortKey(' + id + ',' + si + ')">x</button>'
+              : '<span class="sort-nodel"></span>') +
+          '</div>';
+        }).join('') +
+      '</div>';
+      // Offering more keys than there are columns invites a sort key that can
+      // never break a tie the earlier ones did not already settle.
+      if (skeys.length < scols.length) {
+        html += '<button class="add-criterion-btn sort-add" onclick="addSortKey(' + id + ')">+ add tie-breaker</button>';
+      }
+      if (skeys.length > 1) {
+        html += '<div class="cmp-hint">Row 1 decides; the rest break its ties.</div>';
+      }
+    }
+  }
+
   if (node.type === 'take') {
     // Bound to cfg.n verbatim, so a partially typed value is preserved between
     // renders. The engine's fallback is what protects the Run, not the control.
@@ -1434,6 +1663,13 @@ function shapeHTML(node) {
     var glyph = '<span class="cmp-glyph"><i style="width:26px"></i><i style="width:16px"></i><i style="width:21px"></i></span>';
     return '<div class="shape-compare">' + removeBtn + glyph + 'Compare</div>';
   }
+  if (node.type === 'sort') {
+    // Bars of increasing length: the glyph says "ordered", and reads as
+    // distinct from Take's equal-length bars with a cut through them.
+    var sbars = '<span class="sort-glyph"><i style="width:9px"></i>' +
+      '<i style="width:16px"></i><i style="width:23px"></i></span>';
+    return '<div class="shape-sort">' + removeBtn + sbars + 'Sort</div>';
+  }
   if (node.type === 'take') {
     // Three kept bars above the cut, one dropped below it — the glyph says
     // "first few, rest discarded" without repeating the word on the label.
@@ -1463,7 +1699,7 @@ function render() {
     cv.appendChild(el);
     nodeEls[node.id] = el;
 
-    var shape = el.querySelector('.shape-source, .shape-filter, .shape-compare, .shape-take, .shape-output');
+    var shape = el.querySelector('.shape-source, .shape-filter, .shape-compare, .shape-sort, .shape-take, .shape-output');
     if (shape) {
       shape.addEventListener('mousedown', function(e){ startDrag(e, node.id); });
     }
@@ -2496,6 +2732,8 @@ window.addProcNode = addProcNode;
 window.toggleProcMenu = toggleProcMenu;
 window.removeNode = removeNode;
 window.addCriterion = addCriterion;
+window.addSortKey = addSortKey;
+window.removeSortKey = removeSortKey;
 window.removeCriterion = removeCriterion;
 window.clearAll = clearAll;
 window.runQuery = runQuery;
@@ -2543,6 +2781,12 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     fieldByKey: fieldByKey, newCriterion: newCriterion, defaultCfg: defaultCfg,
     normaliseShow: normaliseShow, outputTable: outputTable, defaultAvgCol: defaultAvgCol,
     meanOf: meanOf, MEASURES: MEASURES,
+
+    // sort
+    applySort: applySort, sortableCols: sortableCols, comparatorFor: comparatorFor,
+    sortRowComparator: sortRowComparator,
+    resolveSortKeys: resolveSortKeys, newSortKey: newSortKey, dirLabel: dirLabel,
+    ordinalsFor: ordinalsFor, GRADE_ORDER: GRADE_ORDER,
 
     // take
     applyTake: applyTake, takeCount: takeCount,

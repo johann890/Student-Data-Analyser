@@ -808,3 +808,51 @@ th.cmp-num { color: #383838 !important; }
   opacity: 0.45;
   margin: 1px 0;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   SORT NODE
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+.shape-sort {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-sort:active { cursor: grabbing; }
+
+/* Ascending bars — "ordered". Take's glyph is equal bars with a cut through
+   them, so the two Processing nodes are distinguishable at a glance even
+   though they share the family colour. */
+.sort-glyph { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.sort-glyph i { display: block; height: 3px; border-radius: 1px; background: #b48ce0; opacity: 0.75; }
+
+/* ── SORT KEY ROWS ───────────────────────────────────────── */
+/* Same left-rule treatment as .criteria-list, so the two list-shaped panels
+   read as the same kind of control. */
+.sort-list { display: flex; flex-direction: column; gap: 5px; }
+.sort-row {
+  display: grid;
+  /* rank | column | direction | delete — fixed so nothing clips or reflows
+     when a direction label changes length ("A → Z" vs "high → low") */
+  grid-template-columns: 12px 1fr 74px 16px;
+  gap: 4px;
+  align-items: center;
+}
+.sort-rank {
+  font-size: 9px;
+  color: #5a5a5a;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.sort-dir { font-size: 10px; }
+/* Placeholder in the delete column of row 1: keeps the three controls of every
+   row on the same vertical lines whether or not the row can be removed. */
+.sort-nodel { display: block; }
+.add-criterion-btn.sort-add:hover { border-color: #5a3a7a; color: #b48ce0; }

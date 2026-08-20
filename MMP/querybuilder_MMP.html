@@ -16,6 +16,10 @@
   <div class="proc-wrap">
     <button class="add-btn processing" onclick="toggleProcMenu(event)">Processing <span class="caret">&#9662;</span></button>
     <div class="proc-menu" id="procMenu" onclick="event.stopPropagation()">
+      <button class="proc-item" onclick="addProcNode('sort')">
+        <span class="proc-name">Sort</span>
+        <span class="proc-desc">Order rows by one or more columns</span>
+      </button>
       <button class="proc-item" onclick="addProcNode('take')">
         <span class="proc-name">Take</span>
         <span class="proc-desc">Keep only the first N rows</span>
