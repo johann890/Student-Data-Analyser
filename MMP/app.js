@@ -1285,6 +1285,98 @@ function outputTable(node, t) {
   return t; // 'rows', 'summary' and 'lists' all display the incoming table
 }
 
+/* ============================================================================
+   NODE SPECIFICATIONS
+   ============================================================================
+   One entry per node type, declaring the two things the graph walks need to
+   know: what shape comes out, and how the rows are computed.
+
+     merges   — inputs are unioned into one table before the node runs. False
+                for nodes that read their inputs separately (Compare) or have
+                none (Source).
+     schema   — (node, inSchema) -> table of columns, no rows. The header this
+                node produces, derived from the header it is given.
+     rows     — (node, table, log) -> table | {error}. Omitted by nodes that
+                pass their rows through untouched.
+
+   Why a registry rather than branches in two functions: schema propagation and
+   evaluation must agree about every node, and until now they agreed by
+   coincidence. Filter, Sort and Take leave the header alone, so schema
+   propagation could get away with `out[node.id] = ins[0]` — a pass-through
+   that is simply wrong for every node still to be built. Histogram, Aggregate
+   and Project all rewrite the header, and each would have needed a branch in
+   computeSchemas() and another in evaluateGraph(), in two places that no
+   mechanism keeps in step.
+
+   Declaring both against one type means a new node is one entry here plus its
+   implementation, and the invariant that ties the pair together —
+   headerOnly(rows(node, t)) equals schema(node, headerOnly(t)) — is a property
+   of the registry that can be tested across every type at once, rather than
+   remembered.                                                                */
+
+function passthroughSchema(node, inSchema) { return inSchema; }
+
+var NODE_SPEC = {
+  source: {
+    merges: false,
+    // No input to derive from: granularity is a Source setting, so the header
+    // is a function of the node's own config alone.
+    schema: function(node) {
+      var cfg = node.cfg || defaultCfg('source');
+      return headerOnly(cfg.rows === 'enrolments'
+        ? makeTable(ENROLMENT_COLUMNS, [])
+        : makeTable(STUDENT_COLUMNS, []));
+    },
+    evaluate: function(node, ctx) {
+      return { table: sourceTable(node, ctx.log), hasSource: true };
+    }
+  },
+
+  filter: {
+    merges: true,
+    schema: passthroughSchema,
+    rows: function(node, t, log) { return applyFilter(node, t, log); }
+  },
+
+  sort: {
+    merges: true,
+    schema: passthroughSchema,
+    rows: function(node, t, log) { return { table: applySort(node, t, log) }; }
+  },
+
+  take: {
+    merges: true,
+    schema: passthroughSchema,
+    rows: function(node, t, log) { return { table: applyTake(node, t, log) }; }
+  },
+
+  compare: {
+    // The one node that keeps its inputs apart rather than merging them: each
+    // branch becomes a row, so it reads the branch results directly.
+    merges: false,
+    schema: function(node) { return makeTable(compareColumns(measuresOf(node)), []); },
+    evaluate: function(node, ctx) {
+      return {
+        table: buildCompare(node, ctx.inIds, ctx.res, ctx.log),
+        hasSource: ctx.ins.some(function(r){ return r.hasSource; })
+      };
+    }
+  },
+
+  output: {
+    merges: true,
+    /* An Output's result IS its input: outputTable() applies the chosen view at
+       render time, not here, so the count/average/breakdown reshaping is not
+       part of the graph. Nothing reads downstream of an Output — CONNECT_RULES
+       gives it no outgoing edges — so the distinction costs nothing today. If
+       an Output ever becomes chainable, this is the entry that has to grow a
+       real schema, and outputTable() is already the function to call. */
+    schema: passthroughSchema
+  }
+};
+
+function specFor(type) { return NODE_SPEC[type] || null; }
+
 /* GRAPH EVALUATION
    Walks the DAG in topological order. Each node computes from its own inputs,
    so parallel branches stay independent.
@@ -1298,39 +1390,34 @@ function evaluateGraph() {
   var res = {};
   for (var i = 0; i < order.length; i++) {
     var node = order[i];
+    var spec = specFor(node.type);
+    if (!spec) continue;   // a type no longer supported: skip rather than throw
     var log = [], table, hasSource;
 
-    if (node.type === 'source') {
-      table = sourceTable(node, log);
-      hasSource = true;
-    } else {
-      var inIds = inputsOf(node.id);
-      var ins = inIds.map(function(id){ return res[id]; }).filter(Boolean);
+    var inIds = inputsOf(node.id);
+    var ins = inIds.map(function(id){ return res[id]; }).filter(Boolean);
+    if (node.type !== 'source') {
       ins.forEach(function(r){ log.push.apply(log, r.log); });
-
-      if (node.type === 'compare') {
-        // Compare is the one node that keeps its inputs apart rather than
-        // merging them, so it reads the branch results directly.
-        table = buildCompare(node, inIds, res, log);
-        hasSource = ins.some(function(r){ return r.hasSource; });
-      } else {
-        if (ins.length > 1) log.push(logEntry('MERGE', [{s: ins.length + ' inputs'}]));
-        var merged = unionTables(ins.map(function(r){ return r.table; }));
-        if (merged.error) return { error: merged.error };
-        table = merged;
-        hasSource = ins.some(function(r){ return r.hasSource; });
-
-        if (node.type === 'filter') {
-          var out = applyFilter(node, table, log);
-          if (out.error) return { error: out.error };
-          table = out.table;
-        } else if (node.type === 'sort') {
-          table = applySort(node, table, log);
-        } else if (node.type === 'take') {
-          table = applyTake(node, table, log);
-        }
-      }
     }
+
+    if (spec.merges) {
+      if (ins.length > 1) log.push(logEntry('MERGE', [{s: ins.length + ' inputs'}]));
+      var merged = unionTables(ins.map(function(r){ return r.table; }));
+      if (merged.error) return { error: merged.error };
+      table = merged;
+      hasSource = ins.some(function(r){ return r.hasSource; });
+
+      if (spec.rows) {
+        var out = spec.rows(node, table, log);
+        if (out.error) return { error: out.error };
+        table = out.table;
+      }
+    } else {
+      var ev = spec.evaluate(node, { inIds: inIds, ins: ins, res: res, log: log });
+      table = ev.table;
+      hasSource = ev.hasSource;
+    }
+
     res[node.id] = { table: table, log: log, hasSource: hasSource };
   }
   return { res: res };
@@ -1340,24 +1427,22 @@ function evaluateGraph() {
    The same walk as evaluateGraph but carrying only column headers, no rows. It
    is what lets a Filter's field list and an Output's average-column list be
    built from whatever is actually flowing into them. Cheap enough to run on
-   every render because no row is ever touched. */
+   every render because no row is ever touched.
+
+   Both walks now read the same registry, so a node cannot describe one header
+   here and produce another there. */
 function computeSchemas() {
   var order = topoSort();
   var out = {};
   order.forEach(function(node) {
+    var spec = specFor(node.type);
+    if (!spec) { out[node.id] = makeTable([], []); return; }
     var ins = inputsOf(node.id).map(function(id){ return out[id]; }).filter(Boolean);
-    if (node.type === 'source') {
-      var cfg = node.cfg || defaultCfg('source');
-      out[node.id] = headerOnly(cfg.rows === 'enrolments'
-        ? makeTable(ENROLMENT_COLUMNS, [])
-        : makeTable(STUDENT_COLUMNS, []));
-    } else if (node.type === 'compare') {
-      out[node.id] = makeTable(compareColumns(measuresOf(node)), []);
-    } else if (ins.length) {
-      out[node.id] = ins[0];
-    } else {
-      out[node.id] = makeTable([], []);
-    }
+    // Multiple inputs merge, and a merge requires matching headers — so the
+    // first input's header is the merged header wherever the graph is valid,
+    // and where it is not, evaluateGraph() is what reports it.
+    var inSchema = ins.length ? ins[0] : makeTable([], []);
+    out[node.id] = headerOnly(spec.schema(node, inSchema));
   });
   return out;
 }
@@ -2777,6 +2862,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
 
     // engine
     topoSort: topoSort, evaluateGraph: evaluateGraph, computeSchemas: computeSchemas,
+    NODE_SPEC: NODE_SPEC, specFor: specFor, SHAPE: SHAPE,
     inputSchema: inputSchema, unionTables: unionTables, filterFields: filterFields,
     fieldByKey: fieldByKey, newCriterion: newCriterion, defaultCfg: defaultCfg,
     normaliseShow: normaliseShow, outputTable: outputTable, defaultAvgCol: defaultAvgCol,
