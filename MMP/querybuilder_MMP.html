@@ -37,6 +37,14 @@
   <button class="file-btn" onclick="openGraphFile(this)" title="Open a saved query">Load</button>
   <input type="file" id="loadFile" accept="application/json,.json" hidden>
   <div class="sep"></div>
+  <span class="tlabel">View</span>
+  <div class="zoom-group">
+    <button class="zoom-btn" onclick="zoomOut()" title="Zoom out  ( -  or scroll )">&minus;</button>
+    <button class="zoom-level" id="zoomLevel" onclick="zoomReset()" title="Back to 100%">100%</button>
+    <button class="zoom-btn" onclick="zoomIn()" title="Zoom in  ( +  or scroll )">+</button>
+  </div>
+  <button class="file-btn" onclick="zoomToFit()" title="Fit every node on screen  ( F )">Fit</button>
+  <div class="sep"></div>
   <button class="clear-btn" onclick="clearAll()">Clear</button>
   <button class="run-btn" onclick="runQuery()">Run Query</button>
 </div>
@@ -44,7 +52,22 @@
 <div class="main">
   <div class="canvas" id="canvas">
     <div class="canvas-hint" id="hint">Add nodes using the toolbar above<br><span style="font-size:11px">Source &rarr; Filter &rarr; Output</span></div>
-    <svg id="svg"></svg>
+
+    <!-- Everything in world coordinates lives here and is scaled as one layer, so
+         nodes and arrows can never drift out of register with each other. Overlays
+         that must stay legible at any zoom (marquee, selection bar, edge preview)
+         are siblings of this element, not children. -->
+    <div class="viewport" id="viewport">
+      <svg id="svg"></svg>
+    </div>
+
+    <div class="marquee" id="marquee"></div>
+
+    <div class="sel-bar" id="selBar">
+      <span class="sel-count" id="selCount">0 selected</span>
+      <button class="sel-del" onclick="deleteSelection()" title="Delete selected nodes  ( Delete )">Delete</button>
+      <button class="sel-clear" onclick="clearSelection()" title="Deselect  ( Esc )">Clear</button>
+    </div>
   </div>
   <div class="output-panel">
     <div class="panel-head">Results</div>

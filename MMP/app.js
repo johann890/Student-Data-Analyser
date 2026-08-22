@@ -458,6 +458,224 @@ var SHAPE = {
   output:  { w:106, h:66 }
 };
 
+/* ============================================================================
+   VIEW — WORLD COORDINATES, ZOOM AND PAN
+   ============================================================================
+   Node x/y were previously viewport pixels: a node's position meant "this many
+   pixels from the top-left of the visible canvas", so the reachable area was
+   whatever the window happened to be, and a node dragged to the edge of a small
+   window was at a different logical place than the same drag in a large one.
+
+   They are now world coordinates in a fixed logical area, and the view is a
+   separate concern: a scale plus a translation applied to one wrapper element.
+   The model never knows what is on screen. That is what makes zoom possible
+   without touching the graph, and it means a saved query means the same thing
+   on any display — so the file format is untouched by this change.
+
+       screen = world * z + pan            (pan is in screen px)
+       world  = (screen - pan) / z
+
+   Every conversion goes through toWorld/toScreen. Reading node positions
+   straight off clientX again is the one way to reintroduce the bug this
+   replaces, because it silently works at 100% and only skews at other zooms. */
+
+var WORLD_W = 5000, WORLD_H = 3500;
+var MIN_ZOOM = 0.3, MAX_ZOOM = 2;
+var ZOOM_STEP = 1.2;
+
+var view = { z: 1, x: 0, y: 0 };
+
+function canvasBox() { return document.getElementById('canvas').getBoundingClientRect(); }
+
+function toWorld(clientX, clientY) {
+  var r = canvasBox();
+  return { x: (clientX - r.left - view.x) / view.z, y: (clientY - r.top - view.y) / view.z };
+}
+function toScreen(wx, wy) {
+  return { x: wx * view.z + view.x, y: wy * view.z + view.y };
+}
+function viewCentreWorld() {
+  var r = canvasBox();
+  return toWorld(r.left + r.width / 2, r.top + r.height / 2);
+}
+
+/* Pan is clamped so the world can never be dragged off screen entirely. When
+   the world is smaller than the viewport — which is what zooming out far enough
+   produces — there is no valid pan, so it is centred instead. Without this,
+   zooming out leaves the graph pinned to a corner against dead space. */
+function clampPan() {
+  var r = canvasBox();
+  var sw = WORLD_W * view.z, sh = WORLD_H * view.z;
+  view.x = sw <= r.width  ? (r.width  - sw) / 2 : Math.min(0, Math.max(r.width  - sw, view.x));
+  view.y = sh <= r.height ? (r.height - sh) / 2 : Math.min(0, Math.max(r.height - sh, view.y));
+}
+
+function applyView() {
+  var vp = document.getElementById('viewport');
+  if (vp) {
+    vp.style.width  = WORLD_W + 'px';
+    vp.style.height = WORLD_H + 'px';
+    vp.style.transform = 'translate(' + view.x + 'px,' + view.y + 'px) scale(' + view.z + ')';
+  }
+  var lbl = document.getElementById('zoomLevel');
+  if (lbl) lbl.textContent = Math.round(view.z * 100) + '%';
+}
+
+/* Zoom about a fixed point: the world position under the cursor stays under the
+   cursor. Anchoring to the canvas centre instead — the naive version — walks
+   the graph away from wherever the user was looking, which is why wheel zoom
+   passes the pointer through. */
+function setZoom(z, clientX, clientY) {
+  var r = canvasBox();
+  if (clientX === undefined) { clientX = r.left + r.width / 2; clientY = r.top + r.height / 2; }
+  var anchor = toWorld(clientX, clientY);
+  view.z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
+  view.x = (clientX - r.left) - anchor.x * view.z;
+  view.y = (clientY - r.top)  - anchor.y * view.z;
+  clampPan();
+  applyView();
+  repositionPreview();
+}
+
+function zoomIn()    { setZoom(view.z * ZOOM_STEP); }
+function zoomOut()   { setZoom(view.z / ZOOM_STEP); }
+function zoomReset() { setZoom(1); }
+
+/* Open on the middle of the world rather than its top-left corner. Not
+   cosmetic: pan is clamped so the world can never show dead space around it, and
+   at a corner two of those clamps are always active — so zooming out drags the
+   graph diagonally into the corner instead of pulling away from the pointer,
+   which reads as the canvas fighting back. From the middle there is world on
+   every side and zoom is symmetric until an edge is genuinely approached. */
+function centreView() {
+  var r = canvasBox();
+  view.x = r.width  / 2 - (WORLD_W / 2) * view.z;
+  view.y = r.height / 2 - (WORLD_H / 2) * view.z;
+  clampPan();
+  applyView();
+}
+
+/* Measured, not assumed: a node's height depends on its config panel, which
+   depends on the schema reaching it. SHAPE only describes the head. */
+function nodeBox(node) {
+  var el = nodeEls[node.id];
+  // offsetHeight is a layout value and ignores ancestor transforms, so this is
+  // a world-space height at any zoom.
+  var h = el ? el.offsetHeight : SHAPE[node.type].h;
+  return { x: node.x, y: node.y, w: NODE_W, h: h };
+}
+
+function graphBounds() {
+  if (!nodes.length) return null;
+  var b = { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity };
+  nodes.forEach(function(n) {
+    var r = nodeBox(n);
+    b.x1 = Math.min(b.x1, r.x);       b.y1 = Math.min(b.y1, r.y);
+    b.x2 = Math.max(b.x2, r.x + r.w); b.y2 = Math.max(b.y2, r.y + r.h);
+  });
+  return b;
+}
+
+/* Fit caps at 100%: scaling a two-node graph up to fill the window would make
+   the config text enormous and tell the user nothing. Fit is for seeing
+   everything, not for filling space. */
+function zoomToFit() {
+  var b = graphBounds();
+  if (!b) { setZoom(1); return; }
+  var r = canvasBox(), pad = 70;
+  var bw = Math.max(1, b.x2 - b.x1), bh = Math.max(1, b.y2 - b.y1);
+  var z = Math.min((r.width - pad * 2) / bw, (r.height - pad * 2) / bh, 1);
+  view.z = Math.max(MIN_ZOOM, z);
+  view.x = (r.width  - bw * view.z) / 2 - b.x1 * view.z;
+  view.y = (r.height - bh * view.z) / 2 - b.y1 * view.z;
+  clampPan();
+  applyView();
+}
+
+/* ============================================================================
+   SELECTION
+   ============================================================================
+   Selection is transient view state keyed by node id, deliberately outside the
+   graph model: it is not serialised, and it survives a render() because ids
+   survive a render(). Changing it must not rebuild the canvas — a rebuild
+   destroys any config control the user is mid-edit in — so every selection
+   change goes through syncSelectionUI(), which only toggles classes. */
+
+var selection = [];
+
+function isSelected(id) { return selection.indexOf(id) !== -1; }
+
+function setSelection(ids) {
+  // Filter against live nodes so a deleted id can never linger and resurrect a
+  // selection ring on a recycled element.
+  selection = ids.filter(function(id, i) {
+    return ids.indexOf(id) === i && findNode(id);
+  });
+  syncSelectionUI();
+}
+function selectOnly(id)     { setSelection([id]); }
+function clearSelection()   { setSelection([]); }
+function selectAll()        { setSelection(nodes.map(function(n){ return n.id; })); }
+function addToSelection(id) { if (!isSelected(id)) setSelection(selection.concat([id])); }
+function toggleSelected(id) {
+  setSelection(isSelected(id)
+    ? selection.filter(function(x){ return x !== id; })
+    : selection.concat([id]));
+}
+
+function syncSelectionUI() {
+  nodes.forEach(function(n) {
+    var el = nodeEls[n.id];
+    if (!el) return;
+    if (isSelected(n.id)) el.classList.add('selected');
+    else el.classList.remove('selected');
+  });
+
+  var bar = document.getElementById('selBar');
+  var cnt = document.getElementById('selCount');
+  if (!bar || !cnt) return;
+  if (selection.length) {
+    cnt.textContent = selection.length + ' node' + (selection.length === 1 ? '' : 's') + ' selected';
+    bar.classList.add('show');
+  } else {
+    bar.classList.remove('show');
+  }
+}
+
+/* Every node reachable from a start node, following edges in either direction —
+   the connected component, which is what "this branch" means to someone looking
+   at the canvas. Direction is ignored on purpose: a Compare node's two input
+   chains are one visual branch even though no edge runs between them. */
+function connectedComponent(startId) {
+  var seen = [startId], queue = [startId];
+  while (queue.length) {
+    var id = queue.shift();
+    connections.forEach(function(c) {
+      var other = c.from === id ? c.to : (c.to === id ? c.from : null);
+      if (other !== null && seen.indexOf(other) === -1) { seen.push(other); queue.push(other); }
+    });
+  }
+  return seen;
+}
+
+function selectBranch(id) { setSelection(connectedComponent(id)); }
+
+/* Bulk delete. Connections are dropped when either end goes, which is the same
+   rule removeNode() has always used — applied once over the whole set rather
+   than once per node, so a graph is never briefly inconsistent mid-delete. */
+function deleteSelection() {
+  if (!selection.length) return;
+  var doomed = selection.slice();
+  nodes = nodes.filter(function(n){ return doomed.indexOf(n.id) === -1; });
+  connections = connections.filter(function(c) {
+    return doomed.indexOf(c.from) === -1 && doomed.indexOf(c.to) === -1;
+  });
+  selection = [];
+  cancelPreviewTimer(); hidePreview();
+  markStale();
+  render();
+}
+
 /* Take sits anywhere a row stream does: it neither reads nor writes column
    structure, so anything that could feed a Filter can feed a Take and vice
    versa. Compare stays output-only — it is superseded, and widening its
@@ -590,17 +808,52 @@ function inputsOf(nodeId) {
 }
 
 /* ADD / REMOVE */
+/* Placement is relative to what the user is looking at, not to the world. Random
+   scatter across a 5000px world would drop most new nodes off screen; scatter
+   across the viewport would put them wherever the window edge happens to be.
+   The middle of the current view is the only spot that is always visible and
+   always means the same thing.
+
+   The step-out loop keeps a run of clicks from stacking nodes on one pixel: each
+   new node takes the first free slot on a widening diagonal. Cheap because it
+   only ever inspects nodes already placed, and n is small by construction. */
+var PLACE_STEP = 46;
+var PLACE_CLEAR = 34;
+
+function freeSpotNear(cx, cy) {
+  for (var ring = 0; ring < 40; ring++) {
+    var x = cx + ring * PLACE_STEP, y = cy + ring * PLACE_STEP;
+    x = Math.max(10, Math.min(WORLD_W - NODE_W - 10, x));
+    y = Math.max(10, Math.min(WORLD_H - 160, y));
+    var clash = nodes.some(function(n) {
+      return Math.abs(n.x - x) < PLACE_CLEAR && Math.abs(n.y - y) < PLACE_CLEAR;
+    });
+    if (!clash) return { x: Math.round(x), y: Math.round(y) };
+  }
+  return { x: Math.round(cx), y: Math.round(cy) };
+}
+
 function addNode(type) {
-  var cv = document.getElementById('canvas');
-  var x = 60 + Math.random() * Math.max(80, cv.clientWidth - 260);
-  var y = 60 + Math.random() * Math.max(80, cv.clientHeight - 220);
+  var c = viewCentreWorld();
+  var spot = freeSpotNear(c.x - NODE_W / 2, c.y - SHAPE[type].h / 2);
   var color = EDGE_PALETTE[edgeColorIndex++ % EDGE_PALETTE.length];
+  var id = uid();
   nodes.push({
-    id: uid(), type: type,
-    x: Math.round(x), y: Math.round(y),
+    id: id, type: type,
+    x: spot.x, y: spot.y,
     color: color,
     cfg: defaultCfg(type)
   });
+  /* The new node is deliberately NOT selected. Selection means "the thing I am
+     about to act on", and arriving from the toolbar is not that — the user
+     picked a node type, not a target. Selecting happens by clicking or dragging
+     a node, which is the point at which they have actually pointed at one.
+
+     The existing selection is cleared, though. Leaving it would mean that after
+     selecting a few nodes and then adding one, Backspace deletes the old
+     selection rather than the node just added — the opposite of what the last
+     action suggests, and unrecoverable without undo. */
+  selection = [];
   markStale();
   render();
 }
@@ -608,6 +861,7 @@ function addNode(type) {
 function removeNode(id) {
   nodes = nodes.filter(function(n){ return n.id !== id; });
   connections = connections.filter(function(c){ return c.from !== id && c.to !== id; });
+  selection = selection.filter(function(x){ return x !== id; });
   markStale();
   render();
 }
@@ -615,9 +869,25 @@ function removeNode(id) {
 function clearAll() {
   nodes = []; connections = []; edgeColorIndex = 0;
   exportData = {}; resultsFresh = false;
+  selection = [];
   cancelPreviewTimer(); hidePreview();
+  view.z = 1; centreView();
   render();
   setOutput('<div class="placeholder">Run a query to see results</div>');
+}
+
+/* Every one of these buttons calls render(), which destroys the button that was
+   just clicked along with the rest of the panel. Focus then falls to <body>,
+   leaving the user looking at a panel the keyboard no longer considers active —
+   the state that made a stray Backspace destructive. Putting focus back on the
+   rebuilt panel keeps the two in agreement, and gives keyboard users somewhere
+   sensible to tab on from rather than the top of the document. */
+function focusCfg(nodeId, keyPrefix) {
+  var el = nodeEls[nodeId];
+  if (!el) return;
+  var ctl = keyPrefix ? el.querySelector('[data-key^="' + keyPrefix + '"]') : null;
+  if (!ctl) ctl = el.querySelector('[data-node]');
+  if (ctl && ctl.focus) ctl.focus();
 }
 
 function addCriterion(nodeId) {
@@ -626,6 +896,7 @@ function addCriterion(nodeId) {
   n.cfg.criteria.push(newCriterion());
   markStale();
   render();
+  focusCfg(nodeId, 'crit.' + (n.cfg.criteria.length - 1) + '.');
 }
 function removeCriterion(nodeId, idx) {
   var n = findNode(nodeId);
@@ -633,6 +904,7 @@ function removeCriterion(nodeId, idx) {
   n.cfg.criteria.splice(idx, 1);
   markStale();
   render();
+  focusCfg(nodeId);
 }
 
 /* Sort keys use the same add/remove shape as filter criteria — one list, the
@@ -645,6 +917,7 @@ function addSortKey(nodeId) {
   n.cfg.keys.push(newSortKey());
   markStale();
   render();
+  focusCfg(nodeId, 'sort.' + (n.cfg.keys.length - 1) + '.');
 }
 function removeSortKey(nodeId, idx) {
   var n = findNode(nodeId);
@@ -653,6 +926,7 @@ function removeSortKey(nodeId, idx) {
   if (!n.cfg.keys.length) n.cfg.keys.push(newSortKey());
   markStale();
   render();
+  focusCfg(nodeId);
 }
 
 /* ============================================================================
@@ -1742,54 +2016,66 @@ function configHTML(node, schemas) {
 
 function shapeHTML(node) {
   var removeBtn = '<button class="node-remove" onclick="removeNode(' + node.id + ')">x</button>';
-  if (node.type === 'source') return '<div class="shape-source">' + removeBtn + 'Source</div>';
-  if (node.type === 'filter') return '<div class="shape-filter">' + removeBtn + 'Filter</div>';
+  if (node.type === 'source') return '<div class="node-shape shape-source">' + removeBtn + 'Source</div>';
+  if (node.type === 'filter') return '<div class="node-shape shape-filter">' + removeBtn + 'Filter</div>';
   if (node.type === 'compare') {
     var glyph = '<span class="cmp-glyph"><i style="width:26px"></i><i style="width:16px"></i><i style="width:21px"></i></span>';
-    return '<div class="shape-compare">' + removeBtn + glyph + 'Compare</div>';
+    return '<div class="node-shape shape-compare">' + removeBtn + glyph + 'Compare</div>';
   }
   if (node.type === 'sort') {
     // Bars of increasing length: the glyph says "ordered", and reads as
     // distinct from Take's equal-length bars with a cut through them.
     var sbars = '<span class="sort-glyph"><i style="width:9px"></i>' +
       '<i style="width:16px"></i><i style="width:23px"></i></span>';
-    return '<div class="shape-sort">' + removeBtn + sbars + 'Sort</div>';
+    return '<div class="node-shape shape-sort">' + removeBtn + sbars + 'Sort</div>';
   }
   if (node.type === 'take') {
     // Three kept bars above the cut, one dropped below it — the glyph says
     // "first few, rest discarded" without repeating the word on the label.
     var bars = '<span class="take-glyph">' +
       '<i></i><i></i><i></i><b></b><i class="cut"></i></span>';
-    return '<div class="shape-take">' + removeBtn + bars + 'Take</div>';
+    return '<div class="node-shape shape-take">' + removeBtn + bars + 'Take</div>';
   }
-  if (node.type === 'output') return '<div class="shape-output">' + removeBtn + 'Output</div>';
+  if (node.type === 'output') return '<div class="node-shape shape-output">' + removeBtn + 'Output</div>';
   return '';
 }
 
 function render() {
-  var cv = document.getElementById('canvas');
-  var old = cv.querySelectorAll('.node');
+  var vp = document.getElementById('viewport');
+  var old = vp.querySelectorAll('.node');
   for (var i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
   nodeEls = {};
   document.getElementById('hint').style.display = nodes.length === 0 ? 'block' : 'none';
+
+  // A node deleted while selected must not leave its id behind, or the count in
+  // the selection bar drifts away from what is actually ringed on screen.
+  selection = selection.filter(function(id){ return findNode(id); });
 
   var schemas = computeSchemas();
 
   nodes.forEach(function(node) {
     var el = document.createElement('div');
-    el.className = 'node';
+    el.className = 'node' + (isSelected(node.id) ? ' selected' : '');
     el.style.left = node.x + 'px';
     el.style.top  = node.y + 'px';
     el.innerHTML = shapeHTML(node) + configHTML(node, schemas);
-    cv.appendChild(el);
+    vp.appendChild(el);
     nodeEls[node.id] = el;
 
-    var shape = el.querySelector('.shape-source, .shape-filter, .shape-compare, .shape-sort, .shape-take, .shape-output');
+    var shape = el.querySelector('.node-shape');
     if (shape) {
       shape.addEventListener('mousedown', function(e){ startDrag(e, node.id); });
+      // Double-click selects the whole connected branch. The cheapest route to
+      // "delete this entire arm of the query" without dragging a box around it,
+      // which is awkward when branches interleave on screen.
+      shape.addEventListener('dblclick', function(e) {
+        e.preventDefault(); e.stopPropagation();
+        selectBranch(node.id);
+      });
     }
   });
 
+  syncSelectionUI();
   drawArrows();
 }
 
@@ -1817,6 +2103,11 @@ function onConfigInput(e) {
     // render() replaces the element that was just used, so the control loses
     // focus mid-interaction. Put it back on its replacement.
     var again = document.querySelector('[data-node="' + nid + '"][data-key="' + key.replace(/"/g, '\\"') + '"]');
+    // A control can also disappear rather than be replaced — one select's value
+    // decides which others the panel offers. Falling back to the same node's
+    // panel keeps focus with the user's work instead of dropping it on <body>,
+    // where the next Backspace would be read as a canvas shortcut.
+    if (!again) again = document.querySelector('[data-node="' + nid + '"]');
     if (again && again.focus) again.focus();
   }
 }
@@ -1875,14 +2166,47 @@ function drawArrow(parent, p0, tip, color, opacity, isGhost) {
    not. */
 var ghostTarget = null;
 
+// Below this many screen pixels a press-and-release is a click, not a drag. It
+// is measured in screen space on purpose: the gesture is about the user's hand,
+// not about how much world the hand covered, and a world-space threshold would
+// demand pixel-perfect stillness when zoomed out.
+var CLICK_SLOP = 4;
+
 function startDrag(e, nodeId) {
   var tag = e.target.tagName;
-  if (tag === 'SELECT' || tag === 'INPUT' || tag === 'BUTTON') return;
+  if (tag === 'SELECT' || tag === 'INPUT' || tag === 'BUTTON' || tag === 'OPTION') return;
+  if (e.button !== 0) return;          // middle-drag over a node is a pan, handled upstream
+  if (spaceDown) return;               // ditto space-drag
   e.preventDefault();
   var node = findNode(nodeId);
   if (!node) return;
-  var rect = document.getElementById('canvas').getBoundingClientRect();
-  drag = { node:node, ox: e.clientX - rect.left - node.x, oy: e.clientY - rect.top - node.y };
+
+  /* Selection is resolved on mousedown rather than on click, because the answer
+     decides what the drag about to happen will move. Three cases:
+       additive click  — toggle this node, and if that deselected it, no drag
+       unselected node — becomes the whole selection
+       selected node   — selection is left alone, so a group can be dragged
+                         without the press collapsing it to one node first    */
+  if (e.shiftKey || e.metaKey || e.ctrlKey) {
+    toggleSelected(nodeId);
+    if (!isSelected(nodeId)) return;
+  } else if (!isSelected(nodeId)) {
+    selectOnly(nodeId);
+  }
+
+  var w = toWorld(e.clientX, e.clientY);
+  var moving = isSelected(nodeId) && selection.length > 1
+    ? selection.map(findNode).filter(Boolean)
+    : [node];
+
+  drag = {
+    node: node,
+    // Offsets captured once, in world space, so the grab point stays under the
+    // cursor even if the zoom changes mid-drag.
+    group: moving.map(function(n){ return { node:n, dx: w.x - n.x, dy: w.y - n.y }; }),
+    startX: e.clientX, startY: e.clientY,
+    moved: false
+  };
   ghostTarget = null;
   cancelPreviewTimer(); hidePreview();
   document.addEventListener('mousemove', onMove);
@@ -1891,30 +2215,48 @@ function startDrag(e, nodeId) {
 
 function onMove(e) {
   if (!drag) return;
-  var rect = document.getElementById('canvas').getBoundingClientRect();
-  var s = SHAPE[drag.node.type];
-  drag.node.x = Math.max(0, Math.min(rect.width - NODE_W, e.clientX - rect.left - drag.ox));
-  drag.node.y = Math.max(0, Math.min(rect.height - s.h, e.clientY - rect.top - drag.oy));
+  if (!drag.moved &&
+      (Math.abs(e.clientX - drag.startX) > CLICK_SLOP ||
+       Math.abs(e.clientY - drag.startY) > CLICK_SLOP)) {
+    drag.moved = true;
+  }
+  if (!drag.moved) return;
 
-  // Closest node that could form a valid connection, measured port to port
-  var dn = drag.node, best = null, bestDist = SNAP_DIST;
-  nodes.forEach(function(n) {
-    if (n.id === dn.id) return;
-    var dir = resolveDirection(dn, n);
-    if (!dir) return;
-    var dx = dir.tip.x - dir.p0.x, dy = dir.tip.y - dir.p0.y;
-    var dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < bestDist) { bestDist = dist; best = n; }
+  var w = toWorld(e.clientX, e.clientY);
+  drag.group.forEach(function(g) {
+    var s = SHAPE[g.node.type];
+    // Clamped to the world, not the viewport: the reachable area is a property
+    // of the document, not of the window it happens to be shown in.
+    g.node.x = Math.max(0, Math.min(WORLD_W - NODE_W, w.x - g.dx));
+    g.node.y = Math.max(0, Math.min(WORLD_H - s.h,    w.y - g.dy));
+    var el = nodeEls[g.node.id];
+    if (el) { el.style.left = g.node.x + 'px'; el.style.top = g.node.y + 'px'; }
   });
-  ghostTarget = best ? best.id : null;
 
-  var el = nodeEls[dn.id];
-  if (el) { el.style.left = dn.x + 'px'; el.style.top = dn.y + 'px'; }
+  /* Snap-to-connect stays a single-node gesture. With several nodes moving there
+     is no defensible answer to which one the ghost edge should come from, and
+     guessing would wire up a connection the user never aimed at — the one kind
+     of mistake that is tedious to undo, since it has to be found first. */
+  ghostTarget = null;
+  if (drag.group.length === 1) {
+    var dn = drag.node, best = null, bestDist = SNAP_DIST;
+    nodes.forEach(function(n) {
+      if (n.id === dn.id) return;
+      var dir = resolveDirection(dn, n);
+      if (!dir) return;
+      var dx = dir.tip.x - dir.p0.x, dy = dir.tip.y - dir.p0.y;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < bestDist) { bestDist = dist; best = n; }
+    });
+    ghostTarget = best ? best.id : null;
+  }
+
   drawArrows();
 }
 
 function onUp() {
-  if (drag && ghostTarget !== null) {
+  var wired = false;
+  if (drag && drag.moved && ghostTarget !== null) {
     var gt = findNode(ghostTarget);
     var dir = gt ? resolveDirection(drag.node, gt) : null;
     if (dir) {
@@ -1924,14 +2266,23 @@ function onUp() {
       if (!exists) {
         connections.push({ from: dir.from.id, to: dir.to.id, color: pickEdgeColor(dir.from) });
         markStale();
+        wired = true;
       }
     }
   }
+  var moved = drag && drag.moved;
   drag = null;
   ghostTarget = null;
   document.removeEventListener('mousemove', onMove);
   document.removeEventListener('mouseup', onUp);
-  render(); // panels can change once wiring changes — full rebuild is correct here
+
+  /* Only a wiring change can alter what a config panel offers, so only a wiring
+     change earns a full rebuild. A plain move — and a plain click, which is now
+     most mousedowns since clicking selects — redraws the arrows and stops there.
+     Rebuilding on every click would drop focus from whatever control the user
+     had open and re-run schema propagation for nothing. */
+  if (wired) render();
+  else if (moved) drawArrows();
 }
 
 // First outgoing edge inherits the upstream colour; later ones take a distinct
@@ -1964,7 +2315,12 @@ function buildDeleteBadge(conn, pathEl) {
 
   var g = svgEl('g');
   g.setAttribute('class', 'conn-delete');
-  g.setAttribute('transform', 'translate(' + mid.x + ',' + mid.y + ')');
+  /* Counter-scaled so the badge stays the same size on screen at any zoom. It
+     lives in the scaled layer because it has to sit on the line, but a target
+     that shrinks with the view would be at its least clickable exactly when
+     there are most connections to tidy up. */
+  g.setAttribute('transform',
+    'translate(' + mid.x + ',' + mid.y + ') scale(' + (1 / view.z) + ')');
 
   var circle = svgEl('circle');
   circle.setAttribute('r', '9');
@@ -2017,7 +2373,10 @@ function ensurePreviewEl() {
   document.getElementById('canvas').appendChild(previewEl);
   return previewEl;
 }
-function hidePreview() { if (previewEl) previewEl.style.display = 'none'; }
+function hidePreview() {
+  if (previewEl) previewEl.style.display = 'none';
+  previewAnchor = null;
+}
 
 // No saveState() call is needed any more: the model is already current, because
 // every keystroke wrote straight into it.
@@ -2092,21 +2451,50 @@ function showPreview(conn, pathEl) {
         '<div class="ep-foot">showing ' + Math.min(PREVIEW_ROWS, n) + ' of ' + n + ', in table order</div>';
   }
   el.innerHTML = body;
-
-  var mid = pathEl._mid || { x:0, y:0 };
+  previewAnchor = pathEl._mid || { x:0, y:0 };
   el.style.display = 'block';
+  placePreview();
+}
 
-  var cw = document.getElementById('canvas').clientWidth;
-  var pw = el.offsetWidth, ph = el.offsetHeight;
+/* The preview is a sibling of the scaled layer, not a child of it, so its text
+   stays at a readable size when the canvas is zoomed out — which is exactly when
+   a row count is most useful and the nodes themselves are least readable. The
+   cost is that its anchor arrives in world coordinates and has to be projected
+   here. Kept as its own function so a zoom mid-hover can re-place the panel
+   rather than leaving it stranded where the edge used to be. */
+var previewAnchor = null;
+
+function placePreview() {
+  if (!previewEl || !previewAnchor || previewEl.style.display === 'none') return;
+  var mid = toScreen(previewAnchor.x, previewAnchor.y);
+  var cv = document.getElementById('canvas');
+  var cw = cv.clientWidth, ch = cv.clientHeight;
+  var pw = previewEl.offsetWidth, ph = previewEl.offsetHeight;
   var GAP = 26; // clears the ~9px badge radius plus breathing room
 
   var left = Math.max(6, Math.min(mid.x - pw / 2, cw - pw - 6));
   var top = mid.y - ph - GAP;
-  el.classList.remove('ep-below');
-  if (top < 6) { top = mid.y + GAP; el.classList.add('ep-below'); }
-  el.style.left = Math.round(left) + 'px';
-  el.style.top = Math.round(top) + 'px';
+  previewEl.classList.remove('ep-below');
+  if (top < 6) { top = mid.y + GAP; previewEl.classList.add('ep-below'); }
+  // Flipping below can push it off the bottom on a short canvas; clamp last.
+  top = Math.min(top, ch - ph - 6);
+  previewEl.style.left = Math.round(left) + 'px';
+  previewEl.style.top = Math.round(top) + 'px';
 }
+
+function repositionPreview() { placePreview(); }
+
+/* True while any canvas gesture is in flight — dragging a node, sweeping a
+   marquee, or panning.
+
+   Connections carry two hover affordances: a delete badge and the data-preview
+   panel. Both are helpful when the pointer is resting on a line and actively
+   unhelpful while it is travelling across one. Sweeping a marquee used to light
+   up every arrow it crossed and pop a preview over the box being drawn, which
+   read as the selection picking up the arrows themselves. It never did — only
+   node ids ever enter the selection — but the feedback said otherwise, and
+   feedback is what the user has to go on. */
+function gestureActive() { return !!(drag || marquee || panning); }
 
 function drawArrows() {
   var svg = document.getElementById('svg');
@@ -2122,13 +2510,16 @@ function drawArrows() {
     svg.appendChild(g);
     var pathEl = drawArrow(g, p0, tip, conn.color, '0.9', false);
 
-    if (drag) return; // no hover affordances mid-drag
+    if (gestureActive()) return; // no hover affordances mid-gesture
 
     // Invisible fat stroke so the 2px line is comfortably hoverable, extended to
     // the true tip so the arrowhead counts as part of the line.
     var hit = svgEl('path');
     hit.setAttribute('d', pathEl.getAttribute('d') + ' L ' + tip.x + ' ' + tip.y);
     hit.setAttribute('class', 'conn-hit');
+    // Widened as the view shrinks, so the grab band stays ~20 screen px. The CSS
+    // value is the 100% case; this overrides it per zoom level.
+    hit.setAttribute('stroke-width', 20 / view.z);
     g.appendChild(hit);
 
     var badge = null, hovered = false;
@@ -2148,6 +2539,10 @@ function drawArrows() {
     // mousemove rather than mouseenter, so hover still engages when the SVG is
     // rebuilt beneath a stationary cursor
     hit.addEventListener('mousemove', function() {
+      // Second line of defence. The hit strokes are not built at all while a
+      // gesture is running, but one begun *before* the gesture started is still
+      // in the DOM and would otherwise light up as the marquee swept past it.
+      if (gestureActive()) return;
       setHover(true);
       armPreviewTimer(conn, pathEl);
     });
@@ -2735,9 +3130,16 @@ function applyGraph(g) {
   edgeColorIndex = nodes.length;
   exportData = {};
   resultsFresh = false;
+  selection = [];
   cancelPreviewTimer();
   hidePreview();
   render();
+  /* Fit after loading rather than restoring a saved zoom. A file carries the
+     graph, not the view — which is why the format did not have to change for
+     any of this — and a query written on one screen should open framed for
+     whatever screen opens it. render() has to run first: fitting measures node
+     heights off the DOM, and those do not exist until the nodes do. */
+  zoomToFit();
 }
 
 function loadGraphFromText(raw, btn) {
@@ -2795,10 +3197,192 @@ function addProcNode(type) {
   addNode(type);
 }
 
+/* ============================================================================
+   CANVAS GESTURES — MARQUEE SELECT AND PAN
+   ============================================================================
+   Both start with a press on empty canvas, so they are told apart by modifier
+   rather than by target: plain drag selects, space or middle-button drags the
+   view. That ordering is deliberate — selection is the frequent action and gets
+   the unmodified gesture; panning is occasional and is mostly unnecessary at
+   all once the graph has been zoomed to fit. */
+
+var spaceDown = false;
+var marquee = null;   // { x0,y0 world | sx0,sy0 screen | additive | base }
+var panning = null;   // { sx, sy, x0, y0 }
+
+/* A press only starts a canvas gesture if it landed on canvas and nothing else.
+   Connection hit-strokes are SVG children with their own handlers, and node
+   elements re-enable pointer events on their painted parts, so anything that is
+   not one of these three elements belongs to something that wants the event. */
+function isCanvasBackground(target) {
+  if (!target) return false;
+  return target.id === 'canvas' || target.id === 'viewport' ||
+         target.id === 'svg'    || target.id === 'hint';
+}
+
+function marqueeEl() { return document.getElementById('marquee'); }
+
+function startPan(e) {
+  panning = { sx: e.clientX, sy: e.clientY, x0: view.x, y0: view.y };
+  document.getElementById('canvas').classList.add('panning');
+  cancelPreviewTimer(); hidePreview();
+  endConnHover();
+}
+
+/* Drop any connection hover and rebuild the arrows without their hit strokes.
+   Called as a gesture begins, so a badge left under the cursor from a moment ago
+   does not stay lit for the duration of the drag. drawArrows() sees
+   gestureActive() and skips the interactive parts entirely. */
+function endConnHover() {
+  hoverConn = null;
+  cancelPreviewTimer();
+  hidePreview();
+  drawArrows();
+}
+
+function startMarquee(e) {
+  var r = canvasBox();
+  var w = toWorld(e.clientX, e.clientY);
+  marquee = {
+    x0: w.x, y0: w.y,
+    sx0: e.clientX - r.left, sy0: e.clientY - r.top,
+    // Additive drags extend what is already selected, so several scattered
+    // clusters can be gathered up with repeated boxes instead of one huge box
+    // that inevitably catches something in between.
+    additive: e.shiftKey || e.metaKey || e.ctrlKey,
+    base: selection.slice(),
+    moved: false,
+    /* Node geometry is measured once, here, rather than per mousemove. Heights
+       come from offsetHeight, and reading that forces the browser to flush
+       layout; doing it for every node on every pointer event is the kind of
+       cost that only shows up on the large graphs this feature exists to
+       manage. Nothing can move during a marquee, so one snapshot is sound. */
+    boxes: nodes.map(function(n) {
+      var r2 = nodeBox(n);
+      return { id:n.id, x:r2.x, y:r2.y, w:r2.w, h:r2.h };
+    })
+  };
+  document.getElementById('canvas').classList.add('selecting');
+  cancelPreviewTimer(); hidePreview();
+  endConnHover();
+}
+
+function onCanvasMouseDown(e) {
+  /* Pan is a view gesture, not a graph one, so it is allowed to start anywhere —
+     including on top of a node. startDrag() bows out for these same two cases,
+     and the event then bubbles here. */
+  if (e.button === 1 || (e.button === 0 && spaceDown)) { e.preventDefault(); startPan(e); return; }
+  if (!isCanvasBackground(e.target)) return;
+  if (e.button !== 0) return;
+  e.preventDefault();
+  startMarquee(e);
+}
+
+function onCanvasMouseMove(e) {
+  if (panning) {
+    view.x = panning.x0 + (e.clientX - panning.sx);
+    view.y = panning.y0 + (e.clientY - panning.sy);
+    clampPan();
+    applyView();
+    return;
+  }
+  if (!marquee) return;
+
+  var r = canvasBox();
+  var sx = e.clientX - r.left, sy = e.clientY - r.top;
+  if (!marquee.moved &&
+      (Math.abs(sx - marquee.sx0) > CLICK_SLOP || Math.abs(sy - marquee.sy0) > CLICK_SLOP)) {
+    marquee.moved = true;
+  }
+  if (!marquee.moved) return;
+
+  var box = marqueeEl();
+  if (box) {
+    box.style.display = 'block';
+    box.style.left   = Math.min(marquee.sx0, sx) + 'px';
+    box.style.top    = Math.min(marquee.sy0, sy) + 'px';
+    box.style.width  = Math.abs(sx - marquee.sx0) + 'px';
+    box.style.height = Math.abs(sy - marquee.sy0) + 'px';
+  }
+
+  // Live selection while dragging: the ring appears as the box sweeps over a
+  // node, so the user can correct the box before releasing rather than
+  // discovering afterwards that it caught one node too many.
+  var w = toWorld(e.clientX, e.clientY);
+  var hit = nodesInWorldRect(marquee.x0, marquee.y0, w.x, w.y, marquee.boxes);
+  setSelection(marquee.additive ? marquee.base.concat(hit) : hit);
+}
+
+/* Overlap, not containment: a box has to fully enclose a node to select it under
+   containment rules, which is unusable here because node heights vary with their
+   config panels and the tall ones are the hard ones to enclose. Touching is
+   enough — the same rule the marquee in most node editors uses.
+
+   `boxes` is the snapshot taken when the drag began. Omitting it measures live,
+   which is what a caller outside a drag wants. */
+function nodesInWorldRect(ax, ay, bx, by, boxes) {
+  var x1 = Math.min(ax, bx), x2 = Math.max(ax, bx);
+  var y1 = Math.min(ay, by), y2 = Math.max(ay, by);
+  var src = boxes || nodes.map(function(n) {
+    var r = nodeBox(n);
+    return { id:n.id, x:r.x, y:r.y, w:r.w, h:r.h };
+  });
+  return src.filter(function(r) {
+    return r.x < x2 && r.x + r.w > x1 && r.y < y2 && r.y + r.h > y1;
+  }).map(function(r){ return r.id; });
+}
+
+function onCanvasMouseUp() {
+  if (panning) {
+    panning = null;
+    document.getElementById('canvas').classList.remove('panning');
+    drawArrows();   // gesture over: the hit strokes and badges come back
+    return;
+  }
+  if (!marquee) return;
+  var box = marqueeEl();
+  if (box) box.style.display = 'none';
+  document.getElementById('canvas').classList.remove('selecting');
+  // A press on empty canvas that never became a drag is a click-away, and the
+  // ordinary meaning of that is "deselect".
+  if (!marquee.moved && !marquee.additive) clearSelection();
+  marquee = null;
+  drawArrows();
+}
+
+/* Wheel zooms about the pointer. There is nothing scrollable on the canvas, so
+   the wheel has no competing meaning here, and claiming it makes zoom reachable
+   without first finding the toolbar. deltaY is normalised across deltaMode —
+   Firefox reports lines, not pixels — and then clamped, so one notch of a coarse
+   mouse wheel and one flick of a trackpad land in the same range instead of the
+   former jumping several steps at once. */
+function onCanvasWheel(e) {
+  e.preventDefault();
+  var dy = e.deltaY;
+  if (e.deltaMode === 1) dy *= 16;        // lines -> px
+  else if (e.deltaMode === 2) dy *= 400;  // pages -> px
+  var factor = Math.exp(-dy * 0.0016);
+  factor = Math.max(0.78, Math.min(1.28, factor));
+  setZoom(view.z * factor, e.clientX, e.clientY);
+}
+
+/* A canvas gesture must survive the pointer leaving the canvas — releasing over
+   the results panel mid-marquee should still complete the selection — so move
+   and up are bound to the document, not to the canvas. */
+
 /* WIRING */
 var canvasEl = document.getElementById('canvas');
 canvasEl.addEventListener('change', onConfigInput);
 canvasEl.addEventListener('input', onConfigInput);
+canvasEl.addEventListener('mousedown', onCanvasMouseDown);
+canvasEl.addEventListener('wheel', onCanvasWheel, { passive: false });
+document.addEventListener('mousemove', onCanvasMouseMove);
+document.addEventListener('mouseup', onCanvasMouseUp);
+
+// Panning and marquee use screen-space maths against the canvas box, and zoomed
+// out far enough the world is centred rather than pinned — both need revisiting
+// when the canvas changes size.
+window.addEventListener('resize', function() { clampPan(); applyView(); });
 
 var panelEl = document.getElementById('panelBody');
 if (panelEl) panelEl.addEventListener('input', onExportNameInput);
@@ -2807,8 +3391,113 @@ var loadInput = document.getElementById('loadFile');
 if (loadInput) loadInput.addEventListener('change', onGraphFileChosen);
 
 document.addEventListener('click', closeProcMenu);
+
+/* DESTRUCTIVE SHORTCUTS — THREE GUARDS
+   ---------------------------------------------------------------------------
+   Backspace deletes the selection, and there is no undo, so being wrong here
+   costs the user work they cannot get back. It also cannot simply be dropped in
+   favour of Delete: on a Mac keyboard the key labelled "delete" reports as
+   Backspace, so removing it would leave those users with no shortcut at all.
+
+   One guard is not enough, because the dangerous case is not "the user is typing
+   in a field" — that is the easy case — but "the user believes they are typing
+   in a field while the browser disagrees". render() rebuilds the whole canvas,
+   and any control that triggered it is destroyed in the process; focus then
+   falls back to <body>. The panel still looks active. The next Backspace is read
+   as a canvas shortcut and deletes the node being configured.
+
+     1. isTypingTarget  — the event landed on a control, or anywhere inside a
+                          config or results panel.
+     2. activeElement   — the same test against whatever actually holds focus,
+                          which is not always the event target.
+     3. keyboardContext — where the user last chose to work. Survives focus
+                          being lost to <body>, which is the case the first two
+                          cannot see.                                          */
+
+function isTypingTarget(t) {
+  if (!t || !t.tagName) return false;
+  var tag = t.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || t.isContentEditable) return true;
+  // Anything inside a panel counts, control or not: those are the only places
+  // on screen where a keystroke could plausibly have been meant as text.
+  return !!(t.closest && t.closest('.node-config, .output-panel'));
+}
+
+/* 'canvas' while the user is working on the graph, 'panel' while they are
+   editing a node's configuration or the results panel. Recorded on mousedown in
+   the capture phase, so it is still set for handlers that stop propagation —
+   the connection delete badge does exactly that. */
+var keyboardContext = 'canvas';
+
+document.addEventListener('mousedown', function(e) {
+  var t = e.target;
+  if (!t || !t.closest) return;
+  // The toolbar is deliberately not a panel: adding a node selects it, and
+  // Backspace immediately afterwards to undo a mis-click is a reasonable thing
+  // to want.
+  keyboardContext = t.closest('.node-config, .output-panel') ? 'panel' : 'canvas';
+}, true);
+
+function safeToDelete(e) {
+  return keyboardContext === 'canvas' &&
+         !isTypingTarget(e.target) &&
+         !isTypingTarget(document.activeElement);
+}
+
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') closeProcMenu();
+  if (e.key === 'Escape') {
+    closeProcMenu();
+    clearSelection();
+    return;
+  }
+  if (isTypingTarget(e.target) || isTypingTarget(document.activeElement)) return;
+
+  var mod = e.ctrlKey || e.metaKey;
+
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    // The selection bar's Delete button stays available either way, so a user
+    // whose keystroke is suppressed here is never stuck.
+    if (selection.length && safeToDelete(e)) { e.preventDefault(); deleteSelection(); }
+    return;
+  }
+  if (mod && (e.key === 'a' || e.key === 'A')) { e.preventDefault(); selectAll(); return; }
+
+  if (e.key === ' ' && !spaceDown) {
+    spaceDown = true;
+    document.getElementById('canvas').classList.add('pan-ready');
+    e.preventDefault();  // stop the page treating space as "scroll" or "click the focused button"
+    return;
+  }
+
+  if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomIn(); return; }
+  if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut(); return; }
+  if (e.key === '0' && mod)           { e.preventDefault(); zoomReset(); return; }
+  if (e.key === 'f' || e.key === 'F') { if (!mod) { e.preventDefault(); zoomToFit(); } return; }
+});
+
+document.addEventListener('keyup', function(e) {
+  if (e.key === ' ') {
+    spaceDown = false;
+    document.getElementById('canvas').classList.remove('pan-ready');
+  }
+});
+
+// Held space plus a window switch would otherwise leave the canvas stuck in
+// pan-ready with no keyup ever arriving to clear it.
+window.addEventListener('blur', function() {
+  spaceDown = false;
+  var cv = document.getElementById('canvas');
+  if (cv) { cv.classList.remove('pan-ready'); cv.classList.remove('panning'); }
+  panning = null;
+  // A marquee abandoned by an alt-tab would otherwise leave its rectangle
+  // painted on the canvas with no drag left to clear it.
+  if (marquee) {
+    var box = marqueeEl();
+    if (box) box.style.display = 'none';
+    marquee = null;
+  }
+  if (cv) cv.classList.remove('selecting');
+  drawArrows();
 });
 
 /* GLOBALS — referenced by inline onclick handlers in the toolbar and panels */
@@ -2827,6 +3516,12 @@ window.saveOutput = saveOutput;
 window.saveEnrolments = saveEnrolments;
 window.saveGraph = saveGraph;
 window.openGraphFile = openGraphFile;
+window.zoomIn = zoomIn;
+window.zoomOut = zoomOut;
+window.zoomReset = zoomReset;
+window.zoomToFit = zoomToFit;
+window.deleteSelection = deleteSelection;
+window.clearSelection = clearSelection;
 
 /* TEST HOOK
    Set window.__QB_TEST__ = true *before* loading app.js to expose internals to
@@ -2879,6 +3574,20 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     TAKE_DEFAULT: TAKE_DEFAULT, TAKE_MIN: TAKE_MIN,
     canConnect: canConnect, CONNECT_RULES: CONNECT_RULES,
 
+    // view: zoom, pan and world coordinates
+    view: function(){ return view; },
+    setZoom: setZoom, zoomToFit: zoomToFit, centreView: centreView, clampPan: clampPan, applyView: applyView,
+    toWorld: toWorld, toScreen: toScreen, viewCentreWorld: viewCentreWorld,
+    nodeBox: nodeBox, graphBounds: graphBounds, freeSpotNear: freeSpotNear,
+    WORLD_W: WORLD_W, WORLD_H: WORLD_H, MIN_ZOOM: MIN_ZOOM, MAX_ZOOM: MAX_ZOOM,
+
+    // selection
+    selection: function(){ return selection; },
+    setSelection: setSelection, selectOnly: selectOnly, clearSelection: clearSelection,
+    selectAll: selectAll, toggleSelected: toggleSelected, isSelected: isSelected,
+    deleteSelection: deleteSelection, selectBranch: selectBranch,
+    connectedComponent: connectedComponent, nodesInWorldRect: nodesInWorldRect,
+
     // export + persistence
     serialiseTable: serialiseTable, exportTableFor: exportTableFor, safeName: safeName,
     serialiseGraph: serialiseGraph, deserialiseGraph: deserialiseGraph,
@@ -2887,5 +3596,9 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
   };
 }
 
+// The world layer needs its size and transform before the first paint, or the
+// first frame shows an unsized viewport and the nodes jump when it settles.
+applyView();
+centreView();
 render();
 })();
