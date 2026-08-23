@@ -35,6 +35,10 @@
         <span class="proc-desc">One row out, one value per column</span>
       </button>
       <div class="proc-group">Branches</div>
+      <button class="proc-item" onclick="addProcNode('combine')">
+        <span class="proc-name">Combine</span>
+        <span class="proc-desc">Stack branches with matching columns</span>
+      </button>
       <button class="proc-item" onclick="addProcNode('compare')">
         <span class="proc-name">Compare</span>
         <span class="proc-desc">Put branches side by side</span>
@@ -77,7 +81,6 @@
     <div class="sel-bar" id="selBar">
       <span class="sel-count" id="selCount">0 selected</span>
       <button class="sel-del" onclick="deleteSelection()" title="Delete selected nodes  ( Delete )">Delete</button>
-      <button class="sel-clear" onclick="clearSelection()" title="Deselect  ( Esc )">Clear</button>
     </div>
   </div>
   <div class="output-panel">

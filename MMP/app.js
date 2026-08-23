@@ -457,6 +457,7 @@ var SHAPE = {
   take:    { w:106, h:72 },
   aggregate:        { w:106, h:72 },
   aggregateColumns: { w:112, h:72 },
+  combine:          { w:106, h:72 },
   output:  { w:106, h:66 }
 };
 
@@ -689,7 +690,7 @@ function deleteSelection() {
 
    Compare stays output-only. It is superseded, and widening its reach now
    would be work thrown away when it retires. */
-var TABLE_NODES = ['filter', 'sort', 'take', 'aggregate', 'aggregateColumns'];
+var TABLE_NODES = ['filter', 'sort', 'take', 'aggregate', 'aggregateColumns', 'combine'];
 var CONNECT_RULES = {
   source:           TABLE_NODES.concat(['compare', 'output']),
   filter:           TABLE_NODES.concat(['compare', 'output']),
@@ -697,6 +698,7 @@ var CONNECT_RULES = {
   take:             TABLE_NODES.concat(['compare', 'output']),
   aggregate:        TABLE_NODES.concat(['compare', 'output']),
   aggregateColumns: TABLE_NODES.concat(['compare', 'output']),
+  combine:          TABLE_NODES.concat(['compare', 'output']),
   compare:          ['output'],
   output:           []
 };
@@ -744,6 +746,9 @@ function defaultCfg(type) {
   // Source granularity is changed underneath it.
   if (type === 'aggregate')        return { op: AGG_DEFAULT_OP, col: '' };
   if (type === 'aggregateColumns') return { op: 'sum' };
+  // dedupe defaults off: merge stacks rows, and discarding identical rows is a
+  // decision the user makes rather than one the node makes quietly.
+  if (type === 'combine') return { mode: 'merge', dedupe: false, base: '', key: '' };
   if (type === 'output')  return { show:'rows', avgCol:'', filename:'' };
   return {};
 }
@@ -1760,6 +1765,165 @@ function applyAggregateColumns(node, t, log) {
 }
 
 /* ============================================================================
+   COMBINE
+   ============================================================================
+   Two or more tables with matching headers into one. Modes: merge, intersect,
+   difference — the supervisor's suggestion that "set ops" is not a node but a
+   setting on Combine.
+
+   Combine reads its inputs separately rather than letting the graph merge them
+   first, for the same reason Compare does: it has to know which table is which.
+   That is also what keeps it clear of the implicit multi-wire union, which
+   matters more than it sounds:
+
+   MERGE CONCATENATES; IT DOES NOT DEDUPLICATE BY DEFAULT.
+   The implicit union deduplicates by rowKey(), and for merging two student
+   lists that is right — student 1042 appearing in both branches is one
+   student. For stacking two result tables it is wrong, and wrong in a way that
+   produces a plausible number rather than an error. Take the supervisor's own
+   worked example: run a Histogram once per year, stack the two rows, total the
+   columns. rowKey() has no id column to work with there, so it falls back to
+   joining the whole row — and if 2022 and 2023 happen to produce identical
+   counts, the two rows are identical, one is discarded, and the sum silently
+   halves. The failure is invisible precisely when the data is unremarkable.
+
+   So row identity is a choice the user makes, not one the tool makes for them:
+   merge concatenates, and dropping duplicates is a tick box. That also gives a
+   true set union (merge + drop duplicates) alongside intersect and difference,
+   which is what "set ops" meant in the first place.                          */
+
+var COMBINE_MODES = [
+  { key:'merge',      label:'Merge (stack rows)' },
+  { key:'intersect',  label:'Intersect (in all inputs)' },
+  { key:'difference', label:'Difference (in the base only)' }
+];
+
+function combineMode(node) {
+  var k = node && node.cfg ? node.cfg.mode : null;
+  for (var i = 0; i < COMBINE_MODES.length; i++) if (COMBINE_MODES[i].key === k) return COMBINE_MODES[i];
+  return COMBINE_MODES[0];
+}
+
+/* Which input is the base. Intersect is symmetric, but difference is not —
+   A minus B is not B minus A — and connection order is an artefact of the
+   order two nodes happened to be dragged together, which is invisible on the
+   canvas. So the base is named explicitly, defaulting to the first input and
+   falling back to it whenever the saved choice is no longer connected. */
+function combineBaseId(node, inIds) {
+  if (!inIds.length) return null;
+  var saved = node && node.cfg ? node.cfg.base : null;
+  for (var i = 0; i < inIds.length; i++) if (String(inIds[i]) === String(saved)) return inIds[i];
+  return inIds[0];
+}
+
+/* The column that decides whether two rows are "the same row". Whole-row
+   equality is a poor default for set operations: a float that differs in the
+   last place makes two rows that mean the same thing compare unequal. An
+   explicit key column says what identity means for this data. */
+function combineKeyCols(t) {
+  return t.columns.filter(function(c){ return c.type !== COLTYPE.COURSES; });
+}
+
+function combineKeyCol(node, t) {
+  var saved = (node && node.cfg && node.cfg.key) || '';
+  var col = saved ? colByKey(t, saved) : null;
+  if (col && col.type !== COLTYPE.COURSES) return col;
+  if (hasCol(t, 'id')) return colByKey(t, 'id');
+  var avail = combineKeyCols(t);
+  return avail.length ? avail[0] : null;
+}
+
+function keyValuesOf(t, colKey) {
+  var set = {};
+  var i = colIndex(t, colKey);
+  if (i === -1) return set;
+  t.rows.forEach(function(r){ set['k' + String(r[i])] = true; });
+  return set;
+}
+
+/* Order the input tables so the chosen base is first. Done here rather than in
+   combineTables so the reduction itself has one rule — "the base is tables[0]"
+   — and the mapping from a node id to a position lives with the node ids. */
+function combineOrdered(node, inIds, tables) {
+  var baseId = combineBaseId(node, inIds);
+  var at = -1;
+  for (var i = 0; i < inIds.length; i++) if (inIds[i] === baseId) { at = i; break; }
+  if (at <= 0) return tables;
+  return [tables[at]].concat(tables.filter(function(_, i){ return i !== at; }));
+}
+
+function combineTables(node, tables, log) {
+  if (!tables.length) return { table: makeTable([], []) };
+
+  // Headers must match. The same rule the implicit union enforces, restated
+  // here because Combine bypasses it — and worth its own message, since the
+  // likely mistake is different: stacking two tables that came from different
+  // shapes of query rather than mixing granularities.
+  var first = schemaKey(tables[0]);
+  for (var i = 1; i < tables.length; i++) {
+    if (schemaKey(tables[i]) !== first) {
+      return { error: 'Combine needs inputs with the same columns. ' +
+        'These inputs have different headers, so their rows cannot be stacked — ' +
+        'make the branches produce the same columns, or give them separate Outputs.' };
+    }
+  }
+
+  if (tables.length === 1) {
+    log.push(logEntry('COMBINE', [{s:'one input — passed through'}]));
+    return { table: tables[0] };
+  }
+
+  var mode = combineMode(node);
+  var base = tables[0];
+  var others = tables.slice(1);
+
+  if (mode.key === 'merge') {
+    var rows = [];
+    tables.forEach(function(t){ rows = rows.concat(t.rows); });
+    var total = rows.length;
+
+    if (node && node.cfg && node.cfg.dedupe) {
+      var seen = {}, kept = [];
+      rows.forEach(function(r) {
+        var k = rowKey(base, r);
+        if (seen[k]) return;
+        seen[k] = true;
+        kept.push(r);
+      });
+      rows = kept;
+      log.push(logEntry('COMBINE', [{s:'merge'}, {c:'val', s:tables.length}, {s:'inputs →'},
+        {c:'val', s:rows.length}, {s:'rows, ' + (total - rows.length) + ' duplicate(s) dropped'}]));
+    } else {
+      log.push(logEntry('COMBINE', [{s:'merge'}, {c:'val', s:tables.length}, {s:'inputs →'},
+        {c:'val', s:total}, {s:'rows'}]));
+    }
+    return { table: makeTable(base.columns, rows, base.meta) };
+  }
+
+  // intersect / difference
+  var keyCol = combineKeyCol(node, base);
+  if (!keyCol) {
+    return { error: 'Combine needs a column to match rows on for ' + mode.key +
+      '. This table has no column that can be used as a key.' };
+  }
+  var sets = others.map(function(t){ return keyValuesOf(t, keyCol.key); });
+  var ki = colIndex(base, keyCol.key);
+
+  var out = base.rows.filter(function(r) {
+    var k = 'k' + String(r[ki]);
+    if (mode.key === 'intersect') {
+      return sets.every(function(s){ return !!s[k]; });
+    }
+    return sets.every(function(s){ return !s[k]; });   // difference
+  });
+
+  log.push(logEntry('COMBINE', [{s:mode.key + ' on'}, {c:'val', s:keyCol.label},
+    {s:'→'}, {c:'val', s:out.length}, {s:'of'}, {c:'val', s:base.rows.length}, {s:'base rows'}]));
+
+  return { table: makeTable(base.columns, out, base.meta) };
+}
+
+/* ============================================================================
    NODE SPECIFICATIONS
    ============================================================================
    One entry per node type, declaring the two things the graph walks need to
@@ -1836,6 +2000,29 @@ var NODE_SPEC = {
     rows: function(node, t, log) { return { table: applyAggregateColumns(node, t, log) }; }
   },
 
+  combine: {
+    /* Reads its inputs separately. Not because it treats them differently the
+       way Compare does — the header is the same for all of them — but because
+       the implicit union it would otherwise pass through deduplicates rows,
+       which is exactly the behaviour Combine exists to put under the user's
+       control. Its header is still whatever arrives, so the schema is the
+       ordinary pass-through. */
+    merges: false,
+    schema: passthroughSchema,
+    evaluate: function(node, ctx) {
+      // The base is a node the user named, not the wire that happened to be
+      // drawn first, so the tables are ordered before the reduction sees them.
+      var ctabs = combineOrdered(node, ctx.inIds,
+        ctx.ins.map(function(r){ return r.table; }));
+      var out = combineTables(node, ctabs, ctx.log);
+      return {
+        table: out.table,
+        error: out.error,
+        hasSource: ctx.ins.some(function(r){ return r.hasSource; })
+      };
+    }
+  },
+
   compare: {
     // The one node that keeps its inputs apart rather than merging them: each
     // branch becomes a row, so it reads the branch results directly.
@@ -1900,6 +2087,10 @@ function evaluateGraph() {
       }
     } else {
       var ev = spec.evaluate(node, { inIds: inIds, ins: ins, res: res, log: log });
+      // A non-merging node can fail the same way a row transform can — Combine
+      // rejects mismatched headers — so the error has to surface here too,
+      // rather than only on the spec.rows path.
+      if (ev.error) return { error: ev.error };
       table = ev.table;
       hasSource = ev.hasSource;
     }
@@ -2057,6 +2248,19 @@ function criterionHTML(node, ci, c, schema) {
   }
 
   return '<div class="criterion-row">' + body + remove + '</div>';
+}
+
+/* A short name for an upstream node, for panels that must let the user point at
+   one input rather than another. Compare labels its branches from the query
+   that produced them, which needs results; this is needed at render time,
+   before anything has run, so it names the node instead. */
+var NODE_LABELS = {
+  source:'Source', filter:'Filter', sort:'Sort', take:'Take',
+  aggregate:'Aggregate', aggregateColumns:'Agg. Columns',
+  combine:'Combine', compare:'Compare', output:'Output'
+};
+function upstreamLabel(node) {
+  return (NODE_LABELS[node.type] || node.type) + ' #' + node.id;
 }
 
 function configHTML(node, schemas) {
@@ -2219,6 +2423,57 @@ function configHTML(node, schemas) {
     }
   }
 
+  if (node.type === 'combine') {
+    var cinIds = inputsOf(id);
+    var cmode = combineMode(node);
+
+    html += '<div class="cfg-label">Inputs (' + cinIds.length + ')</div>';
+    if (cinIds.length === 0) {
+      html += '<div class="cmp-hint">Wire two branches into this node to stack them.</div>';
+    } else if (cinIds.length === 1) {
+      html += '<div class="cmp-hint">One input — passed straight through. Add another to combine.</div>';
+    }
+
+    html += '<div class="cfg-label">Mode</div>' +
+      '<select' + ctl(id, 'mode') + '>' +
+        COMBINE_MODES.map(function(m){ return opt(m.key, cmode.key, m.label); }).join('') +
+      '</select>';
+
+    if (cmode.key === 'merge') {
+      html += '<label class="cmb-check"><input type="checkbox"' +
+          (cfg.dedupe ? ' checked' : '') + ctl(id, 'dedupe') + '>' +
+        '<span>Drop duplicate rows</span></label>' +
+        '<div class="cmp-hint">Off: every row from every input is kept, so two ' +
+        'identical result rows stay two rows. On: this is a set union.</div>';
+    } else {
+      // Difference is not symmetric, so the base has to be named rather than
+      // inferred from the order the wires happened to be drawn.
+      var baseId = combineBaseId(node, cinIds);
+      if (cinIds.length > 1) {
+        html += '<div class="cfg-label">Base</div>' +
+          '<select' + ctl(id, 'base') + '>' +
+            cinIds.map(function(inId) {
+              var up = findNode(inId);
+              return opt(String(inId), String(baseId), up ? (upstreamLabel(up)) : ('Input ' + inId));
+            }).join('') +
+          '</select>';
+      }
+      var kcols = combineKeyCols(schema);
+      var kcur = combineKeyCol(node, schema);
+      html += '<div class="cfg-label">Match rows on</div>' +
+        (kcols.length
+          ? '<select' + ctl(id, 'key') + '>' +
+              kcols.map(function(c){ return opt(c.key, kcur ? kcur.key : '', c.label); }).join('') +
+            '</select>'
+          : '<div class="cmp-hint">No column upstream to match on.</div>');
+      html += '<div class="cmp-hint">' +
+        (cmode.key === 'intersect'
+          ? 'Keeps base rows whose value also appears in every other input.'
+          : 'Keeps base rows whose value appears in none of the other inputs.') +
+        '</div>';
+    }
+  }
+
   if (node.type === 'output') {
     var show = normaliseShow(node);
     cfg.show = show;
@@ -2300,6 +2555,15 @@ function shapeHTML(node) {
       '<span class="aggc-col"><i></i><i></i><b></b></span>' +
       '<span class="aggc-col"><i></i><i></i><b></b></span></span>';
     return '<div class="node-shape shape-aggcols">' + removeBtn + agc + 'Agg. Columns</div>';
+  }
+  if (node.type === 'combine') {
+    // Two streams converging into one: the mirror image of Compare's glyph,
+    // which holds branches apart rather than joining them.
+    var cg = '<span class="cmb-glyph">' +
+      '<span class="cmb-in"><i></i><i></i></span>' +
+      '<b></b>' +
+      '<span class="cmb-out"><i></i></span></span>';
+    return '<div class="node-shape shape-combine">' + removeBtn + cg + 'Combine</div>';
   }
   if (node.type === 'output') return '<div class="node-shape shape-output">' + removeBtn + 'Output</div>';
   return '';
@@ -3833,6 +4097,11 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     sortRowComparator: sortRowComparator,
     resolveSortKeys: resolveSortKeys, newSortKey: newSortKey, dirLabel: dirLabel,
     ordinalsFor: ordinalsFor, GRADE_ORDER: GRADE_ORDER,
+
+    // combine
+    COMBINE_MODES: COMBINE_MODES, combineMode: combineMode, combineTables: combineTables,
+    combineBaseId: combineBaseId, combineOrdered: combineOrdered, combineKeyCol: combineKeyCol, combineKeyCols: combineKeyCols,
+    upstreamLabel: upstreamLabel,
 
     // aggregation
     AGG_OPS: AGG_OPS, aggOp: aggOp, reduceValues: reduceValues,
