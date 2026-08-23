@@ -1001,3 +1001,71 @@ th.cmp-num { color: #383838 !important; }
 .node-shape { user-select: none; -webkit-user-select: none; }
 .canvas.selecting,
 .canvas.selecting * { user-select: none; -webkit-user-select: none; }
+
+/* ═══════════════════════════════════════════════════════════
+   AGGREGATE / AGGREGATE COLUMNS
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── PROCESSING MENU GROUPS ──────────────────────────────── */
+/* Five flat items in one dropdown is a list to read; three labelled groups is
+   a menu to scan. The grouping is by what the node does to a table — reshape
+   the rows, summarise them, or hold branches apart — which is also the order
+   a query tends to be built in. */
+.proc-group {
+  font-size: 9px;
+  color: #4e4e4e;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  padding: 7px 9px 3px;
+  pointer-events: none;   /* a heading is not a target */
+}
+.proc-group:first-child { padding-top: 3px; }
+
+/* ── SHAPES ──────────────────────────────────────────────── */
+/* Processing-family colour, shared with Sort, Take and Compare. The glyphs are
+   what separate them: ascending bars (Sort), bars with a cut (Take), a funnel
+   to one dot (Aggregate), three funnels side by side (Aggregate Columns). */
+.shape-aggregate,
+.shape-aggcols {
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-aggregate { width: 106px; height: 72px; }
+.shape-aggcols   { width: 112px; height: 72px; }
+.shape-aggregate:active,
+.shape-aggcols:active { cursor: grabbing; }
+
+/* Three bars narrowing to a single dot: many values in, one out. */
+.agg-glyph { display: flex; flex-direction: column; gap: 2px; align-items: center; }
+.agg-glyph i {
+  display: block; height: 3px; border-radius: 1px;
+  background: #b48ce0; opacity: 0.75;
+}
+.agg-glyph i:nth-child(1) { width: 22px; }
+.agg-glyph i:nth-child(2) { width: 16px; }
+.agg-glyph i:nth-child(3) { width: 10px; }
+.agg-glyph b {
+  display: block; width: 4px; height: 4px; border-radius: 50%;
+  background: #b48ce0; margin-top: 1px;
+}
+
+/* The same funnel three times over, one per column. */
+.aggc-glyph { display: flex; gap: 4px; align-items: flex-end; }
+.aggc-col { display: flex; flex-direction: column; gap: 2px; align-items: center; }
+.aggc-col i {
+  display: block; height: 3px; border-radius: 1px;
+  background: #b48ce0; opacity: 0.75;
+}
+.aggc-col i:nth-child(1) { width: 10px; }
+.aggc-col i:nth-child(2) { width: 7px; }
+.aggc-col b {
+  display: block; width: 3px; height: 3px; border-radius: 50%;
+  background: #b48ce0; margin-top: 1px;
+}

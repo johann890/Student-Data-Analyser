@@ -455,6 +455,8 @@ var SHAPE = {
   compare: { w:112, h:78 },
   sort:    { w:106, h:72 },
   take:    { w:106, h:72 },
+  aggregate:        { w:106, h:72 },
+  aggregateColumns: { w:112, h:72 },
   output:  { w:106, h:66 }
 };
 
@@ -680,13 +682,23 @@ function deleteSelection() {
    structure, so anything that could feed a Filter can feed a Take and vice
    versa. Compare stays output-only — it is superseded, and widening its
    downstream reach now would be work thrown away when it retires. */
+/* Every row-stream node accepts and produces a table, so they compose freely.
+   The aggregation nodes are no exception: an Aggregate result is a one-row
+   table like any other, and being able to feed it onward is the whole reason
+   they exist as nodes rather than as Output settings.
+
+   Compare stays output-only. It is superseded, and widening its reach now
+   would be work thrown away when it retires. */
+var TABLE_NODES = ['filter', 'sort', 'take', 'aggregate', 'aggregateColumns'];
 var CONNECT_RULES = {
-  source:  ['filter', 'sort', 'take', 'compare', 'output'],
-  filter:  ['filter', 'sort', 'take', 'compare', 'output'],
-  sort:    ['filter', 'sort', 'take', 'compare', 'output'],
-  take:    ['filter', 'sort', 'take', 'compare', 'output'],
-  compare: ['output'],
-  output:  []
+  source:           TABLE_NODES.concat(['compare', 'output']),
+  filter:           TABLE_NODES.concat(['compare', 'output']),
+  sort:             TABLE_NODES.concat(['compare', 'output']),
+  take:             TABLE_NODES.concat(['compare', 'output']),
+  aggregate:        TABLE_NODES.concat(['compare', 'output']),
+  aggregateColumns: TABLE_NODES.concat(['compare', 'output']),
+  compare:          ['output'],
+  output:           []
 };
 function canConnect(fromType, toType) {
   return (CONNECT_RULES[fromType] || []).indexOf(toType) !== -1;
@@ -726,6 +738,12 @@ function defaultCfg(type) {
   if (type === 'compare') return { measures:DEFAULT_MEASURES.slice(), sort:'wired', labels:{} };
   if (type === 'sort')    return { keys: [newSortKey()] };
   if (type === 'take')    return { n: String(TAKE_DEFAULT) };
+  // Both aggregation nodes share one config shape: which measure, and (for the
+  // measures that need one) which column. col:'' means "resolve against
+  // whatever arrives", which is what keeps a saved query working after the
+  // Source granularity is changed underneath it.
+  if (type === 'aggregate')        return { op: AGG_DEFAULT_OP, col: '' };
+  if (type === 'aggregateColumns') return { op: 'sum' };
   if (type === 'output')  return { show:'rows', avgCol:'', filename:'' };
   return {};
 }
@@ -1560,6 +1578,188 @@ function outputTable(node, t) {
 }
 
 /* ============================================================================
+   AGGREGATION
+   ============================================================================
+   Two nodes, one implementation. Both reduce a set of values to one value; they
+   differ only in which set.
+
+     Aggregate         the whole table  ->  a 1x1 table
+     AggregateColumns  each column      ->  one row, one value per column
+
+   The names say what survives, not what is destroyed: AggregateColumns keeps
+   the columns and collapses the rows beneath them.
+
+   Three decisions apply to both, and are made here rather than per node so the
+   two cannot drift apart:
+
+   1. The empty case is blank, not zero. The count of nothing is 0 — that is a
+      true statement about an empty table. The average, minimum or maximum of
+      nothing is not 0; it does not exist. meanOf() returns 0 for an empty
+      table, which is why the existing Output card special-cases it and prints
+      an em dash. Rather than repeat that trick, these nodes emit null, which
+      fmtCell and exportCell already render as empty in both the panel and the
+      CSV.
+
+   2. Count means "values that are actually there". On the whole table that is
+      the row count; per column it is the number of non-blank cells, which is
+      the more useful reading and the one that differs between columns.
+
+   3. A measure that cannot apply to a column yields blank rather than dropping
+      the column. Dropping would make the output header depend on the data —
+      and matching headers is precisely what Combine will require in order to
+      stack two of these results. A header that quietly changes shape when a
+      column happens to be non-numeric would break that at the worst moment. */
+
+var AGG_OPS = [
+  { key:'count',   label:'Count',   verb:'Count of',   needsCol:false },
+  { key:'sum',     label:'Sum',     verb:'Sum of',     needsCol:true  },
+  { key:'average', label:'Average', verb:'Average',    needsCol:true  },
+  { key:'min',     label:'Minimum', verb:'Minimum',    needsCol:true  },
+  { key:'max',     label:'Maximum', verb:'Maximum',    needsCol:true  }
+];
+var AGG_DEFAULT_OP = 'count';
+
+function aggOp(node) {
+  var k = node && node.cfg ? node.cfg.op : null;
+  for (var i = 0; i < AGG_OPS.length; i++) if (AGG_OPS[i].key === k) return AGG_OPS[i];
+  return AGG_OPS[0];   // anything unrecognised, including a hand-edited file
+}
+
+// Columns a numeric measure can be applied to. Identifiers are excluded for the
+// same reason Output's Average excludes them: the sum of a set of student IDs
+// is a number, but it is not a fact about anything.
+function ID_KEYS() { return { id:1, studentId:1 }; }
+function measurableCols(t) {
+  var skip = ID_KEYS();
+  return numericCols(t).filter(function(c){ return !skip[c.key]; });
+}
+
+function isMeasurable(t, col) {
+  if (!col || col.type !== COLTYPE.NUMBER) return false;
+  return !ID_KEYS()[col.key];
+}
+
+/* Reduce a list of raw cell values. Blanks are skipped rather than counted as
+   zero — a missing mark is not a mark of nought, and treating it as one drags
+   every average down by an amount that depends on how much data is missing. */
+function reduceValues(opKey, values) {
+  var nums = [];
+  for (var i = 0; i < values.length; i++) {
+    var v = values[i];
+    if (isBlank(v)) continue;
+    if (opKey === 'count') { nums.push(1); continue; }
+    var n = Number(v);
+    if (isFinite(n)) nums.push(n);
+  }
+  if (opKey === 'count') return nums.length;
+  if (!nums.length) return null;              // see decision 1 above
+  if (opKey === 'sum')     return nums.reduce(function(a, b){ return a + b; }, 0);
+  if (opKey === 'average') return nums.reduce(function(a, b){ return a + b; }, 0) / nums.length;
+  if (opKey === 'min')     return Math.min.apply(null, nums);
+  if (opKey === 'max')     return Math.max.apply(null, nums);
+  return null;
+}
+
+function columnValues(t, key) {
+  var i = colIndex(t, key);
+  if (i === -1) return [];
+  return t.rows.map(function(r){ return r[i]; });
+}
+
+/* ---- Aggregate: whole table -> 1x1 ---------------------------------------- */
+
+/* Which column the measure applies to, resolved against the table rather than
+   trusted from config. A saved key can outlive its column — rewiring a Source
+   from students to enrolments is enough — so this falls back the same way
+   Output's Average does. */
+function aggregateCol(node, t) {
+  var op = aggOp(node);
+  if (!op.needsCol) return null;
+  var key = (node && node.cfg && node.cfg.col) || '';
+  var col = key ? colByKey(t, key) : null;
+  if (col && isMeasurable(t, col)) return col;
+  var avail = measurableCols(t);
+  return avail.length ? avail[0] : null;
+}
+
+// The single column both the schema walk and the engine must agree on. Derived
+// in one place so they cannot disagree — the registry invariant depends on it.
+function aggregateColumn(node, t) {
+  var op = aggOp(node);
+  if (!op.needsCol) {
+    return { key:'count', label:'Count', type:COLTYPE.NUMBER };
+  }
+  var col = aggregateCol(node, t);
+  return {
+    key: op.key,
+    label: col ? (op.verb + ' ' + col.label) : op.label,
+    type: COLTYPE.NUMBER
+  };
+}
+
+function aggregateSchema(node, inSchema) {
+  return makeTable([aggregateColumn(node, inSchema)], []);
+}
+
+function applyAggregate(node, t, log) {
+  var op = aggOp(node);
+  var outCol = aggregateColumn(node, t);
+  var value;
+
+  if (!op.needsCol) {
+    value = t.rows.length;
+    log.push(logEntry('AGGREGATE', [{s:'count of'}, {c:'val', s:t.rows.length}, {s:'rows'}]));
+  } else {
+    var col = aggregateCol(node, t);
+    if (!col) {
+      // No column the measure could apply to. Blank and say so, rather than
+      // returning a number that describes nothing.
+      log.push(logEntry('AGGREGATE', [{s:op.label.toLowerCase()}, {s:'— no numeric column in this table'}]));
+      return makeTable([outCol], [[null]]);
+    }
+    value = reduceValues(op.key, columnValues(t, col.key));
+    log.push(logEntry('AGGREGATE', [{s:op.label.toLowerCase() + ' of'}, {c:'val', s:col.label},
+                                    {s:'over'}, {c:'val', s:t.rows.length}, {s:'rows'}]));
+  }
+  return makeTable([outCol], [[value]]);
+}
+
+/* ---- AggregateColumns: many rows -> one row ------------------------------- */
+
+/* Keys and labels are preserved so the result still reads as the same table —
+   that is what makes "run a histogram twice, stack them, total the columns"
+   work. Types become NUMBER across the board because every cell is now a
+   measure or blank, whatever the column held before. */
+function aggregateColumnsSchema(node, inSchema) {
+  return makeTable(inSchema.columns.map(function(c) {
+    return { key:c.key, label:c.label, type:COLTYPE.NUMBER };
+  }), []);
+}
+
+function applyAggregateColumns(node, t, log) {
+  var op = aggOp(node);
+  var out = aggregateColumnsSchema(node, t);
+
+  var skipped = [];
+  var row = t.columns.map(function(c) {
+    // Count applies to any column: it asks how many values are present, which
+    // is a question a text column can answer.
+    if (op.key === 'count') {
+      return reduceValues('count', columnValues(t, c.key));
+    }
+    if (!isMeasurable(t, c)) { skipped.push(c.label); return null; }
+    return reduceValues(op.key, columnValues(t, c.key));
+  });
+
+  log.push(logEntry('AGGREGATE COLUMNS', [{s:op.label.toLowerCase() + ' down'},
+                                          {c:'val', s:t.rows.length}, {s:'rows'}]));
+  if (skipped.length) {
+    log.push(logEntry('AGGREGATE COLUMNS', [{s:'left blank:'}, {c:'val', s:skipped.join(', ')}]));
+  }
+  return makeTable(out.columns, [row]);
+}
+
+/* ============================================================================
    NODE SPECIFICATIONS
    ============================================================================
    One entry per node type, declaring the two things the graph walks need to
@@ -1622,6 +1822,18 @@ var NODE_SPEC = {
     merges: true,
     schema: passthroughSchema,
     rows: function(node, t, log) { return { table: applyTake(node, t, log) }; }
+  },
+
+  aggregate: {
+    merges: true,
+    schema: aggregateSchema,
+    rows: function(node, t, log) { return { table: applyAggregate(node, t, log) }; }
+  },
+
+  aggregateColumns: {
+    merges: true,
+    schema: aggregateColumnsSchema,
+    rows: function(node, t, log) { return { table: applyAggregateColumns(node, t, log) }; }
   },
 
   compare: {
@@ -1969,6 +2181,44 @@ function configHTML(node, schemas) {
         takeCount(node) + '.</div>';
   }
 
+  if (node.type === 'aggregate' || node.type === 'aggregateColumns') {
+    var isCols = node.type === 'aggregateColumns';
+    var op = aggOp(node);
+
+    html += '<div class="cfg-label">Measure</div>' +
+      '<select' + ctl(id, 'op') + '>' +
+        AGG_OPS.map(function(o){ return opt(o.key, op.key, o.label); }).join('') +
+      '</select>';
+
+    if (!isCols && op.needsCol) {
+      // Only the whole-table Aggregate picks a column: AggregateColumns applies
+      // the measure to every column at once, which is the point of it.
+      var mcols = measurableCols(schema);
+      var chosen = aggregateCol(node, schema);
+      html += '<div class="cfg-label">Of column</div>' +
+        (mcols.length
+          ? '<select' + ctl(id, 'col') + '>' +
+              mcols.map(function(c){ return opt(c.key, chosen ? chosen.key : '', c.label); }).join('') +
+            '</select>'
+          : '<div class="cmp-hint">No numeric column upstream — the result will be blank.</div>');
+    }
+
+    // Say what will come out, in the same words the result will use. The shape
+    // of an aggregation is the thing people get wrong about it, and stating it
+    // before the query runs is cheaper than explaining it afterwards.
+    if (isCols) {
+      var ncols = schema.columns.length;
+      html += '<div class="cmp-hint">One row out, ' +
+        (ncols ? ncols + ' column' + (ncols === 1 ? '' : 's') : 'one column per column in') +
+        ' — same headers, ' + esc(op.label.toLowerCase()) + ' down each.' +
+        (op.key === 'count' ? '' : ' Non-numeric columns come out blank.') +
+        '</div>';
+    } else {
+      html += '<div class="cmp-hint">One row, one column: ' +
+        esc(aggregateColumn(node, schema).label) + '.</div>';
+    }
+  }
+
   if (node.type === 'output') {
     var show = normaliseShow(node);
     cfg.show = show;
@@ -2035,6 +2285,21 @@ function shapeHTML(node) {
     var bars = '<span class="take-glyph">' +
       '<i></i><i></i><i></i><b></b><i class="cut"></i></span>';
     return '<div class="node-shape shape-take">' + removeBtn + bars + 'Take</div>';
+  }
+  if (node.type === 'aggregate') {
+    // Rows funnelling into a single dot: many values, one value out.
+    var ag = '<span class="agg-glyph"><i></i><i></i><i></i><b></b></span>';
+    return '<div class="node-shape shape-aggregate">' + removeBtn + ag + 'Aggregate</div>';
+  }
+  if (node.type === 'aggregateColumns') {
+    // The same funnel turned ninety degrees: three columns, each collapsing to
+    // its own value, so the pair read as variants of one idea rather than two
+    // unrelated nodes.
+    var agc = '<span class="aggc-glyph">' +
+      '<span class="aggc-col"><i></i><i></i><b></b></span>' +
+      '<span class="aggc-col"><i></i><i></i><b></b></span>' +
+      '<span class="aggc-col"><i></i><i></i><b></b></span></span>';
+    return '<div class="node-shape shape-aggcols">' + removeBtn + agc + 'Agg. Columns</div>';
   }
   if (node.type === 'output') return '<div class="node-shape shape-output">' + removeBtn + 'Output</div>';
   return '';
@@ -3557,7 +3822,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
 
     // engine
     topoSort: topoSort, evaluateGraph: evaluateGraph, computeSchemas: computeSchemas,
-    NODE_SPEC: NODE_SPEC, specFor: specFor, SHAPE: SHAPE,
+    NODE_SPEC: NODE_SPEC, specFor: specFor, SHAPE: SHAPE, passthroughSchema: passthroughSchema,
     inputSchema: inputSchema, unionTables: unionTables, filterFields: filterFields,
     fieldByKey: fieldByKey, newCriterion: newCriterion, defaultCfg: defaultCfg,
     normaliseShow: normaliseShow, outputTable: outputTable, defaultAvgCol: defaultAvgCol,
@@ -3568,6 +3833,15 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     sortRowComparator: sortRowComparator,
     resolveSortKeys: resolveSortKeys, newSortKey: newSortKey, dirLabel: dirLabel,
     ordinalsFor: ordinalsFor, GRADE_ORDER: GRADE_ORDER,
+
+    // aggregation
+    AGG_OPS: AGG_OPS, aggOp: aggOp, reduceValues: reduceValues,
+    measurableCols: measurableCols, isMeasurable: isMeasurable,
+    aggregateCol: aggregateCol, aggregateColumn: aggregateColumn,
+    aggregateSchema: aggregateSchema, applyAggregate: applyAggregate,
+    aggregateColumnsSchema: aggregateColumnsSchema,
+    applyAggregateColumns: applyAggregateColumns,
+    columnValues: columnValues,
 
     // take
     applyTake: applyTake, takeCount: takeCount,
