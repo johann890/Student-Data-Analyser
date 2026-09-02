@@ -1,5 +1,9 @@
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
+/* Without this, macOS draws form controls, scrollbars and focus rings in light
+   mode regardless of the colours set below. */
+:root { color-scheme: dark; }
+
 body {
   font-family: system-ui, sans-serif;
   background: #111;
@@ -198,7 +202,14 @@ body {
   margin-bottom: 1px;
 }
 
-select, input[type=number] {
+/* Every control in a node panel, not just selects and number boxes. A text
+   input was previously unstyled: it rendered at the browser's default width
+   with a light background, and — because a grid item defaults to min-width:auto
+   — refused to shrink into its column, so it spilled past the panel edge.
+   Filtering by Grade (a text column) hit exactly that. */
+select,
+input[type=number],
+input[type=text] {
   background: #141414;
   border: 1px solid #282828;
   border-radius: 4px;
@@ -208,9 +219,19 @@ select, input[type=number] {
   font-family: inherit;
   width: 100%;
   appearance: none;
-  min-width: 0;
+  min-width: 0;   /* lets a grid or flex item shrink below its intrinsic width */
 }
 select:focus, input:focus { outline: none; border-color: #2a5aaa; }
+
+/* Number spinners are drawn by the browser, not by this stylesheet, so they
+   ignore the colours above and render light on a dark panel. They also eat
+   horizontal space the value needs. */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] { -moz-appearance: textfield; }
 
 /* FILTER CRITERIA ROWS */
 .criteria-list {
@@ -451,7 +472,11 @@ select option {
   position: absolute;
   z-index: 50;
   pointer-events: none; /* never steals hover from the line beneath it */
-  width: 210px;
+  width: 230px;
+  max-width: 230px;
+  /* The table inside sizes to its content by default, so a wide row pushed
+     straight through this border instead of being clipped by it. */
+  overflow: hidden;
   background: #0b0b0c;
   border: 1px solid #2a2a2e;
   border-radius: 6px;
@@ -462,7 +487,25 @@ select option {
 }
 .ep-count { font-size: 10px; color: #6a6a6a; margin-bottom: 6px; letter-spacing: 0.03em; }
 .ep-num { color: #3db8ff; font-size: 14px; font-weight: 600; }
-.ep-table { width: 100%; border-collapse: collapse; }
+/* Fixed layout divides the available width evenly instead of letting the
+   longest value dictate the column, which is what let the table outgrow the
+   panel. Cells then need explicit truncation, since fixed layout clips rather
+   than wraps. */
+.ep-table {
+  width: 100%;
+  max-width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+}
+.ep-table th,
+.ep-table td {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* The trailing "more columns" marker only needs room for an ellipsis. */
+.ep-table th.ep-more-col,
+.ep-table td.ep-more-col { width: 18px; text-align: center; color: #3a3a3a; }
 .ep-table th {
   text-align: left; font-weight: 500; color: #4a4a4a;
   border-bottom: 1px solid #1e1e1e; padding: 2px 5px; font-size: 9px;
@@ -733,3 +776,346 @@ th.cmp-num { color: #383838 !important; }
   flex-wrap: wrap;
   gap: 4px;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   TAKE NODE
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Same palette as Compare — both are Processing-family nodes and arrive from
+   the same dropdown — but a squatter shape with its own glyph, so the two are
+   told apart at a glance on a crowded canvas. */
+.shape-take {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-take:active { cursor: grabbing; }
+
+/* Three solid bars = kept, a rule, then one faded bar = discarded */
+.take-glyph { display: flex; flex-direction: column; gap: 2px; align-items: stretch; width: 24px; }
+.take-glyph i { display: block; height: 3px; border-radius: 1px; background: #b48ce0; opacity: 0.75; }
+.take-glyph i.cut { opacity: 0.22; }
+.take-glyph b {
+  display: block; height: 0;
+  border-top: 1px dashed #b48ce0;
+  opacity: 0.45;
+  margin: 1px 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SORT NODE
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+.shape-sort {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-sort:active { cursor: grabbing; }
+
+/* Ascending bars — "ordered". Take's glyph is equal bars with a cut through
+   them, so the two Processing nodes are distinguishable at a glance even
+   though they share the family colour. */
+.sort-glyph { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.sort-glyph i { display: block; height: 3px; border-radius: 1px; background: #b48ce0; opacity: 0.75; }
+
+/* ── SORT KEY ROWS ───────────────────────────────────────── */
+/* Same left-rule treatment as .criteria-list, so the two list-shaped panels
+   read as the same kind of control. */
+.sort-list { display: flex; flex-direction: column; gap: 5px; }
+.sort-row {
+  display: grid;
+  /* rank | column | direction | delete — fixed so nothing clips or reflows
+     when a direction label changes length ("A → Z" vs "high → low") */
+  grid-template-columns: 12px 1fr 74px 16px;
+  gap: 4px;
+  align-items: center;
+}
+.sort-rank {
+  font-size: 9px;
+  color: #5a5a5a;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.sort-dir { font-size: 10px; }
+/* Placeholder in the delete column of row 1: keeps the three controls of every
+   row on the same vertical lines whether or not the row can be removed. */
+.sort-nodel { display: block; }
+.add-criterion-btn.sort-add:hover { border-color: #5a3a7a; color: #b48ce0; }
+
+/* ═══════════════════════════════════════════════════════════
+   CANVAS NAVIGATION + MULTI-SELECT
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── SCALED WORLD LAYER ──────────────────────────────────── */
+/* The world is a fixed logical area, larger than any viewport, and the whole
+   layer is scaled and translated as a unit. Sizing is written from JS at
+   start-up (WORLD_W / WORLD_H) so the constants have one home; the values here
+   only matter for the first paint before that runs. */
+.viewport {
+  position: absolute;
+  top: 0; left: 0;
+  width: 5000px; height: 3500px;
+  transform-origin: 0 0;
+  /* Transform is set from JS. No transition: a pan must track the cursor
+     exactly, and easing a transform mid-drag makes the canvas feel like it is
+     lagging behind the pointer. */
+}
+
+/* Grid gives the zoom something to read against — without it, zooming out of a
+   sparse graph looks identical to zooming in on one. It scales with the world,
+   so the squares shrink as you zoom out and reinforce the sense of distance. */
+.viewport::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-image:
+    linear-gradient(to right, #0c0c0c 1px, transparent 1px),
+    linear-gradient(to bottom, #0c0c0c 1px, transparent 1px);
+  background-size: 40px 40px;
+  pointer-events: none;
+}
+
+/* ── ZOOM CONTROLS ───────────────────────────────────────── */
+.zoom-group {
+  display: inline-flex;
+  align-items: stretch;
+  border: 1px solid #2a2a2a;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.zoom-btn {
+  background: transparent;
+  border: none;
+  color: #777;
+  width: 24px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0;
+}
+.zoom-btn:hover { background: #1e1e1e; color: #d0d0d0; }
+.zoom-level {
+  background: transparent;
+  border: none;
+  border-left: 1px solid #2a2a2a;
+  border-right: 1px solid #2a2a2a;
+  color: #999;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+  min-width: 46px;
+  padding: 5px 4px;
+  cursor: pointer;
+}
+.zoom-level:hover { background: #1e1e1e; color: #d0d0d0; }
+
+/* ── PAN CURSORS ─────────────────────────────────────────── */
+/* Held space arms panning, so the cursor has to say so before the drag starts
+   rather than only once it is under way. */
+.canvas.pan-ready { cursor: grab; }
+.canvas.panning,
+.canvas.panning * { cursor: grabbing !important; }
+
+/* ── MARQUEE ─────────────────────────────────────────────── */
+/* Drawn in screen space, not world space: a 1px border scaled to 0.3 vanishes,
+   and a selection rectangle that thins out as you zoom out is exactly the wrong
+   behaviour for a tool whose purpose is selecting a lot at once. */
+.marquee {
+  position: absolute;
+  display: none;
+  z-index: 40;
+  pointer-events: none;
+  border: 1px solid #3db8ff;
+  background: rgba(30, 127, 255, 0.10);
+  border-radius: 2px;
+}
+
+/* ── SELECTED NODE ───────────────────────────────────────── */
+/* A ring drawn outside the border rather than a border change, so the shape's
+   own colour coding — which is how node type is read — survives selection. */
+.node.selected .node-shape {
+  box-shadow: 0 0 0 2px #3db8ff, 0 0 14px rgba(61, 184, 255, 0.45);
+}
+.node.selected .node-config {
+  border-color: #1e5f9e;
+  box-shadow: 0 0 10px rgba(30, 127, 255, 0.18);
+}
+
+/* ── SELECTION ACTION BAR ────────────────────────────────── */
+.sel-bar {
+  position: absolute;
+  display: none;
+  z-index: 60;
+  bottom: 16px; left: 50%;
+  transform: translateX(-50%);
+  align-items: center;
+  gap: 9px;
+  background: #131316;
+  border: 1px solid #2e2e34;
+  border-radius: 7px;
+  padding: 6px 9px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.65);
+  font-size: 11px;
+}
+.sel-bar.show { display: flex; }
+.sel-count { color: #9dd0ff; font-weight: 600; letter-spacing: 0.02em; }
+.sel-hint { color: #4a4a4a; font-size: 10px; }
+/* Clear was removed from the bar: deselecting already has two ways to happen
+   that need no button — Esc, and a click on empty canvas — and a destructive
+   action reads more clearly on its own than next to a harmless one. The
+   clearSelection() function stays; only the button is gone. */
+.sel-del {
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 10px;
+  cursor: pointer;
+  background: transparent;
+  border: 1px solid #2a2a2a;
+  color: #777;
+}
+.sel-del { border-color: #4a1a1a; color: #c05050; }
+.sel-del:hover { background: #2a0808; border-color: #c05050; color: #e06060; }
+
+/* The scaled world layer follows the hint in DOM order and would otherwise
+   paint its grid over the empty-canvas message. */
+.canvas-hint { z-index: 5; }
+
+/* Node labels are chrome, not content: letting a marquee drag highlight the word
+   "SOURCE" adds visual noise to a gesture that is about picking nodes. The
+   .selecting class extends the same suppression across the whole canvas for the
+   duration of a marquee, so sweeping over a config panel does not leave a trail
+   of highlighted text behind the box. */
+.node-shape { user-select: none; -webkit-user-select: none; }
+.canvas.selecting,
+.canvas.selecting * { user-select: none; -webkit-user-select: none; }
+
+/* ═══════════════════════════════════════════════════════════
+   AGGREGATE / AGGREGATE COLUMNS
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── PROCESSING MENU GROUPS ──────────────────────────────── */
+/* Five flat items in one dropdown is a list to read; three labelled groups is
+   a menu to scan. The grouping is by what the node does to a table — reshape
+   the rows, summarise them, or hold branches apart — which is also the order
+   a query tends to be built in. */
+.proc-group {
+  font-size: 9px;
+  color: #4e4e4e;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  padding: 7px 9px 3px;
+  pointer-events: none;   /* a heading is not a target */
+}
+.proc-group:first-child { padding-top: 3px; }
+
+/* ── SHAPES ──────────────────────────────────────────────── */
+/* Processing-family colour, shared with Sort, Take and Compare. The glyphs are
+   what separate them: ascending bars (Sort), bars with a cut (Take), a funnel
+   to one dot (Aggregate), three funnels side by side (Aggregate Columns). */
+.shape-aggregate,
+.shape-aggcols {
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-aggregate { width: 106px; height: 72px; }
+.shape-aggcols   { width: 112px; height: 72px; }
+.shape-aggregate:active,
+.shape-aggcols:active { cursor: grabbing; }
+
+/* Three bars narrowing to a single dot: many values in, one out. */
+.agg-glyph { display: flex; flex-direction: column; gap: 2px; align-items: center; }
+.agg-glyph i {
+  display: block; height: 3px; border-radius: 1px;
+  background: #b48ce0; opacity: 0.75;
+}
+.agg-glyph i:nth-child(1) { width: 22px; }
+.agg-glyph i:nth-child(2) { width: 16px; }
+.agg-glyph i:nth-child(3) { width: 10px; }
+.agg-glyph b {
+  display: block; width: 4px; height: 4px; border-radius: 50%;
+  background: #b48ce0; margin-top: 1px;
+}
+
+/* The same funnel three times over, one per column. */
+.aggc-glyph { display: flex; gap: 4px; align-items: flex-end; }
+.aggc-col { display: flex; flex-direction: column; gap: 2px; align-items: center; }
+.aggc-col i {
+  display: block; height: 3px; border-radius: 1px;
+  background: #b48ce0; opacity: 0.75;
+}
+.aggc-col i:nth-child(1) { width: 10px; }
+.aggc-col i:nth-child(2) { width: 7px; }
+.aggc-col b {
+  display: block; width: 3px; height: 3px; border-radius: 50%;
+  background: #b48ce0; margin-top: 1px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   COMBINE
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+.shape-combine {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-combine:active { cursor: grabbing; }
+
+/* Two short bars converging on a dot, then one long bar: streams in, one out.
+   Compare's glyph is three bars held apart — the two read as opposites, which
+   is what they are. */
+.cmb-glyph { display: flex; align-items: center; gap: 3px; }
+.cmb-in { display: flex; flex-direction: column; gap: 3px; }
+.cmb-in i, .cmb-out i {
+  display: block; height: 3px; border-radius: 1px;
+  background: #b48ce0; opacity: 0.75;
+}
+.cmb-in i { width: 10px; }
+.cmb-out i { width: 14px; }
+.cmb-glyph b {
+  display: block; width: 4px; height: 4px; border-radius: 50%;
+  background: #b48ce0;
+}
+
+/* Tick box in a node panel. The Compare measures list already has one of these
+   per row; this is the standalone version, sized to sit between two selects
+   without the row looking like a heading. */
+.cmb-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: #8a8a8a;
+  cursor: pointer;
+  padding: 1px 0;
+}
+.cmb-check input { width: auto; margin: 0; cursor: pointer; }

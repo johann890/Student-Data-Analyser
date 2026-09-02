@@ -16,6 +16,29 @@
   <div class="proc-wrap">
     <button class="add-btn processing" onclick="toggleProcMenu(event)">Processing <span class="caret">&#9662;</span></button>
     <div class="proc-menu" id="procMenu" onclick="event.stopPropagation()">
+      <div class="proc-group">Reshape rows</div>
+      <button class="proc-item" onclick="addProcNode('sort')">
+        <span class="proc-name">Sort</span>
+        <span class="proc-desc">Order rows by one or more columns</span>
+      </button>
+      <button class="proc-item" onclick="addProcNode('take')">
+        <span class="proc-name">Take</span>
+        <span class="proc-desc">Keep only the first N rows</span>
+      </button>
+      <div class="proc-group">Summarise</div>
+      <button class="proc-item" onclick="addProcNode('aggregate')">
+        <span class="proc-name">Aggregate</span>
+        <span class="proc-desc">Whole table down to one value</span>
+      </button>
+      <button class="proc-item" onclick="addProcNode('aggregateColumns')">
+        <span class="proc-name">Aggregate Columns</span>
+        <span class="proc-desc">One row out, one value per column</span>
+      </button>
+      <div class="proc-group">Branches</div>
+      <button class="proc-item" onclick="addProcNode('combine')">
+        <span class="proc-name">Combine</span>
+        <span class="proc-desc">Stack branches with matching columns</span>
+      </button>
       <button class="proc-item" onclick="addProcNode('compare')">
         <span class="proc-name">Compare</span>
         <span class="proc-desc">Put branches side by side</span>
@@ -29,6 +52,14 @@
   <button class="file-btn" onclick="openGraphFile(this)" title="Open a saved query">Load</button>
   <input type="file" id="loadFile" accept="application/json,.json" hidden>
   <div class="sep"></div>
+  <span class="tlabel">View</span>
+  <div class="zoom-group">
+    <button class="zoom-btn" onclick="zoomOut()" title="Zoom out  ( -  or scroll )">&minus;</button>
+    <button class="zoom-level" id="zoomLevel" onclick="zoomReset()" title="Back to 100%">100%</button>
+    <button class="zoom-btn" onclick="zoomIn()" title="Zoom in  ( +  or scroll )">+</button>
+  </div>
+  <button class="file-btn" onclick="zoomToFit()" title="Fit every node on screen  ( F )">Fit</button>
+  <div class="sep"></div>
   <button class="clear-btn" onclick="clearAll()">Clear</button>
   <button class="run-btn" onclick="runQuery()">Run Query</button>
 </div>
@@ -36,7 +67,21 @@
 <div class="main">
   <div class="canvas" id="canvas">
     <div class="canvas-hint" id="hint">Add nodes using the toolbar above<br><span style="font-size:11px">Source &rarr; Filter &rarr; Output</span></div>
-    <svg id="svg"></svg>
+
+    <!-- Everything in world coordinates lives here and is scaled as one layer, so
+         nodes and arrows can never drift out of register with each other. Overlays
+         that must stay legible at any zoom (marquee, selection bar, edge preview)
+         are siblings of this element, not children. -->
+    <div class="viewport" id="viewport">
+      <svg id="svg"></svg>
+    </div>
+
+    <div class="marquee" id="marquee"></div>
+
+    <div class="sel-bar" id="selBar">
+      <span class="sel-count" id="selCount">0 selected</span>
+      <button class="sel-del" onclick="deleteSelection()" title="Delete selected nodes  ( Delete )">Delete</button>
+    </div>
   </div>
   <div class="output-panel">
     <div class="panel-head">Results</div>

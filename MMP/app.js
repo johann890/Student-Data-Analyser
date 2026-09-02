@@ -9,6 +9,11 @@ var SPECS = ["Software Engineering","Computer Science","Information Technology",
 var G22 = [78,82,91,65,88,72,95,55,83,70,61,79,86,73,90,68,77,84,62,92,75,80,58,87,71,94,66,85,76,89,63,74,81,93,69,78,85,72,60,88];
 var G23 = [82,85,78,70,91,76,88,60,86,74,65,83,89,77,92,71,80,87,66,95,78,84,62,90,75,97,70,88,80,93,67,78,84,96,73,82,88,76,63,91];
 
+/* Best to worst. Declared once and attached to every letterGrade column so a
+   Sort can order grades the way a reader means them: as text, 'A+' falls
+   between 'A' and 'A-' because '+' precedes '-' in ASCII. */
+var GRADE_ORDER = ['A+','A','A-','B+','B','B-','C+','C','D'];
+
 function letterGrade(g) {
   if (g>=90) return 'A+'; if (g>=85) return 'A'; if (g>=80) return 'A-';
   if (g>=75) return 'B+'; if (g>=70) return 'B'; if (g>=65) return 'B-';
@@ -275,24 +280,24 @@ var YEARS = STUDENTS.map(function(s){ return s.year; })
 var STUDENT_COLUMNS = [
   { key:'id',             label:'ID',             type:COLTYPE.NUMBER, def:'1001' },
   { key:'gender',         label:'Gender',         type:COLTYPE.ENUM,   values:['M','F'] },
-  { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS },
+  { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS, filter:false },
   { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
   { key:'gradeAvg',       label:'Avg',            type:COLTYPE.NUMBER, def:'70' },
-  { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT },
+  { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT,   order:GRADE_ORDER },
   { key:'courses',        label:'Courses',        type:COLTYPE.COURSES }
 ];
 
 var ENROLMENT_COLUMNS = [
   { key:'studentId',      label:'Student',        type:COLTYPE.NUMBER, def:'1001' },
   { key:'gender',         label:'Gender',         type:COLTYPE.ENUM,   values:['M','F'] },
-  { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS },
+  { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS, filter:false },
   { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
   { key:'code',           label:'Course',         type:COLTYPE.ENUM,   values:COURSES.map(function(c){ return c.code; }) },
   { key:'name',           label:'Course name',    type:COLTYPE.TEXT },
   { key:'subject',        label:'Subject',        type:COLTYPE.ENUM,   values:SUBJECTS },
   { key:'points',         label:'Points',         type:COLTYPE.NUMBER, def:'15' },
   { key:'mark',           label:'Mark',           type:COLTYPE.NUMBER, def:'70' },
-  { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT }
+  { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT,   order:GRADE_ORDER }
 ];
 
 function studentsTable(list) {
@@ -338,7 +343,8 @@ function toEnrolments(t) {
     .filter(function(k){ return hasCol(t, k) && colByKey(t, k).type !== COLTYPE.COURSES; });
   var cols = carry.map(function(k) {
     var c = colByKey(t, k);
-    return { key: k === 'id' ? 'studentId' : k, label: c.label, type: c.type, values: c.values };
+    return { key: k === 'id' ? 'studentId' : k, label: c.label, type: c.type,
+             values: c.values, filter: c.filter };
   }).concat([
     { key:'code',        label:'Course',      type:COLTYPE.ENUM, values:COURSES.map(function(c){ return c.code; }) },
     { key:'name',        label:'Course name', type:COLTYPE.TEXT },
@@ -447,14 +453,254 @@ var SHAPE = {
   source:  { w:100, h:100 },
   filter:  { w:106, h:84 },
   compare: { w:112, h:78 },
+  sort:    { w:106, h:72 },
+  take:    { w:106, h:72 },
+  aggregate:        { w:106, h:72 },
+  aggregateColumns: { w:112, h:72 },
+  combine:          { w:106, h:72 },
   output:  { w:106, h:66 }
 };
 
+/* ============================================================================
+   VIEW — WORLD COORDINATES, ZOOM AND PAN
+   ============================================================================
+   Node x/y were previously viewport pixels: a node's position meant "this many
+   pixels from the top-left of the visible canvas", so the reachable area was
+   whatever the window happened to be, and a node dragged to the edge of a small
+   window was at a different logical place than the same drag in a large one.
+
+   They are now world coordinates in a fixed logical area, and the view is a
+   separate concern: a scale plus a translation applied to one wrapper element.
+   The model never knows what is on screen. That is what makes zoom possible
+   without touching the graph, and it means a saved query means the same thing
+   on any display — so the file format is untouched by this change.
+
+       screen = world * z + pan            (pan is in screen px)
+       world  = (screen - pan) / z
+
+   Every conversion goes through toWorld/toScreen. Reading node positions
+   straight off clientX again is the one way to reintroduce the bug this
+   replaces, because it silently works at 100% and only skews at other zooms. */
+
+var WORLD_W = 5000, WORLD_H = 3500;
+var MIN_ZOOM = 0.3, MAX_ZOOM = 2;
+var ZOOM_STEP = 1.2;
+
+var view = { z: 1, x: 0, y: 0 };
+
+function canvasBox() { return document.getElementById('canvas').getBoundingClientRect(); }
+
+function toWorld(clientX, clientY) {
+  var r = canvasBox();
+  return { x: (clientX - r.left - view.x) / view.z, y: (clientY - r.top - view.y) / view.z };
+}
+function toScreen(wx, wy) {
+  return { x: wx * view.z + view.x, y: wy * view.z + view.y };
+}
+function viewCentreWorld() {
+  var r = canvasBox();
+  return toWorld(r.left + r.width / 2, r.top + r.height / 2);
+}
+
+/* Pan is clamped so the world can never be dragged off screen entirely. When
+   the world is smaller than the viewport — which is what zooming out far enough
+   produces — there is no valid pan, so it is centred instead. Without this,
+   zooming out leaves the graph pinned to a corner against dead space. */
+function clampPan() {
+  var r = canvasBox();
+  var sw = WORLD_W * view.z, sh = WORLD_H * view.z;
+  view.x = sw <= r.width  ? (r.width  - sw) / 2 : Math.min(0, Math.max(r.width  - sw, view.x));
+  view.y = sh <= r.height ? (r.height - sh) / 2 : Math.min(0, Math.max(r.height - sh, view.y));
+}
+
+function applyView() {
+  var vp = document.getElementById('viewport');
+  if (vp) {
+    vp.style.width  = WORLD_W + 'px';
+    vp.style.height = WORLD_H + 'px';
+    vp.style.transform = 'translate(' + view.x + 'px,' + view.y + 'px) scale(' + view.z + ')';
+  }
+  var lbl = document.getElementById('zoomLevel');
+  if (lbl) lbl.textContent = Math.round(view.z * 100) + '%';
+}
+
+/* Zoom about a fixed point: the world position under the cursor stays under the
+   cursor. Anchoring to the canvas centre instead — the naive version — walks
+   the graph away from wherever the user was looking, which is why wheel zoom
+   passes the pointer through. */
+function setZoom(z, clientX, clientY) {
+  var r = canvasBox();
+  if (clientX === undefined) { clientX = r.left + r.width / 2; clientY = r.top + r.height / 2; }
+  var anchor = toWorld(clientX, clientY);
+  view.z = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, z));
+  view.x = (clientX - r.left) - anchor.x * view.z;
+  view.y = (clientY - r.top)  - anchor.y * view.z;
+  clampPan();
+  applyView();
+  repositionPreview();
+}
+
+function zoomIn()    { setZoom(view.z * ZOOM_STEP); }
+function zoomOut()   { setZoom(view.z / ZOOM_STEP); }
+function zoomReset() { setZoom(1); }
+
+/* Open on the middle of the world rather than its top-left corner. Not
+   cosmetic: pan is clamped so the world can never show dead space around it, and
+   at a corner two of those clamps are always active — so zooming out drags the
+   graph diagonally into the corner instead of pulling away from the pointer,
+   which reads as the canvas fighting back. From the middle there is world on
+   every side and zoom is symmetric until an edge is genuinely approached. */
+function centreView() {
+  var r = canvasBox();
+  view.x = r.width  / 2 - (WORLD_W / 2) * view.z;
+  view.y = r.height / 2 - (WORLD_H / 2) * view.z;
+  clampPan();
+  applyView();
+}
+
+/* Measured, not assumed: a node's height depends on its config panel, which
+   depends on the schema reaching it. SHAPE only describes the head. */
+function nodeBox(node) {
+  var el = nodeEls[node.id];
+  // offsetHeight is a layout value and ignores ancestor transforms, so this is
+  // a world-space height at any zoom.
+  var h = el ? el.offsetHeight : SHAPE[node.type].h;
+  return { x: node.x, y: node.y, w: NODE_W, h: h };
+}
+
+function graphBounds() {
+  if (!nodes.length) return null;
+  var b = { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity };
+  nodes.forEach(function(n) {
+    var r = nodeBox(n);
+    b.x1 = Math.min(b.x1, r.x);       b.y1 = Math.min(b.y1, r.y);
+    b.x2 = Math.max(b.x2, r.x + r.w); b.y2 = Math.max(b.y2, r.y + r.h);
+  });
+  return b;
+}
+
+/* Fit caps at 100%: scaling a two-node graph up to fill the window would make
+   the config text enormous and tell the user nothing. Fit is for seeing
+   everything, not for filling space. */
+function zoomToFit() {
+  var b = graphBounds();
+  if (!b) { setZoom(1); return; }
+  var r = canvasBox(), pad = 70;
+  var bw = Math.max(1, b.x2 - b.x1), bh = Math.max(1, b.y2 - b.y1);
+  var z = Math.min((r.width - pad * 2) / bw, (r.height - pad * 2) / bh, 1);
+  view.z = Math.max(MIN_ZOOM, z);
+  view.x = (r.width  - bw * view.z) / 2 - b.x1 * view.z;
+  view.y = (r.height - bh * view.z) / 2 - b.y1 * view.z;
+  clampPan();
+  applyView();
+}
+
+/* ============================================================================
+   SELECTION
+   ============================================================================
+   Selection is transient view state keyed by node id, deliberately outside the
+   graph model: it is not serialised, and it survives a render() because ids
+   survive a render(). Changing it must not rebuild the canvas — a rebuild
+   destroys any config control the user is mid-edit in — so every selection
+   change goes through syncSelectionUI(), which only toggles classes. */
+
+var selection = [];
+
+function isSelected(id) { return selection.indexOf(id) !== -1; }
+
+function setSelection(ids) {
+  // Filter against live nodes so a deleted id can never linger and resurrect a
+  // selection ring on a recycled element.
+  selection = ids.filter(function(id, i) {
+    return ids.indexOf(id) === i && findNode(id);
+  });
+  syncSelectionUI();
+}
+function selectOnly(id)     { setSelection([id]); }
+function clearSelection()   { setSelection([]); }
+function selectAll()        { setSelection(nodes.map(function(n){ return n.id; })); }
+function addToSelection(id) { if (!isSelected(id)) setSelection(selection.concat([id])); }
+function toggleSelected(id) {
+  setSelection(isSelected(id)
+    ? selection.filter(function(x){ return x !== id; })
+    : selection.concat([id]));
+}
+
+function syncSelectionUI() {
+  nodes.forEach(function(n) {
+    var el = nodeEls[n.id];
+    if (!el) return;
+    if (isSelected(n.id)) el.classList.add('selected');
+    else el.classList.remove('selected');
+  });
+
+  var bar = document.getElementById('selBar');
+  var cnt = document.getElementById('selCount');
+  if (!bar || !cnt) return;
+  if (selection.length) {
+    cnt.textContent = selection.length + ' node' + (selection.length === 1 ? '' : 's') + ' selected';
+    bar.classList.add('show');
+  } else {
+    bar.classList.remove('show');
+  }
+}
+
+/* Every node reachable from a start node, following edges in either direction —
+   the connected component, which is what "this branch" means to someone looking
+   at the canvas. Direction is ignored on purpose: a Compare node's two input
+   chains are one visual branch even though no edge runs between them. */
+function connectedComponent(startId) {
+  var seen = [startId], queue = [startId];
+  while (queue.length) {
+    var id = queue.shift();
+    connections.forEach(function(c) {
+      var other = c.from === id ? c.to : (c.to === id ? c.from : null);
+      if (other !== null && seen.indexOf(other) === -1) { seen.push(other); queue.push(other); }
+    });
+  }
+  return seen;
+}
+
+function selectBranch(id) { setSelection(connectedComponent(id)); }
+
+/* Bulk delete. Connections are dropped when either end goes, which is the same
+   rule removeNode() has always used — applied once over the whole set rather
+   than once per node, so a graph is never briefly inconsistent mid-delete. */
+function deleteSelection() {
+  if (!selection.length) return;
+  var doomed = selection.slice();
+  nodes = nodes.filter(function(n){ return doomed.indexOf(n.id) === -1; });
+  connections = connections.filter(function(c) {
+    return doomed.indexOf(c.from) === -1 && doomed.indexOf(c.to) === -1;
+  });
+  selection = [];
+  cancelPreviewTimer(); hidePreview();
+  markStale();
+  render();
+}
+
+/* Take sits anywhere a row stream does: it neither reads nor writes column
+   structure, so anything that could feed a Filter can feed a Take and vice
+   versa. Compare stays output-only — it is superseded, and widening its
+   downstream reach now would be work thrown away when it retires. */
+/* Every row-stream node accepts and produces a table, so they compose freely.
+   The aggregation nodes are no exception: an Aggregate result is a one-row
+   table like any other, and being able to feed it onward is the whole reason
+   they exist as nodes rather than as Output settings.
+
+   Compare stays output-only. It is superseded, and widening its reach now
+   would be work thrown away when it retires. */
+var TABLE_NODES = ['filter', 'sort', 'take', 'aggregate', 'aggregateColumns', 'combine'];
 var CONNECT_RULES = {
-  source:  ['filter', 'compare', 'output'],
-  filter:  ['filter', 'compare', 'output'],
-  compare: ['output'],
-  output:  []
+  source:           TABLE_NODES.concat(['compare', 'output']),
+  filter:           TABLE_NODES.concat(['compare', 'output']),
+  sort:             TABLE_NODES.concat(['compare', 'output']),
+  take:             TABLE_NODES.concat(['compare', 'output']),
+  aggregate:        TABLE_NODES.concat(['compare', 'output']),
+  aggregateColumns: TABLE_NODES.concat(['compare', 'output']),
+  combine:          TABLE_NODES.concat(['compare', 'output']),
+  compare:          ['output'],
+  output:           []
 };
 function canConnect(fromType, toType) {
   return (CONNECT_RULES[fromType] || []).indexOf(toType) !== -1;
@@ -492,6 +738,17 @@ function defaultCfg(type) {
   if (type === 'source')  return { pop:'all', rows:'students' };
   if (type === 'filter')  return { criteria:[newCriterion()] };
   if (type === 'compare') return { measures:DEFAULT_MEASURES.slice(), sort:'wired', labels:{} };
+  if (type === 'sort')    return { keys: [newSortKey()] };
+  if (type === 'take')    return { n: String(TAKE_DEFAULT) };
+  // Both aggregation nodes share one config shape: which measure, and (for the
+  // measures that need one) which column. col:'' means "resolve against
+  // whatever arrives", which is what keeps a saved query working after the
+  // Source granularity is changed underneath it.
+  if (type === 'aggregate')        return { op: AGG_DEFAULT_OP, col: '' };
+  if (type === 'aggregateColumns') return { op: 'sum' };
+  // dedupe defaults off: merge stacks rows, and discarding identical rows is a
+  // decision the user makes rather than one the node makes quietly.
+  if (type === 'combine') return { mode: 'merge', dedupe: false, base: '', key: '' };
   if (type === 'output')  return { show:'rows', avgCol:'', filename:'' };
   return {};
 }
@@ -536,6 +793,14 @@ function setCfg(nodeId, key, value) {
     else if (sub.indexOf('op:') === 0)    { c.ops = c.ops || {};       c.ops[sub.slice(3)] = value; }
     return;
   }
+  var sk = key.match(/^sort\.(\d+)\.(col|dir)$/);
+  if (sk) {
+    var list = n.cfg.keys || (n.cfg.keys = []);
+    var k = list[parseInt(sk[1], 10)];
+    if (!k) return;
+    k[sk[2]] = value;
+    return;
+  }
   if (key.indexOf('label:') === 0) {
     n.cfg.labels = n.cfg.labels || {};
     n.cfg.labels[key.slice(6)] = value;
@@ -566,17 +831,52 @@ function inputsOf(nodeId) {
 }
 
 /* ADD / REMOVE */
+/* Placement is relative to what the user is looking at, not to the world. Random
+   scatter across a 5000px world would drop most new nodes off screen; scatter
+   across the viewport would put them wherever the window edge happens to be.
+   The middle of the current view is the only spot that is always visible and
+   always means the same thing.
+
+   The step-out loop keeps a run of clicks from stacking nodes on one pixel: each
+   new node takes the first free slot on a widening diagonal. Cheap because it
+   only ever inspects nodes already placed, and n is small by construction. */
+var PLACE_STEP = 46;
+var PLACE_CLEAR = 34;
+
+function freeSpotNear(cx, cy) {
+  for (var ring = 0; ring < 40; ring++) {
+    var x = cx + ring * PLACE_STEP, y = cy + ring * PLACE_STEP;
+    x = Math.max(10, Math.min(WORLD_W - NODE_W - 10, x));
+    y = Math.max(10, Math.min(WORLD_H - 160, y));
+    var clash = nodes.some(function(n) {
+      return Math.abs(n.x - x) < PLACE_CLEAR && Math.abs(n.y - y) < PLACE_CLEAR;
+    });
+    if (!clash) return { x: Math.round(x), y: Math.round(y) };
+  }
+  return { x: Math.round(cx), y: Math.round(cy) };
+}
+
 function addNode(type) {
-  var cv = document.getElementById('canvas');
-  var x = 60 + Math.random() * Math.max(80, cv.clientWidth - 260);
-  var y = 60 + Math.random() * Math.max(80, cv.clientHeight - 220);
+  var c = viewCentreWorld();
+  var spot = freeSpotNear(c.x - NODE_W / 2, c.y - SHAPE[type].h / 2);
   var color = EDGE_PALETTE[edgeColorIndex++ % EDGE_PALETTE.length];
+  var id = uid();
   nodes.push({
-    id: uid(), type: type,
-    x: Math.round(x), y: Math.round(y),
+    id: id, type: type,
+    x: spot.x, y: spot.y,
     color: color,
     cfg: defaultCfg(type)
   });
+  /* The new node is deliberately NOT selected. Selection means "the thing I am
+     about to act on", and arriving from the toolbar is not that — the user
+     picked a node type, not a target. Selecting happens by clicking or dragging
+     a node, which is the point at which they have actually pointed at one.
+
+     The existing selection is cleared, though. Leaving it would mean that after
+     selecting a few nodes and then adding one, Backspace deletes the old
+     selection rather than the node just added — the opposite of what the last
+     action suggests, and unrecoverable without undo. */
+  selection = [];
   markStale();
   render();
 }
@@ -584,6 +884,7 @@ function addNode(type) {
 function removeNode(id) {
   nodes = nodes.filter(function(n){ return n.id !== id; });
   connections = connections.filter(function(c){ return c.from !== id && c.to !== id; });
+  selection = selection.filter(function(x){ return x !== id; });
   markStale();
   render();
 }
@@ -591,9 +892,25 @@ function removeNode(id) {
 function clearAll() {
   nodes = []; connections = []; edgeColorIndex = 0;
   exportData = {}; resultsFresh = false;
+  selection = [];
   cancelPreviewTimer(); hidePreview();
+  view.z = 1; centreView();
   render();
   setOutput('<div class="placeholder">Run a query to see results</div>');
+}
+
+/* Every one of these buttons calls render(), which destroys the button that was
+   just clicked along with the rest of the panel. Focus then falls to <body>,
+   leaving the user looking at a panel the keyboard no longer considers active —
+   the state that made a stray Backspace destructive. Putting focus back on the
+   rebuilt panel keeps the two in agreement, and gives keyboard users somewhere
+   sensible to tab on from rather than the top of the document. */
+function focusCfg(nodeId, keyPrefix) {
+  var el = nodeEls[nodeId];
+  if (!el) return;
+  var ctl = keyPrefix ? el.querySelector('[data-key^="' + keyPrefix + '"]') : null;
+  if (!ctl) ctl = el.querySelector('[data-node]');
+  if (ctl && ctl.focus) ctl.focus();
 }
 
 function addCriterion(nodeId) {
@@ -602,6 +919,7 @@ function addCriterion(nodeId) {
   n.cfg.criteria.push(newCriterion());
   markStale();
   render();
+  focusCfg(nodeId, 'crit.' + (n.cfg.criteria.length - 1) + '.');
 }
 function removeCriterion(nodeId, idx) {
   var n = findNode(nodeId);
@@ -609,6 +927,29 @@ function removeCriterion(nodeId, idx) {
   n.cfg.criteria.splice(idx, 1);
   markStale();
   render();
+  focusCfg(nodeId);
+}
+
+/* Sort keys use the same add/remove shape as filter criteria — one list, the
+   first row not removable — so the two panels behave identically. Priority is
+   list position: the first key decides, later ones break ties. */
+function addSortKey(nodeId) {
+  var n = findNode(nodeId);
+  if (!n || n.type !== 'sort') return;
+  n.cfg.keys = n.cfg.keys || [];
+  n.cfg.keys.push(newSortKey());
+  markStale();
+  render();
+  focusCfg(nodeId, 'sort.' + (n.cfg.keys.length - 1) + '.');
+}
+function removeSortKey(nodeId, idx) {
+  var n = findNode(nodeId);
+  if (!n || n.type !== 'sort') return;
+  n.cfg.keys.splice(idx, 1);
+  if (!n.cfg.keys.length) n.cfg.keys.push(newSortKey());
+  markStale();
+  render();
+  focusCfg(nodeId);
 }
 
 /* ============================================================================
@@ -741,9 +1082,16 @@ function courseFields() {
   ];
 }
 
+/* A column can opt out of being filterable with `filter: false`. Year does:
+   the Source already scopes the population by year, and offering it twice
+   invited a graph that says 2022 in one place and 2023 in another. The column
+   still exists — it is displayed, exported and grouped on like any other. */
 function filterFields(schema) {
   var out = [];
   schema.columns.forEach(function(c) {
+    if (c.filter === false) {
+      return;
+    }
     if (c.type === COLTYPE.COURSES) {
       out.push.apply(out, courseFields());
     } else {
@@ -866,6 +1214,202 @@ function applyCriterion(t, c, f, log) {
    separate Filter chain instead of naming a column to split on. It is kept
    working here so the table refactor changes no behaviour, but new work should
    go into SelectFor rather than into extending this.                          */
+
+/* SORT
+   Reorders rows by one or more columns with a priority, the way Excel's sort
+   dialog does: the first key decides, the second breaks its ties, and so on.
+   Like Take it is a pure row operation — same columns out as in — so
+   computeSchemas() needs no case for it either.
+
+   This is the first node that visibly earns the uniform table model. It sorts
+   a student list, an enrolment list and (once Histogram lands) a histogram
+   with no knowledge of any of them: it asks the incoming table for its columns
+   and their types, and everything else follows from that. */
+
+// COURSES cells hold an array of enrolment objects. There is no defensible
+// ordering on "eight courses" — by count? by first code? — so the column is
+// offered nowhere rather than sorted arbitrarily.
+function sortableCols(t) {
+  return t.columns.filter(function(c){ return c.type !== COLTYPE.COURSES; });
+}
+
+/* Declared order beats lexical order. Specialisation and Year are ENUMs whose
+   `values` array is already the order a reader expects, and letterGrade now
+   carries an explicit `order` for the same reason: sorted as text, an A+ lands
+   between A and A- because '+' precedes '-' in ASCII. Any column may opt in by
+   declaring `order`; columns that declare neither fall back to comparison by
+   value. */
+function ordinalsFor(col) {
+  if (col && col.order) return col.order;
+  if (col && col.type === COLTYPE.ENUM && col.values) return col.values;
+  return null;
+}
+
+function isBlank(v) {
+  return v === undefined || v === null || v === '' ||
+         (typeof v === 'number' && !isFinite(v));
+}
+
+/* One comparator per column, built once per sort rather than per comparison. */
+function comparatorFor(col) {
+  var ord = ordinalsFor(col);
+  if (ord) {
+    var rank = {};
+    ord.forEach(function(v, i){ rank[String(v)] = i; });
+    return function(a, b) {
+      // A value absent from the declared order sorts after every declared one,
+      // then alphabetically among its peers — so a course prefix added to the
+      // catalogue without being added to the order still lands somewhere
+      // predictable instead of at the front.
+      var ra = rank[String(a)], rb = rank[String(b)];
+      if (ra === undefined && rb === undefined) return String(a) < String(b) ? -1 : (String(a) > String(b) ? 1 : 0);
+      if (ra === undefined) return 1;
+      if (rb === undefined) return -1;
+      return ra - rb;
+    };
+  }
+  if (col && col.type === COLTYPE.NUMBER) {
+    return function(a, b){ return Number(a) - Number(b); };
+  }
+  // numeric:true so SWEN430 precedes SWEN4300, sensitivity:'base' so case does
+  // not split otherwise-equal values into two groups.
+  return function(a, b) {
+    return String(a).localeCompare(String(b), undefined, { numeric:true, sensitivity:'base' });
+  };
+}
+
+var SORT_DIRS = ['asc', 'desc'];
+
+// Direction labels follow the column type: "A → Z" is meaningless on a mark and
+// "high → low" is meaningless on a name.
+function dirLabel(col, dir) {
+  if (col && col.type === COLTYPE.NUMBER) return dir === 'desc' ? 'high → low' : 'low → high';
+  if (ordinalsFor(col))                   return dir === 'desc' ? 'last → first' : 'first → last';
+  return dir === 'desc' ? 'Z → A' : 'A → Z';
+}
+
+function newSortKey() { return { col:'', dir:'asc' }; }
+
+/* Resolve the configured keys against a table. A key naming a column that is
+   no longer there — rewire a Source from students to enrolments and 'gradeAvg'
+   simply stops existing — is reported rather than silently dropped, because a
+   sort that quietly stopped happening looks identical to one that ran. */
+function resolveSortKeys(node, t) {
+  var cfg = (node && node.cfg) || defaultCfg('sort');
+  var avail = sortableCols(t);
+  var out = [];
+  (cfg.keys || []).forEach(function(k) {
+    var key = k && k.col;
+    if (!key) { if (avail.length) out.push({ col:avail[0], dir:(k && k.dir) || 'asc' }); return; }
+    var col = colByKey(t, key);
+    if (!col || col.type === COLTYPE.COURSES) { out.push({ missing:key }); return; }
+    out.push({ col:col, dir:(k.dir === 'desc' ? 'desc' : 'asc') });
+  });
+  return out;
+}
+
+/* Compares two decorated rows {row, i} against a plan of resolved keys. Pulled
+   out of applySort so the tie rule is a testable function rather than a
+   property of whichever engine runs Array.sort. */
+function sortRowComparator(plan) {
+  return function(A, B) {
+    for (var p = 0; p < plan.length; p++) {
+      var a = A.row[plan[p].idx], b = B.row[plan[p].idx];
+      // Blanks sink to the bottom under both directions. Reversing a sort
+      // should not drag empty cells to the top of the report.
+      var ba = isBlank(a), bb = isBlank(b);
+      if (ba || bb) { if (ba && bb) continue; return ba ? 1 : -1; }
+      var c = plan[p].cmp(a, b);
+      if (c) return c * plan[p].sign;
+    }
+    return A.i - B.i;   // fully tied: arrival order decides
+  };
+}
+
+function applySort(node, t, log) {
+  var keys = resolveSortKeys(node, t);
+  var missing = keys.filter(function(k){ return k.missing; });
+  var live    = keys.filter(function(k){ return k.col; });
+
+  missing.forEach(function(k) {
+    log.push(logEntry('SORT', [{s:'skipped'}, {c:'val', s:k.missing},
+                               {s:'— not a column in this table'}]));
+  });
+  if (!live.length) return t;
+
+  log.push(logEntry('SORT', live.reduce(function(parts, k, i) {
+    if (i) parts.push({s:'then'});
+    parts.push({c:'val', s:k.col.label}, {s:dirLabel(k.col, k.dir)});
+    return parts;
+  }, [])));
+
+  var plan = live.map(function(k) {
+    return { idx: colIndex(t, k.col.key), cmp: comparatorFor(k.col), sign: k.dir === 'desc' ? -1 : 1 };
+  });
+
+  /* Decorated with the arrival position and compared on it last. Array.sort is
+     specified stable since ES2019, but relying on that would make the tie
+     behaviour a property of the engine rather than of this node — and ties are
+     the normal case here, not the edge case (sorting 80 students by Year gives
+     two groups of forty). The comparator is extracted so a test can assert the
+     tiebreak directly: an engine that is already stable hides the difference,
+     so exercising it through sort() alone would prove nothing. */
+  var cmpRows = sortRowComparator(plan);
+  var decorated = t.rows.map(function(row, i){ return { row:row, i:i }; });
+  decorated.sort(cmpRows);
+
+  /* A new rows array, never an in-place sort. One node's result object is read
+     by every node wired downstream of it, so sorting t.rows in place would
+     reorder a sibling branch's data as a side effect — and the bug would only
+     appear on graphs that fork. */
+  return makeTable(t.columns, decorated.map(function(d){ return d.row; }), t.meta);
+}
+
+/* TAKE
+   Keeps the first N rows and discards the rest. It is the whole node: no
+   column is added, removed, renamed or retyped, so the outgoing header is the
+   incoming header and computeSchemas() needs no case for it.
+
+   Deliberately not a sort. "Top 10 by mark" is Sort then Take, two nodes doing
+   one thing each, which is why the supervisor asked for Take as its own node
+   rather than a Top-N that quietly sorts on your behalf. Behind an unsorted
+   input this returns the first ten rows in whatever order they arrived — which
+   is a legitimate thing to want (a sample to eyeball) and is stated in the
+   panel so it cannot be mistaken for a ranking.
+
+   N is stored as typed, never parsed on write. A number input yields '' while
+   the field is mid-edit and '1e3' if pasted; coercing on write would have to
+   pick a number for text the user has not finished typing, and would then feed
+   that guess back into the control. Coercion happens once, on read. */
+var TAKE_DEFAULT = 10;
+var TAKE_MIN = 1;
+
+function takeCount(node) {
+  var raw = node && node.cfg ? node.cfg.n : undefined;
+  var n = parseInt(raw, 10);
+  // Blank, non-numeric or out of range all fall back rather than throwing: a
+  // half-typed field must not break a Run, and a saved file written by hand
+  // must not be able to produce a negative slice.
+  if (!isFinite(n) || n < TAKE_MIN) return TAKE_DEFAULT;
+  return Math.floor(n);
+}
+
+function applyTake(node, t, log) {
+  var n = takeCount(node);
+  var before = t.rows.length;
+
+  // Log what actually happened, not what was asked for. "first 10" above a
+  // seven-row table reads as a bug in the tool; saying all 7 were kept shows
+  // the node ran and the input was simply short.
+  log.push(logEntry('TAKE', before <= n
+    ? [{s:'first'}, {c:'val', s:n}, {s:'rows — kept all'}, {c:'val', s:before}]
+    : [{s:'first'}, {c:'val', s:n}, {s:'rows of'}, {c:'val', s:before}]));
+
+  if (before <= n) return t;
+  // meta is carried through: Take is a row operation and has no opinion about
+  // whatever a producer upstream recorded there.
+  return makeTable(t.columns, t.rows.slice(0, n), t.meta);
+}
 
 var MEASURES = [
   { key:'count',   label:'Students',         head:'Students'  },
@@ -1038,6 +1582,474 @@ function outputTable(node, t) {
   return t; // 'rows', 'summary' and 'lists' all display the incoming table
 }
 
+/* ============================================================================
+   AGGREGATION
+   ============================================================================
+   Two nodes, one implementation. Both reduce a set of values to one value; they
+   differ only in which set.
+
+     Aggregate         the whole table  ->  a 1x1 table
+     AggregateColumns  each column      ->  one row, one value per column
+
+   The names say what survives, not what is destroyed: AggregateColumns keeps
+   the columns and collapses the rows beneath them.
+
+   Three decisions apply to both, and are made here rather than per node so the
+   two cannot drift apart:
+
+   1. The empty case is blank, not zero. The count of nothing is 0 — that is a
+      true statement about an empty table. The average, minimum or maximum of
+      nothing is not 0; it does not exist. meanOf() returns 0 for an empty
+      table, which is why the existing Output card special-cases it and prints
+      an em dash. Rather than repeat that trick, these nodes emit null, which
+      fmtCell and exportCell already render as empty in both the panel and the
+      CSV.
+
+   2. Count means "values that are actually there". On the whole table that is
+      the row count; per column it is the number of non-blank cells, which is
+      the more useful reading and the one that differs between columns.
+
+   3. A measure that cannot apply to a column yields blank rather than dropping
+      the column. Dropping would make the output header depend on the data —
+      and matching headers is precisely what Combine will require in order to
+      stack two of these results. A header that quietly changes shape when a
+      column happens to be non-numeric would break that at the worst moment. */
+
+var AGG_OPS = [
+  { key:'count',   label:'Count',   verb:'Count of',   needsCol:false },
+  { key:'sum',     label:'Sum',     verb:'Sum of',     needsCol:true  },
+  { key:'average', label:'Average', verb:'Average',    needsCol:true  },
+  { key:'min',     label:'Minimum', verb:'Minimum',    needsCol:true  },
+  { key:'max',     label:'Maximum', verb:'Maximum',    needsCol:true  }
+];
+var AGG_DEFAULT_OP = 'count';
+
+function aggOp(node) {
+  var k = node && node.cfg ? node.cfg.op : null;
+  for (var i = 0; i < AGG_OPS.length; i++) if (AGG_OPS[i].key === k) return AGG_OPS[i];
+  return AGG_OPS[0];   // anything unrecognised, including a hand-edited file
+}
+
+// Columns a numeric measure can be applied to. Identifiers are excluded for the
+// same reason Output's Average excludes them: the sum of a set of student IDs
+// is a number, but it is not a fact about anything.
+function ID_KEYS() { return { id:1, studentId:1 }; }
+function measurableCols(t) {
+  var skip = ID_KEYS();
+  return numericCols(t).filter(function(c){ return !skip[c.key]; });
+}
+
+function isMeasurable(t, col) {
+  if (!col || col.type !== COLTYPE.NUMBER) return false;
+  return !ID_KEYS()[col.key];
+}
+
+/* Reduce a list of raw cell values. Blanks are skipped rather than counted as
+   zero — a missing mark is not a mark of nought, and treating it as one drags
+   every average down by an amount that depends on how much data is missing. */
+function reduceValues(opKey, values) {
+  var nums = [];
+  for (var i = 0; i < values.length; i++) {
+    var v = values[i];
+    if (isBlank(v)) continue;
+    if (opKey === 'count') { nums.push(1); continue; }
+    var n = Number(v);
+    if (isFinite(n)) nums.push(n);
+  }
+  if (opKey === 'count') return nums.length;
+  if (!nums.length) return null;              // see decision 1 above
+  if (opKey === 'sum')     return nums.reduce(function(a, b){ return a + b; }, 0);
+  if (opKey === 'average') return nums.reduce(function(a, b){ return a + b; }, 0) / nums.length;
+  if (opKey === 'min')     return Math.min.apply(null, nums);
+  if (opKey === 'max')     return Math.max.apply(null, nums);
+  return null;
+}
+
+function columnValues(t, key) {
+  var i = colIndex(t, key);
+  if (i === -1) return [];
+  return t.rows.map(function(r){ return r[i]; });
+}
+
+/* ---- Aggregate: whole table -> 1x1 ---------------------------------------- */
+
+/* Which column the measure applies to, resolved against the table rather than
+   trusted from config. A saved key can outlive its column — rewiring a Source
+   from students to enrolments is enough — so this falls back the same way
+   Output's Average does. */
+function aggregateCol(node, t) {
+  var op = aggOp(node);
+  if (!op.needsCol) return null;
+  var key = (node && node.cfg && node.cfg.col) || '';
+  var col = key ? colByKey(t, key) : null;
+  if (col && isMeasurable(t, col)) return col;
+  var avail = measurableCols(t);
+  return avail.length ? avail[0] : null;
+}
+
+// The single column both the schema walk and the engine must agree on. Derived
+// in one place so they cannot disagree — the registry invariant depends on it.
+function aggregateColumn(node, t) {
+  var op = aggOp(node);
+  if (!op.needsCol) {
+    return { key:'count', label:'Count', type:COLTYPE.NUMBER };
+  }
+  var col = aggregateCol(node, t);
+  return {
+    key: op.key,
+    label: col ? (op.verb + ' ' + col.label) : op.label,
+    type: COLTYPE.NUMBER
+  };
+}
+
+function aggregateSchema(node, inSchema) {
+  return makeTable([aggregateColumn(node, inSchema)], []);
+}
+
+function applyAggregate(node, t, log) {
+  var op = aggOp(node);
+  var outCol = aggregateColumn(node, t);
+  var value;
+
+  if (!op.needsCol) {
+    value = t.rows.length;
+    log.push(logEntry('AGGREGATE', [{s:'count of'}, {c:'val', s:t.rows.length}, {s:'rows'}]));
+  } else {
+    var col = aggregateCol(node, t);
+    if (!col) {
+      // No column the measure could apply to. Blank and say so, rather than
+      // returning a number that describes nothing.
+      log.push(logEntry('AGGREGATE', [{s:op.label.toLowerCase()}, {s:'— no numeric column in this table'}]));
+      return makeTable([outCol], [[null]]);
+    }
+    value = reduceValues(op.key, columnValues(t, col.key));
+    log.push(logEntry('AGGREGATE', [{s:op.label.toLowerCase() + ' of'}, {c:'val', s:col.label},
+                                    {s:'over'}, {c:'val', s:t.rows.length}, {s:'rows'}]));
+  }
+  return makeTable([outCol], [[value]]);
+}
+
+/* ---- AggregateColumns: many rows -> one row ------------------------------- */
+
+/* Keys and labels are preserved so the result still reads as the same table —
+   that is what makes "run a histogram twice, stack them, total the columns"
+   work. Types become NUMBER across the board because every cell is now a
+   measure or blank, whatever the column held before. */
+function aggregateColumnsSchema(node, inSchema) {
+  return makeTable(inSchema.columns.map(function(c) {
+    return { key:c.key, label:c.label, type:COLTYPE.NUMBER };
+  }), []);
+}
+
+function applyAggregateColumns(node, t, log) {
+  var op = aggOp(node);
+  var out = aggregateColumnsSchema(node, t);
+
+  var skipped = [];
+  var row = t.columns.map(function(c) {
+    // Count applies to any column: it asks how many values are present, which
+    // is a question a text column can answer.
+    if (op.key === 'count') {
+      return reduceValues('count', columnValues(t, c.key));
+    }
+    if (!isMeasurable(t, c)) { skipped.push(c.label); return null; }
+    return reduceValues(op.key, columnValues(t, c.key));
+  });
+
+  log.push(logEntry('AGGREGATE COLUMNS', [{s:op.label.toLowerCase() + ' down'},
+                                          {c:'val', s:t.rows.length}, {s:'rows'}]));
+  if (skipped.length) {
+    log.push(logEntry('AGGREGATE COLUMNS', [{s:'left blank:'}, {c:'val', s:skipped.join(', ')}]));
+  }
+  return makeTable(out.columns, [row]);
+}
+
+/* ============================================================================
+   COMBINE
+   ============================================================================
+   Two or more tables with matching headers into one. Modes: merge, intersect,
+   difference — the supervisor's suggestion that "set ops" is not a node but a
+   setting on Combine.
+
+   Combine reads its inputs separately rather than letting the graph merge them
+   first, for the same reason Compare does: it has to know which table is which.
+   That is also what keeps it clear of the implicit multi-wire union, which
+   matters more than it sounds:
+
+   MERGE CONCATENATES; IT DOES NOT DEDUPLICATE BY DEFAULT.
+   The implicit union deduplicates by rowKey(), and for merging two student
+   lists that is right — student 1042 appearing in both branches is one
+   student. For stacking two result tables it is wrong, and wrong in a way that
+   produces a plausible number rather than an error. Take the supervisor's own
+   worked example: run a Histogram once per year, stack the two rows, total the
+   columns. rowKey() has no id column to work with there, so it falls back to
+   joining the whole row — and if 2022 and 2023 happen to produce identical
+   counts, the two rows are identical, one is discarded, and the sum silently
+   halves. The failure is invisible precisely when the data is unremarkable.
+
+   So row identity is a choice the user makes, not one the tool makes for them:
+   merge concatenates, and dropping duplicates is a tick box. That also gives a
+   true set union (merge + drop duplicates) alongside intersect and difference,
+   which is what "set ops" meant in the first place.                          */
+
+var COMBINE_MODES = [
+  { key:'merge',      label:'Merge (stack rows)' },
+  { key:'intersect',  label:'Intersect (in all inputs)' },
+  { key:'difference', label:'Difference (in the base only)' }
+];
+
+function combineMode(node) {
+  var k = node && node.cfg ? node.cfg.mode : null;
+  for (var i = 0; i < COMBINE_MODES.length; i++) if (COMBINE_MODES[i].key === k) return COMBINE_MODES[i];
+  return COMBINE_MODES[0];
+}
+
+/* Which input is the base. Intersect is symmetric, but difference is not —
+   A minus B is not B minus A — and connection order is an artefact of the
+   order two nodes happened to be dragged together, which is invisible on the
+   canvas. So the base is named explicitly, defaulting to the first input and
+   falling back to it whenever the saved choice is no longer connected. */
+function combineBaseId(node, inIds) {
+  if (!inIds.length) return null;
+  var saved = node && node.cfg ? node.cfg.base : null;
+  for (var i = 0; i < inIds.length; i++) if (String(inIds[i]) === String(saved)) return inIds[i];
+  return inIds[0];
+}
+
+/* The column that decides whether two rows are "the same row". Whole-row
+   equality is a poor default for set operations: a float that differs in the
+   last place makes two rows that mean the same thing compare unequal. An
+   explicit key column says what identity means for this data. */
+function combineKeyCols(t) {
+  return t.columns.filter(function(c){ return c.type !== COLTYPE.COURSES; });
+}
+
+function combineKeyCol(node, t) {
+  var saved = (node && node.cfg && node.cfg.key) || '';
+  var col = saved ? colByKey(t, saved) : null;
+  if (col && col.type !== COLTYPE.COURSES) return col;
+  if (hasCol(t, 'id')) return colByKey(t, 'id');
+  var avail = combineKeyCols(t);
+  return avail.length ? avail[0] : null;
+}
+
+function keyValuesOf(t, colKey) {
+  var set = {};
+  var i = colIndex(t, colKey);
+  if (i === -1) return set;
+  t.rows.forEach(function(r){ set['k' + String(r[i])] = true; });
+  return set;
+}
+
+/* Order the input tables so the chosen base is first. Done here rather than in
+   combineTables so the reduction itself has one rule — "the base is tables[0]"
+   — and the mapping from a node id to a position lives with the node ids. */
+function combineOrdered(node, inIds, tables) {
+  var baseId = combineBaseId(node, inIds);
+  var at = -1;
+  for (var i = 0; i < inIds.length; i++) if (inIds[i] === baseId) { at = i; break; }
+  if (at <= 0) return tables;
+  return [tables[at]].concat(tables.filter(function(_, i){ return i !== at; }));
+}
+
+function combineTables(node, tables, log) {
+  if (!tables.length) return { table: makeTable([], []) };
+
+  // Headers must match. The same rule the implicit union enforces, restated
+  // here because Combine bypasses it — and worth its own message, since the
+  // likely mistake is different: stacking two tables that came from different
+  // shapes of query rather than mixing granularities.
+  var first = schemaKey(tables[0]);
+  for (var i = 1; i < tables.length; i++) {
+    if (schemaKey(tables[i]) !== first) {
+      return { error: 'Combine needs inputs with the same columns. ' +
+        'These inputs have different headers, so their rows cannot be stacked — ' +
+        'make the branches produce the same columns, or give them separate Outputs.' };
+    }
+  }
+
+  if (tables.length === 1) {
+    log.push(logEntry('COMBINE', [{s:'one input — passed through'}]));
+    return { table: tables[0] };
+  }
+
+  var mode = combineMode(node);
+  var base = tables[0];
+  var others = tables.slice(1);
+
+  if (mode.key === 'merge') {
+    var rows = [];
+    tables.forEach(function(t){ rows = rows.concat(t.rows); });
+    var total = rows.length;
+
+    if (node && node.cfg && node.cfg.dedupe) {
+      var seen = {}, kept = [];
+      rows.forEach(function(r) {
+        var k = rowKey(base, r);
+        if (seen[k]) return;
+        seen[k] = true;
+        kept.push(r);
+      });
+      rows = kept;
+      log.push(logEntry('COMBINE', [{s:'merge'}, {c:'val', s:tables.length}, {s:'inputs →'},
+        {c:'val', s:rows.length}, {s:'rows, ' + (total - rows.length) + ' duplicate(s) dropped'}]));
+    } else {
+      log.push(logEntry('COMBINE', [{s:'merge'}, {c:'val', s:tables.length}, {s:'inputs →'},
+        {c:'val', s:total}, {s:'rows'}]));
+    }
+    return { table: makeTable(base.columns, rows, base.meta) };
+  }
+
+  // intersect / difference
+  var keyCol = combineKeyCol(node, base);
+  if (!keyCol) {
+    return { error: 'Combine needs a column to match rows on for ' + mode.key +
+      '. This table has no column that can be used as a key.' };
+  }
+  var sets = others.map(function(t){ return keyValuesOf(t, keyCol.key); });
+  var ki = colIndex(base, keyCol.key);
+
+  var out = base.rows.filter(function(r) {
+    var k = 'k' + String(r[ki]);
+    if (mode.key === 'intersect') {
+      return sets.every(function(s){ return !!s[k]; });
+    }
+    return sets.every(function(s){ return !s[k]; });   // difference
+  });
+
+  log.push(logEntry('COMBINE', [{s:mode.key + ' on'}, {c:'val', s:keyCol.label},
+    {s:'→'}, {c:'val', s:out.length}, {s:'of'}, {c:'val', s:base.rows.length}, {s:'base rows'}]));
+
+  return { table: makeTable(base.columns, out, base.meta) };
+}
+
+/* ============================================================================
+   NODE SPECIFICATIONS
+   ============================================================================
+   One entry per node type, declaring the two things the graph walks need to
+   know: what shape comes out, and how the rows are computed.
+
+     merges   — inputs are unioned into one table before the node runs. False
+                for nodes that read their inputs separately (Compare) or have
+                none (Source).
+     schema   — (node, inSchema) -> table of columns, no rows. The header this
+                node produces, derived from the header it is given.
+     rows     — (node, table, log) -> table | {error}. Omitted by nodes that
+                pass their rows through untouched.
+
+   Why a registry rather than branches in two functions: schema propagation and
+   evaluation must agree about every node, and until now they agreed by
+   coincidence. Filter, Sort and Take leave the header alone, so schema
+   propagation could get away with `out[node.id] = ins[0]` — a pass-through
+   that is simply wrong for every node still to be built. Histogram, Aggregate
+   and Project all rewrite the header, and each would have needed a branch in
+   computeSchemas() and another in evaluateGraph(), in two places that no
+   mechanism keeps in step.
+
+   Declaring both against one type means a new node is one entry here plus its
+   implementation, and the invariant that ties the pair together —
+   headerOnly(rows(node, t)) equals schema(node, headerOnly(t)) — is a property
+   of the registry that can be tested across every type at once, rather than
+   remembered.                                                                */
+
+function passthroughSchema(node, inSchema) { return inSchema; }
+
+var NODE_SPEC = {
+  source: {
+    merges: false,
+    // No input to derive from: granularity is a Source setting, so the header
+    // is a function of the node's own config alone.
+    schema: function(node) {
+      var cfg = node.cfg || defaultCfg('source');
+      return headerOnly(cfg.rows === 'enrolments'
+        ? makeTable(ENROLMENT_COLUMNS, [])
+        : makeTable(STUDENT_COLUMNS, []));
+    },
+    evaluate: function(node, ctx) {
+      return { table: sourceTable(node, ctx.log), hasSource: true };
+    }
+  },
+
+  filter: {
+    merges: true,
+    schema: passthroughSchema,
+    rows: function(node, t, log) { return applyFilter(node, t, log); }
+  },
+
+  sort: {
+    merges: true,
+    schema: passthroughSchema,
+    rows: function(node, t, log) { return { table: applySort(node, t, log) }; }
+  },
+
+  take: {
+    merges: true,
+    schema: passthroughSchema,
+    rows: function(node, t, log) { return { table: applyTake(node, t, log) }; }
+  },
+
+  aggregate: {
+    merges: true,
+    schema: aggregateSchema,
+    rows: function(node, t, log) { return { table: applyAggregate(node, t, log) }; }
+  },
+
+  aggregateColumns: {
+    merges: true,
+    schema: aggregateColumnsSchema,
+    rows: function(node, t, log) { return { table: applyAggregateColumns(node, t, log) }; }
+  },
+
+  combine: {
+    /* Reads its inputs separately. Not because it treats them differently the
+       way Compare does — the header is the same for all of them — but because
+       the implicit union it would otherwise pass through deduplicates rows,
+       which is exactly the behaviour Combine exists to put under the user's
+       control. Its header is still whatever arrives, so the schema is the
+       ordinary pass-through. */
+    merges: false,
+    schema: passthroughSchema,
+    evaluate: function(node, ctx) {
+      // The base is a node the user named, not the wire that happened to be
+      // drawn first, so the tables are ordered before the reduction sees them.
+      var ctabs = combineOrdered(node, ctx.inIds,
+        ctx.ins.map(function(r){ return r.table; }));
+      var out = combineTables(node, ctabs, ctx.log);
+      return {
+        table: out.table,
+        error: out.error,
+        hasSource: ctx.ins.some(function(r){ return r.hasSource; })
+      };
+    }
+  },
+
+  compare: {
+    // The one node that keeps its inputs apart rather than merging them: each
+    // branch becomes a row, so it reads the branch results directly.
+    merges: false,
+    schema: function(node) { return makeTable(compareColumns(measuresOf(node)), []); },
+    evaluate: function(node, ctx) {
+      return {
+        table: buildCompare(node, ctx.inIds, ctx.res, ctx.log),
+        hasSource: ctx.ins.some(function(r){ return r.hasSource; })
+      };
+    }
+  },
+
+  output: {
+    merges: true,
+    /* An Output's result IS its input: outputTable() applies the chosen view at
+       render time, not here, so the count/average/breakdown reshaping is not
+       part of the graph. Nothing reads downstream of an Output — CONNECT_RULES
+       gives it no outgoing edges — so the distinction costs nothing today. If
+       an Output ever becomes chainable, this is the entry that has to grow a
+       real schema, and outputTable() is already the function to call. */
+    schema: passthroughSchema
+  }
+};
+
+function specFor(type) { return NODE_SPEC[type] || null; }
+
 /* GRAPH EVALUATION
    Walks the DAG in topological order. Each node computes from its own inputs,
    so parallel branches stay independent.
@@ -1051,35 +2063,38 @@ function evaluateGraph() {
   var res = {};
   for (var i = 0; i < order.length; i++) {
     var node = order[i];
+    var spec = specFor(node.type);
+    if (!spec) continue;   // a type no longer supported: skip rather than throw
     var log = [], table, hasSource;
 
-    if (node.type === 'source') {
-      table = sourceTable(node, log);
-      hasSource = true;
-    } else {
-      var inIds = inputsOf(node.id);
-      var ins = inIds.map(function(id){ return res[id]; }).filter(Boolean);
+    var inIds = inputsOf(node.id);
+    var ins = inIds.map(function(id){ return res[id]; }).filter(Boolean);
+    if (node.type !== 'source') {
       ins.forEach(function(r){ log.push.apply(log, r.log); });
-
-      if (node.type === 'compare') {
-        // Compare is the one node that keeps its inputs apart rather than
-        // merging them, so it reads the branch results directly.
-        table = buildCompare(node, inIds, res, log);
-        hasSource = ins.some(function(r){ return r.hasSource; });
-      } else {
-        if (ins.length > 1) log.push(logEntry('MERGE', [{s: ins.length + ' inputs'}]));
-        var merged = unionTables(ins.map(function(r){ return r.table; }));
-        if (merged.error) return { error: merged.error };
-        table = merged;
-        hasSource = ins.some(function(r){ return r.hasSource; });
-
-        if (node.type === 'filter') {
-          var out = applyFilter(node, table, log);
-          if (out.error) return { error: out.error };
-          table = out.table;
-        }
-      }
     }
+
+    if (spec.merges) {
+      if (ins.length > 1) log.push(logEntry('MERGE', [{s: ins.length + ' inputs'}]));
+      var merged = unionTables(ins.map(function(r){ return r.table; }));
+      if (merged.error) return { error: merged.error };
+      table = merged;
+      hasSource = ins.some(function(r){ return r.hasSource; });
+
+      if (spec.rows) {
+        var out = spec.rows(node, table, log);
+        if (out.error) return { error: out.error };
+        table = out.table;
+      }
+    } else {
+      var ev = spec.evaluate(node, { inIds: inIds, ins: ins, res: res, log: log });
+      // A non-merging node can fail the same way a row transform can — Combine
+      // rejects mismatched headers — so the error has to surface here too,
+      // rather than only on the spec.rows path.
+      if (ev.error) return { error: ev.error };
+      table = ev.table;
+      hasSource = ev.hasSource;
+    }
+
     res[node.id] = { table: table, log: log, hasSource: hasSource };
   }
   return { res: res };
@@ -1089,24 +2104,22 @@ function evaluateGraph() {
    The same walk as evaluateGraph but carrying only column headers, no rows. It
    is what lets a Filter's field list and an Output's average-column list be
    built from whatever is actually flowing into them. Cheap enough to run on
-   every render because no row is ever touched. */
+   every render because no row is ever touched.
+
+   Both walks now read the same registry, so a node cannot describe one header
+   here and produce another there. */
 function computeSchemas() {
   var order = topoSort();
   var out = {};
   order.forEach(function(node) {
+    var spec = specFor(node.type);
+    if (!spec) { out[node.id] = makeTable([], []); return; }
     var ins = inputsOf(node.id).map(function(id){ return out[id]; }).filter(Boolean);
-    if (node.type === 'source') {
-      var cfg = node.cfg || defaultCfg('source');
-      out[node.id] = headerOnly(cfg.rows === 'enrolments'
-        ? makeTable(ENROLMENT_COLUMNS, [])
-        : makeTable(STUDENT_COLUMNS, []));
-    } else if (node.type === 'compare') {
-      out[node.id] = makeTable(compareColumns(measuresOf(node)), []);
-    } else if (ins.length) {
-      out[node.id] = ins[0];
-    } else {
-      out[node.id] = makeTable([], []);
-    }
+    // Multiple inputs merge, and a merge requires matching headers — so the
+    // first input's header is the merged header wherever the graph is valid,
+    // and where it is not, evaluateGraph() is what reports it.
+    var inSchema = ins.length ? ins[0] : makeTable([], []);
+    out[node.id] = headerOnly(spec.schema(node, inSchema));
   });
   return out;
 }
@@ -1237,6 +2250,19 @@ function criterionHTML(node, ci, c, schema) {
   return '<div class="criterion-row">' + body + remove + '</div>';
 }
 
+/* A short name for an upstream node, for panels that must let the user point at
+   one input rather than another. Compare labels its branches from the query
+   that produced them, which needs results; this is needed at render time,
+   before anything has run, so it names the node instead. */
+var NODE_LABELS = {
+  source:'Source', filter:'Filter', sort:'Sort', take:'Take',
+  aggregate:'Aggregate', aggregateColumns:'Agg. Columns',
+  combine:'Combine', compare:'Compare', output:'Output'
+};
+function upstreamLabel(node) {
+  return (NODE_LABELS[node.type] || node.type) + ' #' + node.id;
+}
+
 function configHTML(node, schemas) {
   var id = node.id;
   var cfg = node.cfg = node.cfg || defaultCfg(node.type);
@@ -1307,6 +2333,147 @@ function configHTML(node, schemas) {
     '<div class="cmp-hint">Highest and lowest use the first ticked column.</div>';
   }
 
+  if (node.type === 'sort') {
+    var scols = sortableCols(schema);
+    if (!scols.length) {
+      html += '<div class="cmp-hint">No sortable columns upstream — connect a Source.</div>';
+    } else {
+      var skeys = cfg.keys && cfg.keys.length ? cfg.keys : [newSortKey()];
+      html += '<div class="cfg-label">Sort by</div><div class="sort-list">' +
+        skeys.map(function(k, si) {
+          // A saved key can outlive its column — rewiring a Source from students
+          // to enrolments is enough. Show the fallback the engine will actually
+          // use, rather than a select silently displaying option one while the
+          // model still says something else.
+          var kc = k.col ? colByKey(schema, k.col) : null;
+          var chosen = (kc && kc.type !== COLTYPE.COURSES) ? k.col : scols[0].key;
+          var scol = colByKey(schema, chosen);
+          var sdir = k.dir === 'desc' ? 'desc' : 'asc';
+          return '<div class="sort-row">' +
+            '<span class="sort-rank">' + (si + 1) + '</span>' +
+            '<select class="sort-col"' + ctl(id, 'sort.' + si + '.col') + '>' +
+              scols.map(function(c){ return opt(c.key, chosen, c.label); }).join('') +
+            '</select>' +
+            '<select class="sort-dir"' + ctl(id, 'sort.' + si + '.dir') + '>' +
+              SORT_DIRS.map(function(d){ return opt(d, sdir, dirLabel(scol, d)); }).join('') +
+            '</select>' +
+            (si > 0
+              ? '<button class="remove-criterion-btn" onclick="removeSortKey(' + id + ',' + si + ')">x</button>'
+              : '<span class="sort-nodel"></span>') +
+          '</div>';
+        }).join('') +
+      '</div>';
+      // Offering more keys than there are columns invites a sort key that can
+      // never break a tie the earlier ones did not already settle.
+      if (skeys.length < scols.length) {
+        html += '<button class="add-criterion-btn sort-add" onclick="addSortKey(' + id + ')">+ add tie-breaker</button>';
+      }
+      if (skeys.length > 1) {
+        html += '<div class="cmp-hint">Row 1 decides; the rest break its ties.</div>';
+      }
+    }
+  }
+
+  if (node.type === 'take') {
+    // Bound to cfg.n verbatim, so a partially typed value is preserved between
+    // renders. The engine's fallback is what protects the Run, not the control.
+    html += '<div class="cfg-label">Keep first</div>' +
+      '<input type="number" min="' + TAKE_MIN + '" step="1" ' +
+        'value="' + esc(cfg.n === undefined ? '' : cfg.n) + '"' + ctl(id, 'n') + '>' +
+      '<div class="cmp-hint">Rows are kept in the order they arrive. ' +
+        'This node does not rank — put the ordering upstream if you want a top ' +
+        takeCount(node) + '.</div>';
+  }
+
+  if (node.type === 'aggregate' || node.type === 'aggregateColumns') {
+    var isCols = node.type === 'aggregateColumns';
+    var op = aggOp(node);
+
+    html += '<div class="cfg-label">Measure</div>' +
+      '<select' + ctl(id, 'op') + '>' +
+        AGG_OPS.map(function(o){ return opt(o.key, op.key, o.label); }).join('') +
+      '</select>';
+
+    if (!isCols && op.needsCol) {
+      // Only the whole-table Aggregate picks a column: AggregateColumns applies
+      // the measure to every column at once, which is the point of it.
+      var mcols = measurableCols(schema);
+      var chosen = aggregateCol(node, schema);
+      html += '<div class="cfg-label">Of column</div>' +
+        (mcols.length
+          ? '<select' + ctl(id, 'col') + '>' +
+              mcols.map(function(c){ return opt(c.key, chosen ? chosen.key : '', c.label); }).join('') +
+            '</select>'
+          : '<div class="cmp-hint">No numeric column upstream — the result will be blank.</div>');
+    }
+
+    // Say what will come out, in the same words the result will use. The shape
+    // of an aggregation is the thing people get wrong about it, and stating it
+    // before the query runs is cheaper than explaining it afterwards.
+    if (isCols) {
+      var ncols = schema.columns.length;
+      html += '<div class="cmp-hint">One row out, ' +
+        (ncols ? ncols + ' column' + (ncols === 1 ? '' : 's') : 'one column per column in') +
+        ' — same headers, ' + esc(op.label.toLowerCase()) + ' down each.' +
+        (op.key === 'count' ? '' : ' Non-numeric columns come out blank.') +
+        '</div>';
+    } else {
+      html += '<div class="cmp-hint">One row, one column: ' +
+        esc(aggregateColumn(node, schema).label) + '.</div>';
+    }
+  }
+
+  if (node.type === 'combine') {
+    var cinIds = inputsOf(id);
+    var cmode = combineMode(node);
+
+    html += '<div class="cfg-label">Inputs (' + cinIds.length + ')</div>';
+    if (cinIds.length === 0) {
+      html += '<div class="cmp-hint">Wire two branches into this node to stack them.</div>';
+    } else if (cinIds.length === 1) {
+      html += '<div class="cmp-hint">One input — passed straight through. Add another to combine.</div>';
+    }
+
+    html += '<div class="cfg-label">Mode</div>' +
+      '<select' + ctl(id, 'mode') + '>' +
+        COMBINE_MODES.map(function(m){ return opt(m.key, cmode.key, m.label); }).join('') +
+      '</select>';
+
+    if (cmode.key === 'merge') {
+      html += '<label class="cmb-check"><input type="checkbox"' +
+          (cfg.dedupe ? ' checked' : '') + ctl(id, 'dedupe') + '>' +
+        '<span>Drop duplicate rows</span></label>' +
+        '<div class="cmp-hint">Off: every row from every input is kept, so two ' +
+        'identical result rows stay two rows. On: this is a set union.</div>';
+    } else {
+      // Difference is not symmetric, so the base has to be named rather than
+      // inferred from the order the wires happened to be drawn.
+      var baseId = combineBaseId(node, cinIds);
+      if (cinIds.length > 1) {
+        html += '<div class="cfg-label">Base</div>' +
+          '<select' + ctl(id, 'base') + '>' +
+            cinIds.map(function(inId) {
+              var up = findNode(inId);
+              return opt(String(inId), String(baseId), up ? (upstreamLabel(up)) : ('Input ' + inId));
+            }).join('') +
+          '</select>';
+      }
+      var kcols = combineKeyCols(schema);
+      var kcur = combineKeyCol(node, schema);
+      html += '<div class="cfg-label">Match rows on</div>' +
+        (kcols.length
+          ? '<select' + ctl(id, 'key') + '>' +
+              kcols.map(function(c){ return opt(c.key, kcur ? kcur.key : '', c.label); }).join('') +
+            '</select>'
+          : '<div class="cmp-hint">No column upstream to match on.</div>');
+      html += '<div class="cmp-hint">' +
+        (cmode.key === 'intersect'
+          ? 'Keeps base rows whose value also appears in every other input.'
+          : 'Keeps base rows whose value appears in none of the other inputs.') +
+        '</div>';
+    }
+  }
+
   if (node.type === 'output') {
     var show = normaliseShow(node);
     cfg.show = show;
@@ -1354,40 +2521,90 @@ function configHTML(node, schemas) {
 
 function shapeHTML(node) {
   var removeBtn = '<button class="node-remove" onclick="removeNode(' + node.id + ')">x</button>';
-  if (node.type === 'source') return '<div class="shape-source">' + removeBtn + 'Source</div>';
-  if (node.type === 'filter') return '<div class="shape-filter">' + removeBtn + 'Filter</div>';
+  if (node.type === 'source') return '<div class="node-shape shape-source">' + removeBtn + 'Source</div>';
+  if (node.type === 'filter') return '<div class="node-shape shape-filter">' + removeBtn + 'Filter</div>';
   if (node.type === 'compare') {
     var glyph = '<span class="cmp-glyph"><i style="width:26px"></i><i style="width:16px"></i><i style="width:21px"></i></span>';
-    return '<div class="shape-compare">' + removeBtn + glyph + 'Compare</div>';
+    return '<div class="node-shape shape-compare">' + removeBtn + glyph + 'Compare</div>';
   }
-  if (node.type === 'output') return '<div class="shape-output">' + removeBtn + 'Output</div>';
+  if (node.type === 'sort') {
+    // Bars of increasing length: the glyph says "ordered", and reads as
+    // distinct from Take's equal-length bars with a cut through them.
+    var sbars = '<span class="sort-glyph"><i style="width:9px"></i>' +
+      '<i style="width:16px"></i><i style="width:23px"></i></span>';
+    return '<div class="node-shape shape-sort">' + removeBtn + sbars + 'Sort</div>';
+  }
+  if (node.type === 'take') {
+    // Three kept bars above the cut, one dropped below it — the glyph says
+    // "first few, rest discarded" without repeating the word on the label.
+    var bars = '<span class="take-glyph">' +
+      '<i></i><i></i><i></i><b></b><i class="cut"></i></span>';
+    return '<div class="node-shape shape-take">' + removeBtn + bars + 'Take</div>';
+  }
+  if (node.type === 'aggregate') {
+    // Rows funnelling into a single dot: many values, one value out.
+    var ag = '<span class="agg-glyph"><i></i><i></i><i></i><b></b></span>';
+    return '<div class="node-shape shape-aggregate">' + removeBtn + ag + 'Aggregate</div>';
+  }
+  if (node.type === 'aggregateColumns') {
+    // The same funnel turned ninety degrees: three columns, each collapsing to
+    // its own value, so the pair read as variants of one idea rather than two
+    // unrelated nodes.
+    var agc = '<span class="aggc-glyph">' +
+      '<span class="aggc-col"><i></i><i></i><b></b></span>' +
+      '<span class="aggc-col"><i></i><i></i><b></b></span>' +
+      '<span class="aggc-col"><i></i><i></i><b></b></span></span>';
+    return '<div class="node-shape shape-aggcols">' + removeBtn + agc + 'Agg. Columns</div>';
+  }
+  if (node.type === 'combine') {
+    // Two streams converging into one: the mirror image of Compare's glyph,
+    // which holds branches apart rather than joining them.
+    var cg = '<span class="cmb-glyph">' +
+      '<span class="cmb-in"><i></i><i></i></span>' +
+      '<b></b>' +
+      '<span class="cmb-out"><i></i></span></span>';
+    return '<div class="node-shape shape-combine">' + removeBtn + cg + 'Combine</div>';
+  }
+  if (node.type === 'output') return '<div class="node-shape shape-output">' + removeBtn + 'Output</div>';
   return '';
 }
 
 function render() {
-  var cv = document.getElementById('canvas');
-  var old = cv.querySelectorAll('.node');
+  var vp = document.getElementById('viewport');
+  var old = vp.querySelectorAll('.node');
   for (var i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
   nodeEls = {};
   document.getElementById('hint').style.display = nodes.length === 0 ? 'block' : 'none';
+
+  // A node deleted while selected must not leave its id behind, or the count in
+  // the selection bar drifts away from what is actually ringed on screen.
+  selection = selection.filter(function(id){ return findNode(id); });
 
   var schemas = computeSchemas();
 
   nodes.forEach(function(node) {
     var el = document.createElement('div');
-    el.className = 'node';
+    el.className = 'node' + (isSelected(node.id) ? ' selected' : '');
     el.style.left = node.x + 'px';
     el.style.top  = node.y + 'px';
     el.innerHTML = shapeHTML(node) + configHTML(node, schemas);
-    cv.appendChild(el);
+    vp.appendChild(el);
     nodeEls[node.id] = el;
 
-    var shape = el.querySelector('.shape-source, .shape-filter, .shape-compare, .shape-output');
+    var shape = el.querySelector('.node-shape');
     if (shape) {
       shape.addEventListener('mousedown', function(e){ startDrag(e, node.id); });
+      // Double-click selects the whole connected branch. The cheapest route to
+      // "delete this entire arm of the query" without dragging a box around it,
+      // which is awkward when branches interleave on screen.
+      shape.addEventListener('dblclick', function(e) {
+        e.preventDefault(); e.stopPropagation();
+        selectBranch(node.id);
+      });
     }
   });
 
+  syncSelectionUI();
   drawArrows();
 }
 
@@ -1415,6 +2632,11 @@ function onConfigInput(e) {
     // render() replaces the element that was just used, so the control loses
     // focus mid-interaction. Put it back on its replacement.
     var again = document.querySelector('[data-node="' + nid + '"][data-key="' + key.replace(/"/g, '\\"') + '"]');
+    // A control can also disappear rather than be replaced — one select's value
+    // decides which others the panel offers. Falling back to the same node's
+    // panel keeps focus with the user's work instead of dropping it on <body>,
+    // where the next Backspace would be read as a canvas shortcut.
+    if (!again) again = document.querySelector('[data-node="' + nid + '"]');
     if (again && again.focus) again.focus();
   }
 }
@@ -1473,14 +2695,47 @@ function drawArrow(parent, p0, tip, color, opacity, isGhost) {
    not. */
 var ghostTarget = null;
 
+// Below this many screen pixels a press-and-release is a click, not a drag. It
+// is measured in screen space on purpose: the gesture is about the user's hand,
+// not about how much world the hand covered, and a world-space threshold would
+// demand pixel-perfect stillness when zoomed out.
+var CLICK_SLOP = 4;
+
 function startDrag(e, nodeId) {
   var tag = e.target.tagName;
-  if (tag === 'SELECT' || tag === 'INPUT' || tag === 'BUTTON') return;
+  if (tag === 'SELECT' || tag === 'INPUT' || tag === 'BUTTON' || tag === 'OPTION') return;
+  if (e.button !== 0) return;          // middle-drag over a node is a pan, handled upstream
+  if (spaceDown) return;               // ditto space-drag
   e.preventDefault();
   var node = findNode(nodeId);
   if (!node) return;
-  var rect = document.getElementById('canvas').getBoundingClientRect();
-  drag = { node:node, ox: e.clientX - rect.left - node.x, oy: e.clientY - rect.top - node.y };
+
+  /* Selection is resolved on mousedown rather than on click, because the answer
+     decides what the drag about to happen will move. Three cases:
+       additive click  — toggle this node, and if that deselected it, no drag
+       unselected node — becomes the whole selection
+       selected node   — selection is left alone, so a group can be dragged
+                         without the press collapsing it to one node first    */
+  if (e.shiftKey || e.metaKey || e.ctrlKey) {
+    toggleSelected(nodeId);
+    if (!isSelected(nodeId)) return;
+  } else if (!isSelected(nodeId)) {
+    selectOnly(nodeId);
+  }
+
+  var w = toWorld(e.clientX, e.clientY);
+  var moving = isSelected(nodeId) && selection.length > 1
+    ? selection.map(findNode).filter(Boolean)
+    : [node];
+
+  drag = {
+    node: node,
+    // Offsets captured once, in world space, so the grab point stays under the
+    // cursor even if the zoom changes mid-drag.
+    group: moving.map(function(n){ return { node:n, dx: w.x - n.x, dy: w.y - n.y }; }),
+    startX: e.clientX, startY: e.clientY,
+    moved: false
+  };
   ghostTarget = null;
   cancelPreviewTimer(); hidePreview();
   document.addEventListener('mousemove', onMove);
@@ -1489,30 +2744,48 @@ function startDrag(e, nodeId) {
 
 function onMove(e) {
   if (!drag) return;
-  var rect = document.getElementById('canvas').getBoundingClientRect();
-  var s = SHAPE[drag.node.type];
-  drag.node.x = Math.max(0, Math.min(rect.width - NODE_W, e.clientX - rect.left - drag.ox));
-  drag.node.y = Math.max(0, Math.min(rect.height - s.h, e.clientY - rect.top - drag.oy));
+  if (!drag.moved &&
+      (Math.abs(e.clientX - drag.startX) > CLICK_SLOP ||
+       Math.abs(e.clientY - drag.startY) > CLICK_SLOP)) {
+    drag.moved = true;
+  }
+  if (!drag.moved) return;
 
-  // Closest node that could form a valid connection, measured port to port
-  var dn = drag.node, best = null, bestDist = SNAP_DIST;
-  nodes.forEach(function(n) {
-    if (n.id === dn.id) return;
-    var dir = resolveDirection(dn, n);
-    if (!dir) return;
-    var dx = dir.tip.x - dir.p0.x, dy = dir.tip.y - dir.p0.y;
-    var dist = Math.sqrt(dx * dx + dy * dy);
-    if (dist < bestDist) { bestDist = dist; best = n; }
+  var w = toWorld(e.clientX, e.clientY);
+  drag.group.forEach(function(g) {
+    var s = SHAPE[g.node.type];
+    // Clamped to the world, not the viewport: the reachable area is a property
+    // of the document, not of the window it happens to be shown in.
+    g.node.x = Math.max(0, Math.min(WORLD_W - NODE_W, w.x - g.dx));
+    g.node.y = Math.max(0, Math.min(WORLD_H - s.h,    w.y - g.dy));
+    var el = nodeEls[g.node.id];
+    if (el) { el.style.left = g.node.x + 'px'; el.style.top = g.node.y + 'px'; }
   });
-  ghostTarget = best ? best.id : null;
 
-  var el = nodeEls[dn.id];
-  if (el) { el.style.left = dn.x + 'px'; el.style.top = dn.y + 'px'; }
+  /* Snap-to-connect stays a single-node gesture. With several nodes moving there
+     is no defensible answer to which one the ghost edge should come from, and
+     guessing would wire up a connection the user never aimed at — the one kind
+     of mistake that is tedious to undo, since it has to be found first. */
+  ghostTarget = null;
+  if (drag.group.length === 1) {
+    var dn = drag.node, best = null, bestDist = SNAP_DIST;
+    nodes.forEach(function(n) {
+      if (n.id === dn.id) return;
+      var dir = resolveDirection(dn, n);
+      if (!dir) return;
+      var dx = dir.tip.x - dir.p0.x, dy = dir.tip.y - dir.p0.y;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < bestDist) { bestDist = dist; best = n; }
+    });
+    ghostTarget = best ? best.id : null;
+  }
+
   drawArrows();
 }
 
 function onUp() {
-  if (drag && ghostTarget !== null) {
+  var wired = false;
+  if (drag && drag.moved && ghostTarget !== null) {
     var gt = findNode(ghostTarget);
     var dir = gt ? resolveDirection(drag.node, gt) : null;
     if (dir) {
@@ -1522,14 +2795,23 @@ function onUp() {
       if (!exists) {
         connections.push({ from: dir.from.id, to: dir.to.id, color: pickEdgeColor(dir.from) });
         markStale();
+        wired = true;
       }
     }
   }
+  var moved = drag && drag.moved;
   drag = null;
   ghostTarget = null;
   document.removeEventListener('mousemove', onMove);
   document.removeEventListener('mouseup', onUp);
-  render(); // panels can change once wiring changes — full rebuild is correct here
+
+  /* Only a wiring change can alter what a config panel offers, so only a wiring
+     change earns a full rebuild. A plain move — and a plain click, which is now
+     most mousedowns since clicking selects — redraws the arrows and stops there.
+     Rebuilding on every click would drop focus from whatever control the user
+     had open and re-run schema propagation for nothing. */
+  if (wired) render();
+  else if (moved) drawArrows();
 }
 
 // First outgoing edge inherits the upstream colour; later ones take a distinct
@@ -1562,7 +2844,12 @@ function buildDeleteBadge(conn, pathEl) {
 
   var g = svgEl('g');
   g.setAttribute('class', 'conn-delete');
-  g.setAttribute('transform', 'translate(' + mid.x + ',' + mid.y + ')');
+  /* Counter-scaled so the badge stays the same size on screen at any zoom. It
+     lives in the scaled layer because it has to sit on the line, but a target
+     that shrinks with the view would be at its least clickable exactly when
+     there are most connections to tidy up. */
+  g.setAttribute('transform',
+    'translate(' + mid.x + ',' + mid.y + ') scale(' + (1 / view.z) + ')');
 
   var circle = svgEl('circle');
   circle.setAttribute('r', '9');
@@ -1615,7 +2902,10 @@ function ensurePreviewEl() {
   document.getElementById('canvas').appendChild(previewEl);
   return previewEl;
 }
-function hidePreview() { if (previewEl) previewEl.style.display = 'none'; }
+function hidePreview() {
+  if (previewEl) previewEl.style.display = 'none';
+  previewAnchor = null;
+}
 
 // No saveState() call is needed any more: the model is already current, because
 // every keystroke wrote straight into it.
@@ -1630,19 +2920,44 @@ function edgeData(conn) {
 
 // Preview columns are capped, not chosen: an enrolment table is ten columns
 // wide and would overflow the floating panel.
-var PREVIEW_COLS = 5;
+var PREVIEW_COLS = 4;
 var PREVIEW_ROWS = 5;
 
+/* Which columns to show is a choice, not just a slice. Long free-text columns —
+   a course title, a specialisation — consume the whole panel and tell you least
+   about whether the right rows are flowing, so they yield to shorter ones. The
+   count above the table is the real signal; these rows are texture. */
+function previewColumns(t) {
+  var wide = [], narrow = [];
+  t.columns.forEach(function(c) {
+    (c.type === COLTYPE.TEXT || c.key === 'specialisation' ? wide : narrow).push(c);
+  });
+  var picked = narrow.slice(0, PREVIEW_COLS);
+  for (var i = 0; picked.length < PREVIEW_COLS && i < wide.length; i++) picked.push(wide[i]);
+  // Keep the table's own left-to-right order rather than the order picked in
+  return t.columns.filter(function(c){ return picked.indexOf(c) !== -1; });
+}
+
 function previewTableHTML(t) {
-  var cols = t.columns.slice(0, PREVIEW_COLS);
-  var head = cols.map(function(c){ return '<th>' + esc(c.label) + '</th>'; }).join('') +
-    (t.columns.length > cols.length ? '<th>…</th>' : '');
+  var cols = previewColumns(t);
+  var hidden = t.columns.length - cols.length;
+  var moreHead = hidden > 0 ? '<th class="ep-more-col" title="' + hidden + ' more columns">…</th>' : '';
+  var moreCell = hidden > 0 ? '<td class="ep-more-col">…</td>' : '';
+
+  var head = cols.map(function(c) {
+    return '<th title="' + esc(c.label) + '">' + esc(c.label) + '</th>';
+  }).join('') + moreHead;
+
   var body = t.rows.slice(0, PREVIEW_ROWS).map(function(r) {
-    return '<tr>' + cols.map(function(c, i) {
-      var ttl = cellTitle(c, r[i]);
-      return '<td' + (ttl ? ' title="' + esc(ttl) + '"' : '') + '>' + esc(fmtCell(c, r[i])) + '</td>';
-    }).join('') + (t.columns.length > cols.length ? '<td>…</td>' : '') + '</tr>';
+    return '<tr>' + cols.map(function(c) {
+      var v = r[colIndex(t, c.key)];
+      var shown = fmtCell(c, v);
+      // Truncation is visual only, so the full value goes in the tooltip
+      var ttl = cellTitle(c, v) || shown;
+      return '<td title="' + esc(ttl) + '">' + esc(shown) + '</td>';
+    }).join('') + moreCell + '</tr>';
   }).join('');
+
   return '<table class="ep-table"><thead><tr>' + head + '</tr></thead><tbody>' + body + '</tbody></table>';
 }
 
@@ -1665,21 +2980,50 @@ function showPreview(conn, pathEl) {
         '<div class="ep-foot">showing ' + Math.min(PREVIEW_ROWS, n) + ' of ' + n + ', in table order</div>';
   }
   el.innerHTML = body;
-
-  var mid = pathEl._mid || { x:0, y:0 };
+  previewAnchor = pathEl._mid || { x:0, y:0 };
   el.style.display = 'block';
+  placePreview();
+}
 
-  var cw = document.getElementById('canvas').clientWidth;
-  var pw = el.offsetWidth, ph = el.offsetHeight;
+/* The preview is a sibling of the scaled layer, not a child of it, so its text
+   stays at a readable size when the canvas is zoomed out — which is exactly when
+   a row count is most useful and the nodes themselves are least readable. The
+   cost is that its anchor arrives in world coordinates and has to be projected
+   here. Kept as its own function so a zoom mid-hover can re-place the panel
+   rather than leaving it stranded where the edge used to be. */
+var previewAnchor = null;
+
+function placePreview() {
+  if (!previewEl || !previewAnchor || previewEl.style.display === 'none') return;
+  var mid = toScreen(previewAnchor.x, previewAnchor.y);
+  var cv = document.getElementById('canvas');
+  var cw = cv.clientWidth, ch = cv.clientHeight;
+  var pw = previewEl.offsetWidth, ph = previewEl.offsetHeight;
   var GAP = 26; // clears the ~9px badge radius plus breathing room
 
   var left = Math.max(6, Math.min(mid.x - pw / 2, cw - pw - 6));
   var top = mid.y - ph - GAP;
-  el.classList.remove('ep-below');
-  if (top < 6) { top = mid.y + GAP; el.classList.add('ep-below'); }
-  el.style.left = Math.round(left) + 'px';
-  el.style.top = Math.round(top) + 'px';
+  previewEl.classList.remove('ep-below');
+  if (top < 6) { top = mid.y + GAP; previewEl.classList.add('ep-below'); }
+  // Flipping below can push it off the bottom on a short canvas; clamp last.
+  top = Math.min(top, ch - ph - 6);
+  previewEl.style.left = Math.round(left) + 'px';
+  previewEl.style.top = Math.round(top) + 'px';
 }
+
+function repositionPreview() { placePreview(); }
+
+/* True while any canvas gesture is in flight — dragging a node, sweeping a
+   marquee, or panning.
+
+   Connections carry two hover affordances: a delete badge and the data-preview
+   panel. Both are helpful when the pointer is resting on a line and actively
+   unhelpful while it is travelling across one. Sweeping a marquee used to light
+   up every arrow it crossed and pop a preview over the box being drawn, which
+   read as the selection picking up the arrows themselves. It never did — only
+   node ids ever enter the selection — but the feedback said otherwise, and
+   feedback is what the user has to go on. */
+function gestureActive() { return !!(drag || marquee || panning); }
 
 function drawArrows() {
   var svg = document.getElementById('svg');
@@ -1695,13 +3039,16 @@ function drawArrows() {
     svg.appendChild(g);
     var pathEl = drawArrow(g, p0, tip, conn.color, '0.9', false);
 
-    if (drag) return; // no hover affordances mid-drag
+    if (gestureActive()) return; // no hover affordances mid-gesture
 
     // Invisible fat stroke so the 2px line is comfortably hoverable, extended to
     // the true tip so the arrowhead counts as part of the line.
     var hit = svgEl('path');
     hit.setAttribute('d', pathEl.getAttribute('d') + ' L ' + tip.x + ' ' + tip.y);
     hit.setAttribute('class', 'conn-hit');
+    // Widened as the view shrinks, so the grab band stays ~20 screen px. The CSS
+    // value is the 100% case; this overrides it per zoom level.
+    hit.setAttribute('stroke-width', 20 / view.z);
     g.appendChild(hit);
 
     var badge = null, hovered = false;
@@ -1721,6 +3068,10 @@ function drawArrows() {
     // mousemove rather than mouseenter, so hover still engages when the SVG is
     // rebuilt beneath a stationary cursor
     hit.addEventListener('mousemove', function() {
+      // Second line of defence. The hit strokes are not built at all while a
+      // gesture is running, but one begun *before* the gesture started is still
+      // in the DOM and would otherwise light up as the marquee swept past it.
+      if (gestureActive()) return;
       setHover(true);
       armPreviewTimer(conn, pathEl);
     });
@@ -2308,9 +3659,16 @@ function applyGraph(g) {
   edgeColorIndex = nodes.length;
   exportData = {};
   resultsFresh = false;
+  selection = [];
   cancelPreviewTimer();
   hidePreview();
   render();
+  /* Fit after loading rather than restoring a saved zoom. A file carries the
+     graph, not the view — which is why the format did not have to change for
+     any of this — and a query written on one screen should open framed for
+     whatever screen opens it. render() has to run first: fitting measures node
+     heights off the DOM, and those do not exist until the nodes do. */
+  zoomToFit();
 }
 
 function loadGraphFromText(raw, btn) {
@@ -2368,10 +3726,192 @@ function addProcNode(type) {
   addNode(type);
 }
 
+/* ============================================================================
+   CANVAS GESTURES — MARQUEE SELECT AND PAN
+   ============================================================================
+   Both start with a press on empty canvas, so they are told apart by modifier
+   rather than by target: plain drag selects, space or middle-button drags the
+   view. That ordering is deliberate — selection is the frequent action and gets
+   the unmodified gesture; panning is occasional and is mostly unnecessary at
+   all once the graph has been zoomed to fit. */
+
+var spaceDown = false;
+var marquee = null;   // { x0,y0 world | sx0,sy0 screen | additive | base }
+var panning = null;   // { sx, sy, x0, y0 }
+
+/* A press only starts a canvas gesture if it landed on canvas and nothing else.
+   Connection hit-strokes are SVG children with their own handlers, and node
+   elements re-enable pointer events on their painted parts, so anything that is
+   not one of these three elements belongs to something that wants the event. */
+function isCanvasBackground(target) {
+  if (!target) return false;
+  return target.id === 'canvas' || target.id === 'viewport' ||
+         target.id === 'svg'    || target.id === 'hint';
+}
+
+function marqueeEl() { return document.getElementById('marquee'); }
+
+function startPan(e) {
+  panning = { sx: e.clientX, sy: e.clientY, x0: view.x, y0: view.y };
+  document.getElementById('canvas').classList.add('panning');
+  cancelPreviewTimer(); hidePreview();
+  endConnHover();
+}
+
+/* Drop any connection hover and rebuild the arrows without their hit strokes.
+   Called as a gesture begins, so a badge left under the cursor from a moment ago
+   does not stay lit for the duration of the drag. drawArrows() sees
+   gestureActive() and skips the interactive parts entirely. */
+function endConnHover() {
+  hoverConn = null;
+  cancelPreviewTimer();
+  hidePreview();
+  drawArrows();
+}
+
+function startMarquee(e) {
+  var r = canvasBox();
+  var w = toWorld(e.clientX, e.clientY);
+  marquee = {
+    x0: w.x, y0: w.y,
+    sx0: e.clientX - r.left, sy0: e.clientY - r.top,
+    // Additive drags extend what is already selected, so several scattered
+    // clusters can be gathered up with repeated boxes instead of one huge box
+    // that inevitably catches something in between.
+    additive: e.shiftKey || e.metaKey || e.ctrlKey,
+    base: selection.slice(),
+    moved: false,
+    /* Node geometry is measured once, here, rather than per mousemove. Heights
+       come from offsetHeight, and reading that forces the browser to flush
+       layout; doing it for every node on every pointer event is the kind of
+       cost that only shows up on the large graphs this feature exists to
+       manage. Nothing can move during a marquee, so one snapshot is sound. */
+    boxes: nodes.map(function(n) {
+      var r2 = nodeBox(n);
+      return { id:n.id, x:r2.x, y:r2.y, w:r2.w, h:r2.h };
+    })
+  };
+  document.getElementById('canvas').classList.add('selecting');
+  cancelPreviewTimer(); hidePreview();
+  endConnHover();
+}
+
+function onCanvasMouseDown(e) {
+  /* Pan is a view gesture, not a graph one, so it is allowed to start anywhere —
+     including on top of a node. startDrag() bows out for these same two cases,
+     and the event then bubbles here. */
+  if (e.button === 1 || (e.button === 0 && spaceDown)) { e.preventDefault(); startPan(e); return; }
+  if (!isCanvasBackground(e.target)) return;
+  if (e.button !== 0) return;
+  e.preventDefault();
+  startMarquee(e);
+}
+
+function onCanvasMouseMove(e) {
+  if (panning) {
+    view.x = panning.x0 + (e.clientX - panning.sx);
+    view.y = panning.y0 + (e.clientY - panning.sy);
+    clampPan();
+    applyView();
+    return;
+  }
+  if (!marquee) return;
+
+  var r = canvasBox();
+  var sx = e.clientX - r.left, sy = e.clientY - r.top;
+  if (!marquee.moved &&
+      (Math.abs(sx - marquee.sx0) > CLICK_SLOP || Math.abs(sy - marquee.sy0) > CLICK_SLOP)) {
+    marquee.moved = true;
+  }
+  if (!marquee.moved) return;
+
+  var box = marqueeEl();
+  if (box) {
+    box.style.display = 'block';
+    box.style.left   = Math.min(marquee.sx0, sx) + 'px';
+    box.style.top    = Math.min(marquee.sy0, sy) + 'px';
+    box.style.width  = Math.abs(sx - marquee.sx0) + 'px';
+    box.style.height = Math.abs(sy - marquee.sy0) + 'px';
+  }
+
+  // Live selection while dragging: the ring appears as the box sweeps over a
+  // node, so the user can correct the box before releasing rather than
+  // discovering afterwards that it caught one node too many.
+  var w = toWorld(e.clientX, e.clientY);
+  var hit = nodesInWorldRect(marquee.x0, marquee.y0, w.x, w.y, marquee.boxes);
+  setSelection(marquee.additive ? marquee.base.concat(hit) : hit);
+}
+
+/* Overlap, not containment: a box has to fully enclose a node to select it under
+   containment rules, which is unusable here because node heights vary with their
+   config panels and the tall ones are the hard ones to enclose. Touching is
+   enough — the same rule the marquee in most node editors uses.
+
+   `boxes` is the snapshot taken when the drag began. Omitting it measures live,
+   which is what a caller outside a drag wants. */
+function nodesInWorldRect(ax, ay, bx, by, boxes) {
+  var x1 = Math.min(ax, bx), x2 = Math.max(ax, bx);
+  var y1 = Math.min(ay, by), y2 = Math.max(ay, by);
+  var src = boxes || nodes.map(function(n) {
+    var r = nodeBox(n);
+    return { id:n.id, x:r.x, y:r.y, w:r.w, h:r.h };
+  });
+  return src.filter(function(r) {
+    return r.x < x2 && r.x + r.w > x1 && r.y < y2 && r.y + r.h > y1;
+  }).map(function(r){ return r.id; });
+}
+
+function onCanvasMouseUp() {
+  if (panning) {
+    panning = null;
+    document.getElementById('canvas').classList.remove('panning');
+    drawArrows();   // gesture over: the hit strokes and badges come back
+    return;
+  }
+  if (!marquee) return;
+  var box = marqueeEl();
+  if (box) box.style.display = 'none';
+  document.getElementById('canvas').classList.remove('selecting');
+  // A press on empty canvas that never became a drag is a click-away, and the
+  // ordinary meaning of that is "deselect".
+  if (!marquee.moved && !marquee.additive) clearSelection();
+  marquee = null;
+  drawArrows();
+}
+
+/* Wheel zooms about the pointer. There is nothing scrollable on the canvas, so
+   the wheel has no competing meaning here, and claiming it makes zoom reachable
+   without first finding the toolbar. deltaY is normalised across deltaMode —
+   Firefox reports lines, not pixels — and then clamped, so one notch of a coarse
+   mouse wheel and one flick of a trackpad land in the same range instead of the
+   former jumping several steps at once. */
+function onCanvasWheel(e) {
+  e.preventDefault();
+  var dy = e.deltaY;
+  if (e.deltaMode === 1) dy *= 16;        // lines -> px
+  else if (e.deltaMode === 2) dy *= 400;  // pages -> px
+  var factor = Math.exp(-dy * 0.0016);
+  factor = Math.max(0.78, Math.min(1.28, factor));
+  setZoom(view.z * factor, e.clientX, e.clientY);
+}
+
+/* A canvas gesture must survive the pointer leaving the canvas — releasing over
+   the results panel mid-marquee should still complete the selection — so move
+   and up are bound to the document, not to the canvas. */
+
 /* WIRING */
 var canvasEl = document.getElementById('canvas');
 canvasEl.addEventListener('change', onConfigInput);
 canvasEl.addEventListener('input', onConfigInput);
+canvasEl.addEventListener('mousedown', onCanvasMouseDown);
+canvasEl.addEventListener('wheel', onCanvasWheel, { passive: false });
+document.addEventListener('mousemove', onCanvasMouseMove);
+document.addEventListener('mouseup', onCanvasMouseUp);
+
+// Panning and marquee use screen-space maths against the canvas box, and zoomed
+// out far enough the world is centred rather than pinned — both need revisiting
+// when the canvas changes size.
+window.addEventListener('resize', function() { clampPan(); applyView(); });
 
 var panelEl = document.getElementById('panelBody');
 if (panelEl) panelEl.addEventListener('input', onExportNameInput);
@@ -2380,8 +3920,113 @@ var loadInput = document.getElementById('loadFile');
 if (loadInput) loadInput.addEventListener('change', onGraphFileChosen);
 
 document.addEventListener('click', closeProcMenu);
+
+/* DESTRUCTIVE SHORTCUTS — THREE GUARDS
+   ---------------------------------------------------------------------------
+   Backspace deletes the selection, and there is no undo, so being wrong here
+   costs the user work they cannot get back. It also cannot simply be dropped in
+   favour of Delete: on a Mac keyboard the key labelled "delete" reports as
+   Backspace, so removing it would leave those users with no shortcut at all.
+
+   One guard is not enough, because the dangerous case is not "the user is typing
+   in a field" — that is the easy case — but "the user believes they are typing
+   in a field while the browser disagrees". render() rebuilds the whole canvas,
+   and any control that triggered it is destroyed in the process; focus then
+   falls back to <body>. The panel still looks active. The next Backspace is read
+   as a canvas shortcut and deletes the node being configured.
+
+     1. isTypingTarget  — the event landed on a control, or anywhere inside a
+                          config or results panel.
+     2. activeElement   — the same test against whatever actually holds focus,
+                          which is not always the event target.
+     3. keyboardContext — where the user last chose to work. Survives focus
+                          being lost to <body>, which is the case the first two
+                          cannot see.                                          */
+
+function isTypingTarget(t) {
+  if (!t || !t.tagName) return false;
+  var tag = t.tagName;
+  if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || t.isContentEditable) return true;
+  // Anything inside a panel counts, control or not: those are the only places
+  // on screen where a keystroke could plausibly have been meant as text.
+  return !!(t.closest && t.closest('.node-config, .output-panel'));
+}
+
+/* 'canvas' while the user is working on the graph, 'panel' while they are
+   editing a node's configuration or the results panel. Recorded on mousedown in
+   the capture phase, so it is still set for handlers that stop propagation —
+   the connection delete badge does exactly that. */
+var keyboardContext = 'canvas';
+
+document.addEventListener('mousedown', function(e) {
+  var t = e.target;
+  if (!t || !t.closest) return;
+  // The toolbar is deliberately not a panel: adding a node selects it, and
+  // Backspace immediately afterwards to undo a mis-click is a reasonable thing
+  // to want.
+  keyboardContext = t.closest('.node-config, .output-panel') ? 'panel' : 'canvas';
+}, true);
+
+function safeToDelete(e) {
+  return keyboardContext === 'canvas' &&
+         !isTypingTarget(e.target) &&
+         !isTypingTarget(document.activeElement);
+}
+
 document.addEventListener('keydown', function(e) {
-  if (e.key === 'Escape') closeProcMenu();
+  if (e.key === 'Escape') {
+    closeProcMenu();
+    clearSelection();
+    return;
+  }
+  if (isTypingTarget(e.target) || isTypingTarget(document.activeElement)) return;
+
+  var mod = e.ctrlKey || e.metaKey;
+
+  if (e.key === 'Delete' || e.key === 'Backspace') {
+    // The selection bar's Delete button stays available either way, so a user
+    // whose keystroke is suppressed here is never stuck.
+    if (selection.length && safeToDelete(e)) { e.preventDefault(); deleteSelection(); }
+    return;
+  }
+  if (mod && (e.key === 'a' || e.key === 'A')) { e.preventDefault(); selectAll(); return; }
+
+  if (e.key === ' ' && !spaceDown) {
+    spaceDown = true;
+    document.getElementById('canvas').classList.add('pan-ready');
+    e.preventDefault();  // stop the page treating space as "scroll" or "click the focused button"
+    return;
+  }
+
+  if (e.key === '+' || e.key === '=') { e.preventDefault(); zoomIn(); return; }
+  if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut(); return; }
+  if (e.key === '0' && mod)           { e.preventDefault(); zoomReset(); return; }
+  if (e.key === 'f' || e.key === 'F') { if (!mod) { e.preventDefault(); zoomToFit(); } return; }
+});
+
+document.addEventListener('keyup', function(e) {
+  if (e.key === ' ') {
+    spaceDown = false;
+    document.getElementById('canvas').classList.remove('pan-ready');
+  }
+});
+
+// Held space plus a window switch would otherwise leave the canvas stuck in
+// pan-ready with no keyup ever arriving to clear it.
+window.addEventListener('blur', function() {
+  spaceDown = false;
+  var cv = document.getElementById('canvas');
+  if (cv) { cv.classList.remove('pan-ready'); cv.classList.remove('panning'); }
+  panning = null;
+  // A marquee abandoned by an alt-tab would otherwise leave its rectangle
+  // painted on the canvas with no drag left to clear it.
+  if (marquee) {
+    var box = marqueeEl();
+    if (box) box.style.display = 'none';
+    marquee = null;
+  }
+  if (cv) cv.classList.remove('selecting');
+  drawArrows();
 });
 
 /* GLOBALS — referenced by inline onclick handlers in the toolbar and panels */
@@ -2390,6 +4035,8 @@ window.addProcNode = addProcNode;
 window.toggleProcMenu = toggleProcMenu;
 window.removeNode = removeNode;
 window.addCriterion = addCriterion;
+window.addSortKey = addSortKey;
+window.removeSortKey = removeSortKey;
 window.removeCriterion = removeCriterion;
 window.clearAll = clearAll;
 window.runQuery = runQuery;
@@ -2398,6 +4045,12 @@ window.saveOutput = saveOutput;
 window.saveEnrolments = saveEnrolments;
 window.saveGraph = saveGraph;
 window.openGraphFile = openGraphFile;
+window.zoomIn = zoomIn;
+window.zoomOut = zoomOut;
+window.zoomReset = zoomReset;
+window.zoomToFit = zoomToFit;
+window.deleteSelection = deleteSelection;
+window.clearSelection = clearSelection;
 
 /* TEST HOOK
    Set window.__QB_TEST__ = true *before* loading app.js to expose internals to
@@ -2433,10 +4086,50 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
 
     // engine
     topoSort: topoSort, evaluateGraph: evaluateGraph, computeSchemas: computeSchemas,
+    NODE_SPEC: NODE_SPEC, specFor: specFor, SHAPE: SHAPE, passthroughSchema: passthroughSchema,
     inputSchema: inputSchema, unionTables: unionTables, filterFields: filterFields,
     fieldByKey: fieldByKey, newCriterion: newCriterion, defaultCfg: defaultCfg,
     normaliseShow: normaliseShow, outputTable: outputTable, defaultAvgCol: defaultAvgCol,
     meanOf: meanOf, MEASURES: MEASURES,
+
+    // sort
+    applySort: applySort, sortableCols: sortableCols, comparatorFor: comparatorFor,
+    sortRowComparator: sortRowComparator,
+    resolveSortKeys: resolveSortKeys, newSortKey: newSortKey, dirLabel: dirLabel,
+    ordinalsFor: ordinalsFor, GRADE_ORDER: GRADE_ORDER,
+
+    // combine
+    COMBINE_MODES: COMBINE_MODES, combineMode: combineMode, combineTables: combineTables,
+    combineBaseId: combineBaseId, combineOrdered: combineOrdered, combineKeyCol: combineKeyCol, combineKeyCols: combineKeyCols,
+    upstreamLabel: upstreamLabel,
+
+    // aggregation
+    AGG_OPS: AGG_OPS, aggOp: aggOp, reduceValues: reduceValues,
+    measurableCols: measurableCols, isMeasurable: isMeasurable,
+    aggregateCol: aggregateCol, aggregateColumn: aggregateColumn,
+    aggregateSchema: aggregateSchema, applyAggregate: applyAggregate,
+    aggregateColumnsSchema: aggregateColumnsSchema,
+    applyAggregateColumns: applyAggregateColumns,
+    columnValues: columnValues,
+
+    // take
+    applyTake: applyTake, takeCount: takeCount,
+    TAKE_DEFAULT: TAKE_DEFAULT, TAKE_MIN: TAKE_MIN,
+    canConnect: canConnect, CONNECT_RULES: CONNECT_RULES,
+
+    // view: zoom, pan and world coordinates
+    view: function(){ return view; },
+    setZoom: setZoom, zoomToFit: zoomToFit, centreView: centreView, clampPan: clampPan, applyView: applyView,
+    toWorld: toWorld, toScreen: toScreen, viewCentreWorld: viewCentreWorld,
+    nodeBox: nodeBox, graphBounds: graphBounds, freeSpotNear: freeSpotNear,
+    WORLD_W: WORLD_W, WORLD_H: WORLD_H, MIN_ZOOM: MIN_ZOOM, MAX_ZOOM: MAX_ZOOM,
+
+    // selection
+    selection: function(){ return selection; },
+    setSelection: setSelection, selectOnly: selectOnly, clearSelection: clearSelection,
+    selectAll: selectAll, toggleSelected: toggleSelected, isSelected: isSelected,
+    deleteSelection: deleteSelection, selectBranch: selectBranch,
+    connectedComponent: connectedComponent, nodesInWorldRect: nodesInWorldRect,
 
     // export + persistence
     serialiseTable: serialiseTable, exportTableFor: exportTableFor, safeName: safeName,
@@ -2446,5 +4139,9 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
   };
 }
 
+// The world layer needs its size and transform before the first paint, or the
+// first frame shows an unsized viewport and the nodes jump when it settles.
+applyView();
+centreView();
 render();
 })();
