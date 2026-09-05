@@ -2875,10 +2875,19 @@ function shapeHTML(node) {
     return '<div class="node-shape shape-take">' + removeBtn + bars + 'Take</div>';
   }
   if (node.type === 'unique') {
-    // Three bars, one of them a repeat struck through: the glyph says "the same
-    // one twice, kept once" rather than restating the word on the label.
+    /* Two pairs, each a value and its repeat. The first of each pair is solid —
+       kept — and the second is an empty outline of the same width — the same
+       value again, dropped. Matching widths are what say "the same value";
+       the outline is what says "not kept".
+
+       The previous glyph struck a line through the repeat, which read as Take's
+       cut rule and so said "everything below here is discarded" rather than
+       "this one is a duplicate". Two pairs rather than one also matter: a
+       single repeat looks like a rule separating a top group from a bottom one,
+       which is exactly the wrong reading. */
     var uq = '<span class="uniq-glyph">' +
-      '<i></i><i class="dupe"></i><i></i></span>';
+      '<i class="wide"></i><i class="wide dupe"></i>' +
+      '<i class="narrow"></i><i class="narrow dupe"></i></span>';
     return '<div class="node-shape shape-unique">' + removeBtn + uq + 'Unique</div>';
   }
   if (node.type === 'aggregate') {

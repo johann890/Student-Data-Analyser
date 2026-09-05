@@ -16,34 +16,34 @@
   <div class="proc-wrap">
     <button class="add-btn processing" onclick="toggleProcMenu(event)">Processing <span class="caret">&#9662;</span></button>
     <div class="proc-menu" id="procMenu" onclick="event.stopPropagation()">
-      <div class="proc-group">Reshape rows</div>
-      <button class="proc-item" onclick="addProcNode('sort')">
+      <div class="proc-group cat-reshape">Reshape rows</div>
+      <button class="proc-item cat-reshape" onclick="addProcNode('sort')">
         <span class="proc-name">Sort</span>
         <span class="proc-desc">Order rows by one or more columns</span>
       </button>
-      <button class="proc-item" onclick="addProcNode('take')">
+      <button class="proc-item cat-reshape" onclick="addProcNode('take')">
         <span class="proc-name">Take</span>
         <span class="proc-desc">Keep only the first N rows</span>
       </button>
-      <button class="proc-item" onclick="addProcNode('unique')">
+      <button class="proc-item cat-reshape" onclick="addProcNode('unique')">
         <span class="proc-name">Unique</span>
         <span class="proc-desc">Drop duplicates, or list a column's distinct values</span>
       </button>
-      <div class="proc-group">Summarise</div>
-      <button class="proc-item" onclick="addProcNode('aggregate')">
+      <div class="proc-group cat-summarise">Summarise</div>
+      <button class="proc-item cat-summarise" onclick="addProcNode('aggregate')">
         <span class="proc-name">Aggregate</span>
         <span class="proc-desc">Whole table down to one value</span>
       </button>
-      <button class="proc-item" onclick="addProcNode('aggregateColumns')">
+      <button class="proc-item cat-summarise" onclick="addProcNode('aggregateColumns')">
         <span class="proc-name">Aggregate Columns</span>
         <span class="proc-desc">One row out, one value per column</span>
       </button>
-      <div class="proc-group">Branches</div>
-      <button class="proc-item" onclick="addProcNode('combine')">
+      <div class="proc-group cat-branches">Branches</div>
+      <button class="proc-item cat-branches" onclick="addProcNode('combine')">
         <span class="proc-name">Combine</span>
         <span class="proc-desc">Stack branches with matching columns</span>
       </button>
-      <button class="proc-item" onclick="addProcNode('compare')">
+      <button class="proc-item cat-branches" onclick="addProcNode('compare')">
         <span class="proc-name">Compare</span>
         <span class="proc-desc">Put branches side by side</span>
       </button>

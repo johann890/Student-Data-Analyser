@@ -1125,33 +1125,22 @@ th.cmp-num { color: #383838 !important; }
    Appended block. Nothing above this line is modified.
    ═══════════════════════════════════════════════════════════ */
 
-/* Teal, to sit with Sort and Take as a row-shaping node while staying
-   distinguishable from Take's violet at a glance on a busy canvas. */
+/* Geometry only. The colour comes from the PROCESSING CATEGORY COLOURS block at
+   the foot of this file, where Unique is grouped with Sort and Take as a
+   row-shaping node — a hue set once for the category rather than per node.
+
+   The glyph is defined there too, for the same reason: it is drawn in
+   currentColor, so it cannot drift out of step with the shape around it. */
 .shape-unique {
   width: 106px; height: 72px;
   border-radius: 3px;
-  border: 2.5px solid #1f6a6a;
-  background: #051414;
-  color: #5ac8c8;
+  border: 2.5px solid;
   display: flex; align-items: center; justify-content: center;
   font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
   cursor: grab; position: relative; flex-shrink: 0;
   flex-direction: column; gap: 5px;
 }
 .shape-unique:active { cursor: grabbing; }
-
-/* Three bars, the middle one a faded repeat with a line through it: "the same
-   value twice, kept once". Reads as distinct from Take's cut rule, which
-   separates kept from discarded rather than marking a repeat. */
-.uniq-glyph { display: flex; flex-direction: column; gap: 3px; align-items: stretch; width: 24px; }
-.uniq-glyph i { display: block; height: 3px; border-radius: 1px; background: #5ac8c8; opacity: 0.75; }
-.uniq-glyph i.dupe { opacity: 0.24; position: relative; }
-.uniq-glyph i.dupe::after {
-  content: ''; position: absolute;
-  left: -2px; right: -2px; top: 1px;
-  border-top: 1px solid #5ac8c8;
-  opacity: 0.9;
-}
 
 /* ═══════════════════════════════════════════════════════════
    INPUT PORTS
@@ -1202,3 +1191,131 @@ th.cmp-num { color: #383838 !important; }
   letter-spacing: 0.04em;
 }
 .node-port.filled > em { color: #8f8f8f; }
+
+/* ═══════════════════════════════════════════════════════════
+   PROCESSING CATEGORY COLOURS
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Until now every processing node was one violet, and the glyph carried the
+   whole burden of telling them apart. That worked while there were four; with
+   seven it does not, and it also threw away information the toolbar already
+   knows — the menu has grouped these nodes for some time, and the canvas said
+   nothing about it.
+
+   Colour now carries the category and the glyph carries the node:
+
+     Reshape rows  violet   Sort, Take, Unique
+                            same rows or fewer, header untouched
+     Summarise     teal     Aggregate, Aggregate Columns
+                            rows collapse, header rewritten
+     Branches      rose     Combine, Compare
+                            several tables in, one out
+
+   The split is by what a node does to the shape of the table, which is the
+   axis the supervisor proposed and the one the dropdown groups already follow.
+   A reader who learns the three colours once can then read an unfamiliar graph
+   at a glance: where it narrows, where it collapses, where branches meet.
+
+   Only the palette lives here. The shapes themselves keep their own geometry
+   and glyphs above, so recolouring a category is three values in one place and
+   adding a node to one is a class, not a new block. */
+
+/* ── RESHAPE ROWS ── violet ─────────────────────────────── */
+.shape-sort,
+.shape-take,
+.shape-unique {
+  border-color: #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+}
+
+/* ── SUMMARISE ── teal ──────────────────────────────────── */
+.shape-aggregate,
+.shape-aggcols {
+  border-color: #1f6a6a;
+  background: #041416;
+  color: #5ac8c8;
+}
+
+/* ── BRANCHES ── rose ───────────────────────────────────── */
+.shape-combine,
+.shape-compare {
+  border-color: #7a2f52;
+  background: #170a11;
+  color: #e089ae;
+}
+
+/* Glyphs inherit the shape's colour rather than naming one. Every glyph part
+   above hardcoded the violet, which meant a recolour was a dozen edits that had
+   to agree; currentColor makes the shape's `color` the single source, so a
+   category's hue is set once and the bars, dots and rules follow it. */
+.sort-glyph i,
+.take-glyph i,
+.take-glyph b,
+.uniq-glyph i,
+.agg-glyph i,
+.agg-glyph b,
+.aggc-col i,
+.aggc-col b,
+.cmb-in i,
+.cmb-out i,
+.cmb-glyph b,
+.cmp-glyph i {
+  background: currentColor;
+}
+.take-glyph b {
+  background: none;
+  border-top-color: currentColor;
+}
+
+/* ── UNIQUE GLYPH ───────────────────────────────────────── */
+/* Two pairs. Each pair is one value: a solid bar kept, then an outline of the
+   same width dropped. Widths differ between the pairs so the eye reads "these
+   two are the same, those two are the same" rather than "four bars getting
+   shorter", which is Aggregate's glyph. */
+.uniq-glyph {
+  display: flex; flex-direction: column;
+  gap: 2px; align-items: flex-start;
+  width: auto;
+}
+.uniq-glyph i {
+  display: block; height: 3px; border-radius: 1px;
+  box-sizing: border-box;
+  opacity: 0.8;
+}
+.uniq-glyph i.wide   { width: 22px; }
+.uniq-glyph i.narrow { width: 13px; }
+.uniq-glyph i.dupe {
+  background: none;
+  border: 1px solid currentColor;
+  opacity: 0.34;
+}
+
+/* ── THE MENU TEACHES THE MAPPING ───────────────────────── */
+/* The dropdown is where a user meets these nodes first, so it is where the
+   colours have to be learnable. Group heading and item name both take the
+   category hue; the description stays grey, because colouring the whole row
+   would make the menu shout rather than group. */
+.proc-group.cat-reshape,
+.proc-item.cat-reshape   .proc-name { color: #b48ce0; }
+.proc-group.cat-summarise,
+.proc-item.cat-summarise .proc-name { color: #5ac8c8; }
+.proc-group.cat-branches,
+.proc-item.cat-branches  .proc-name { color: #e089ae; }
+
+.proc-group { opacity: 0.72; }
+
+.proc-item.cat-reshape:hover   { background: #1c1226; }
+.proc-item.cat-summarise:hover { background: #0a1e20; }
+.proc-item.cat-branches:hover  { background: #21101a; }
+
+/* The Processing button itself goes neutral. It opens a menu holding all three
+   categories, so painting it violet would say violet is what Processing means —
+   which was true when every processing node was violet and is now false. Grey
+   claims none of the three. */
+.add-btn.processing {
+  border-color: #3d3d3d;
+  color: #9a9a9a;
+}
+.add-btn.processing:hover { background: #1a1a1a; }
