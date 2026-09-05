@@ -1119,3 +1119,86 @@ th.cmp-num { color: #383838 !important; }
   padding: 1px 0;
 }
 .cmb-check input { width: auto; margin: 0; cursor: pointer; }
+
+/* ═══════════════════════════════════════════════════════════
+   UNIQUE NODE
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Teal, to sit with Sort and Take as a row-shaping node while staying
+   distinguishable from Take's violet at a glance on a busy canvas. */
+.shape-unique {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid #1f6a6a;
+  background: #051414;
+  color: #5ac8c8;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-unique:active { cursor: grabbing; }
+
+/* Three bars, the middle one a faded repeat with a line through it: "the same
+   value twice, kept once". Reads as distinct from Take's cut rule, which
+   separates kept from discarded rather than marking a repeat. */
+.uniq-glyph { display: flex; flex-direction: column; gap: 3px; align-items: stretch; width: 24px; }
+.uniq-glyph i { display: block; height: 3px; border-radius: 1px; background: #5ac8c8; opacity: 0.75; }
+.uniq-glyph i.dupe { opacity: 0.24; position: relative; }
+.uniq-glyph i.dupe::after {
+  content: ''; position: absolute;
+  left: -2px; right: -2px; top: 1px;
+  border-top: 1px solid #5ac8c8;
+  opacity: 0.9;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   INPUT PORTS
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Drawn only on nodes with more than one input, where the user has to be able
+   to tell them apart. The markers sit on the shape's left edge at the same
+   fractions used by portOffsetY(), so a stub and the arrowhead that lands on it
+   are placed by one rule.
+
+   The rail is pointer-events:none throughout. Ports are a read-out, not a
+   target: wiring is done by dragging a node near another, and making the stubs
+   clickable would suggest a second, non-existent way to connect. */
+.node-ports {
+  position: absolute; inset: 0;
+  pointer-events: none; z-index: 20;
+}
+
+.node-port {
+  position: absolute; left: 0;
+  transform: translate(-50%, -50%);
+  display: flex; align-items: center; gap: 4px;
+}
+
+/* The dot itself. Hollow while the port is empty, filled once a wire lands, so
+   "this input is taken" is visible without hovering or counting arrows. */
+.node-port > i {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #1a1a1a;
+  border: 1.5px solid #4a4a4a;
+  box-sizing: border-box;
+  flex: none;
+}
+.node-port.filled > i { background: #6a6a6a; border-color: #8a8a8a; }
+
+/* Label sits to the LEFT of the dot, out in the wrapper gutter — the shape is
+   narrower than .node, and that margin is otherwise unused. Right-aligned so
+   the text grows away from the shape instead of over it. */
+.node-port > em {
+  position: absolute; right: 10px;
+  font-style: normal;
+  font-size: 9px; line-height: 1;
+  color: #6f6f6f;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.node-port.filled > em { color: #8f8f8f; }

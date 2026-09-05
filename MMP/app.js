@@ -280,7 +280,7 @@ var YEARS = STUDENTS.map(function(s){ return s.year; })
 var STUDENT_COLUMNS = [
   { key:'id',             label:'ID',             type:COLTYPE.NUMBER, def:'1001' },
   { key:'gender',         label:'Gender',         type:COLTYPE.ENUM,   values:['M','F'] },
-  { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS, filter:false },
+  { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS },
   { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
   { key:'gradeAvg',       label:'Avg',            type:COLTYPE.NUMBER, def:'70' },
   { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT,   order:GRADE_ORDER },
@@ -290,7 +290,7 @@ var STUDENT_COLUMNS = [
 var ENROLMENT_COLUMNS = [
   { key:'studentId',      label:'Student',        type:COLTYPE.NUMBER, def:'1001' },
   { key:'gender',         label:'Gender',         type:COLTYPE.ENUM,   values:['M','F'] },
-  { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS, filter:false },
+  { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS },
   { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
   { key:'code',           label:'Course',         type:COLTYPE.ENUM,   values:COURSES.map(function(c){ return c.code; }) },
   { key:'name',           label:'Course name',    type:COLTYPE.TEXT },
@@ -437,7 +437,7 @@ function cellTitle(col, v) {
    render() only reads. That is also what makes save/load possible at all.    */
 
 var nodes = [];
-var connections = [];   // [{from, to, color}]
+var connections = [];   // [{from, to, port, color}] — port names an input on the TO node
 var idCtr = 0;
 var drag = null;
 var SNAP_DIST = 160;    // px proximity threshold, measured between shape edges
@@ -455,6 +455,7 @@ var SHAPE = {
   compare: { w:112, h:78 },
   sort:    { w:106, h:72 },
   take:    { w:106, h:72 },
+  unique:  { w:106, h:72 },
   aggregate:        { w:106, h:72 },
   aggregateColumns: { w:112, h:72 },
   combine:          { w:106, h:72 },
@@ -690,12 +691,13 @@ function deleteSelection() {
 
    Compare stays output-only. It is superseded, and widening its reach now
    would be work thrown away when it retires. */
-var TABLE_NODES = ['filter', 'sort', 'take', 'aggregate', 'aggregateColumns', 'combine'];
+var TABLE_NODES = ['filter', 'sort', 'take', 'unique', 'aggregate', 'aggregateColumns', 'combine'];
 var CONNECT_RULES = {
   source:           TABLE_NODES.concat(['compare', 'output']),
   filter:           TABLE_NODES.concat(['compare', 'output']),
   sort:             TABLE_NODES.concat(['compare', 'output']),
   take:             TABLE_NODES.concat(['compare', 'output']),
+  unique:           TABLE_NODES.concat(['compare', 'output']),
   aggregate:        TABLE_NODES.concat(['compare', 'output']),
   aggregateColumns: TABLE_NODES.concat(['compare', 'output']),
   combine:          TABLE_NODES.concat(['compare', 'output']),
@@ -706,28 +708,149 @@ function canConnect(fromType, toType) {
   return (CONNECT_RULES[fromType] || []).indexOf(toType) !== -1;
 }
 
+/* ============================================================================
+   INPUT PORTS
+   ============================================================================
+   A connection now names the input it lands on, not just the node. Previously
+   two wires into one node were silently unioned: the merge happened in
+   evaluateGraph, was invisible on the canvas, and — as the histogram case
+   showed — could discard rows without saying so. A node now declares its
+   inputs, and each wire occupies one.
+
+   Two arities:
+     single — exactly one wire. A second is refused at the point of wiring.
+     multi  — many wires, because taking several tables IS the node's job.
+              Combine and Compare, and nothing else.
+
+   The implicit union is gone with it: a node with one input has one table, so
+   there is nothing to reconcile. Where several tables must become one, the user
+   says so by wiring a Combine, which is the node whose settings decide how.
+
+   Declaring ports as data rather than as branches is what lets the geometry,
+   the wiring rules, the evaluator and the schema pass all agree about a node
+   they have never heard of. SelectFor (data + labels) and any future two-input
+   node are an entry in this table plus their implementation — nothing here
+   changes.                                                                   */
+
+var SINGLE_IN = [{ key:'in', label:'In' }];
+
+var NODE_PORTS = {
+  source:           [],
+  filter:           SINGLE_IN,
+  sort:             SINGLE_IN,
+  take:             SINGLE_IN,
+  unique:           SINGLE_IN,
+  aggregate:        SINGLE_IN,
+  aggregateColumns: SINGLE_IN,
+  combine:          [{ key:'in', label:'Tables',   multi:true }],
+  compare:          [{ key:'in', label:'Branches', multi:true }],
+  output:           SINGLE_IN
+};
+
+function portsOf(type) { return NODE_PORTS[type] || SINGLE_IN; }
+
+// The port a wire lands on when the file or the caller does not say. Every
+// node's first port is its data input, which keeps legacy graphs meaningful.
+function primaryPort(type) {
+  var p = portsOf(type);
+  return p.length ? p[0].key : 'in';
+}
+
+function portDef(type, key) {
+  var p = portsOf(type);
+  for (var i = 0; i < p.length; i++) if (p[i].key === key) return p[i];
+  return null;
+}
+
+// Unknown ports resolve to the primary one rather than vanishing: a hand-edited
+// file naming a port that no longer exists still loads as a data connection.
+function normalisePort(type, key) {
+  return portDef(type, key) ? key : primaryPort(type);
+}
+
+function wiresInto(nodeId, portKey) {
+  return connections.filter(function(c) {
+    return c.to === nodeId && (portKey === undefined || c.port === portKey);
+  });
+}
+
+/* A port accepts a wire when it is multi, or when it is single and empty.
+   `ignore` skips one existing connection, so a check can ask "would this be
+   free if that wire were not there" — which is what a re-wire needs. */
+function portAccepts(node, portKey, ignore) {
+  var def = portDef(node.type, portKey);
+  if (!def) return false;
+  if (def.multi) return true;
+  return wiresInto(node.id, portKey).filter(function(c) {
+    return c !== ignore;
+  }).length === 0;
+}
+
+function freePortsOn(node) {
+  return portsOf(node.type).filter(function(p) {
+    return portAccepts(node, p.key);
+  });
+}
+
+/* ============================================================================
+   PORT GEOMETRY
+   ============================================================================
+   Ports are spaced down the left edge of the shape. One port sits at mid-height,
+   which is exactly where the single entry point used to be — so a one-input node
+   is pixel-identical to what it was before this change, and every existing
+   arrow lands where it always did.
+
+   n ports divide the edge into n+1 intervals and sit on the interior boundaries,
+   so they are evenly spaced and symmetric about the centre whatever n is.     */
 function shapeExit(node) {
   var s = SHAPE[node.type];
   return { x: node.x + (NODE_W - s.w) / 2 + s.w, y: node.y + s.h / 2 };
 }
-function shapeEntry(node) {
+
+function portOffsetY(type, portKey) {
+  var ps = portsOf(type);
+  if (ps.length < 2) return SHAPE[type].h / 2;
+  var i = 0;
+  for (var k = 0; k < ps.length; k++) if (ps[k].key === portKey) { i = k; break; }
+  return SHAPE[type].h * (i + 1) / (ps.length + 1);
+}
+
+function shapeEntry(node, portKey) {
   var s = SHAPE[node.type];
-  return { x: node.x + (NODE_W - s.w) / 2, y: node.y + s.h / 2 };
+  return {
+    x: node.x + (NODE_W - s.w) / 2,
+    y: node.y + portOffsetY(node.type, portKey === undefined ? primaryPort(node.type) : portKey)
+  };
 }
 
 /* Direction resolution was duplicated verbatim between the drop handler and the
    ghost-arrow preview; they had to agree or the preview would lie about what
-   dropping would do. One function now serves both. */
+   dropping would do. One function now serves both.
+
+   It also chooses the port. A node dragged towards a two-input node aims at
+   whichever free port is nearest, so the gesture that used to mean "connect"
+   now means "connect to this input" without a second interaction. A node whose
+   every port is taken offers no target at all: the ghost arrow does not appear,
+   which is the refusal made visible before the drop rather than after it. */
+function nearestFreePort(from, to) {
+  var ex = shapeExit(from);
+  var best = null, bestD = Infinity;
+  freePortsOn(to).forEach(function(p) {
+    var en = shapeEntry(to, p.key);
+    var d = Math.pow(en.x - ex.x, 2) + Math.pow(en.y - ex.y, 2);
+    if (d < bestD) { bestD = d; best = { port:p.key, p0:ex, tip:en, d:d }; }
+  });
+  return best;
+}
+
 function resolveDirection(a, b) {
-  var aFrom = canConnect(a.type, b.type);
-  var bFrom = canConnect(b.type, a.type);
-  if (!aFrom && !bFrom) return null;
-  var ex = shapeExit(a),  en = shapeEntry(b);
-  var rx = shapeExit(b),  rn = shapeEntry(a);
-  var fwd = Math.pow(en.x - ex.x, 2) + Math.pow(en.y - ex.y, 2);
-  var rev = Math.pow(rn.x - rx.x, 2) + Math.pow(rn.y - rx.y, 2);
-  if (aFrom && (!bFrom || fwd <= rev)) return { from:a, to:b, p0:ex, tip:en };
-  return { from:b, to:a, p0:rx, tip:rn };
+  var fwd = canConnect(a.type, b.type) ? nearestFreePort(a, b) : null;
+  var rev = canConnect(b.type, a.type) ? nearestFreePort(b, a) : null;
+  if (!fwd && !rev) return null;
+  if (fwd && (!rev || fwd.d <= rev.d)) {
+    return { from:a, to:b, port:fwd.port, p0:fwd.p0, tip:fwd.tip };
+  }
+  return { from:b, to:a, port:rev.port, p0:rev.p0, tip:rev.tip };
 }
 
 /* DEFAULT CONFIG PER NODE TYPE
@@ -740,6 +863,9 @@ function defaultCfg(type) {
   if (type === 'compare') return { measures:DEFAULT_MEASURES.slice(), sort:'wired', labels:{} };
   if (type === 'sort')    return { keys: [newSortKey()] };
   if (type === 'take')    return { n: String(TAKE_DEFAULT) };
+  // col:'' means all columns — whole-row deduplication. Naming a column
+  // switches to the label-producing mode and rewrites the header.
+  if (type === 'unique')  return { col: '' };
   // Both aggregation nodes share one config shape: which measure, and (for the
   // measures that need one) which column. col:'' means "resolve against
   // whatever arrives", which is what keeps a saved query working after the
@@ -825,9 +951,12 @@ function findNode(id) {
   for (var i = 0; i < nodes.length; i++) if (nodes[i].id === id) return nodes[i];
   return null;
 }
-function inputsOf(nodeId) {
-  return connections.filter(function(c){ return c.to === nodeId; })
-                    .map(function(c){ return c.from; });
+/* Ids wired into a node, optionally restricted to one port. Called without a
+   port it answers "everything upstream of this node", which is what the config
+   panels and the colour picker want; called with one it answers "what is on
+   this input", which is what the evaluator and the schema pass want. */
+function inputsOf(nodeId, portKey) {
+  return wiresInto(nodeId, portKey).map(function(c){ return c.from; });
 }
 
 /* ADD / REMOVE */
@@ -1025,12 +1154,18 @@ function sourceTable(node, log) {
   return studentsTable(list);
 }
 
-/* MERGE
-   Multiple wires into one node combine their rows. Identity is per-granularity:
-   two branches that both contain student 1042 contribute one row, not two.
-   Headers must match — merging a student table with an enrolment table is a
-   wiring mistake, and saying so is more useful than silently producing a
-   ragged table. */
+/* ROW IDENTITY AND UNION
+   schemaKey and rowKey say when two tables have the same shape and when two
+   rows are the same thing. Identity is per-granularity: two branches that both
+   contain student 1042 hold one student, not two.
+
+   unionTables is no longer on the evaluation path. It was the implicit merge —
+   several wires into one node, silently deduplicated — and input ports removed
+   the situation that called it: an ordinary node takes one table, and a node
+   that takes several is a Combine, which decides its own semantics. It is kept
+   because the two key functions are shared with Combine's dedupe option and
+   because the deduplicating union is still a meaningful operation to have
+   available; nothing calls it today. */
 function schemaKey(t) { return t.columns.map(function(c){ return c.key; }).join('|'); }
 
 function rowKey(t, row) {
@@ -1082,10 +1217,28 @@ function courseFields() {
   ];
 }
 
-/* A column can opt out of being filterable with `filter: false`. Year does:
+/* A column can opt out of being filterable with `filter: false`. Year used to:
    the Source already scopes the population by year, and offering it twice
-   invited a graph that says 2022 in one place and 2023 in another. The column
-   still exists — it is displayed, exported and grouped on like any other. */
+   invited a graph that says 2022 in one place and 2023 in another.
+
+   That reasoning no longer holds. Grouping by a column means filtering on it
+   once per label — "how many in 2022, how many in 2023" is a filter for each
+   year — so a column that cannot be filtered cannot be grouped on either. Year
+   is the column four of the supervisor's use cases group by: enrolment trend
+   for a course, average enrolment over several years, historical enrolment for
+   a major, and grade trend for a student. Withholding it from Filter withheld
+   it from all of them.
+
+   The double-specification worry is answered by precedence rather than by
+   removal: the Source's year setting scopes the population and a Filter narrows
+   what the Source produced, so a graph saying 2022 at the Source and 2023 at a
+   Filter yields nothing — which is the honest answer to a contradictory query,
+   and visible in the log, where both entries appear in order.
+
+   The opt-out itself stays. It is a property of a column rather than a rule
+   about years, and the next column that has no sensible filter — a nested or
+   derived one — declares it without any code changing. Nothing declares it
+   today. */
 function filterFields(schema) {
   var out = [];
   schema.columns.forEach(function(c) {
@@ -1409,6 +1562,112 @@ function applyTake(node, t, log) {
   // meta is carried through: Take is a row operation and has no opinion about
   // whatever a producer upstream recorded there.
   return makeTable(t.columns, t.rows.slice(0, n), t.meta);
+}
+
+/* ============================================================================
+   UNIQUE
+   ============================================================================
+   Removes duplicates. A Reduction in the supervisor's categorisation, sitting
+   beside Filter and Take: fewer rows out than in, nothing invented.
+
+   Two modes, and the second is the one his example asks for. "It could be used
+   to produce all available course labels from a multiplicity of course grade
+   rows" cannot be done by deduplicating whole rows — every enrolment row
+   differs in its mark, so nothing would be removed. Getting course labels means
+   reducing to the course column first and then deduplicating that. So:
+
+     all columns  — a row survives if no identical row came before it. The
+                    header is untouched.
+     one column   — the table is reduced to that column, then deduplicated. The
+                    header becomes that one column. This is the label-producing
+                    mode, and what makes a list of labels an ordinary table on
+                    an ordinary wire rather than a special kind of input.
+
+   Duplicate means equal values, not the same entity. rowKey() deliberately says
+   two rows are the same when they share a student id, which is right for
+   merging branches and wrong here: Unique is asked what distinct values are
+   present, and answering "these two rows are one student" would collapse a
+   student's two enrolments into one course label. Comparison is therefore on
+   the cells themselves.
+
+   First-seen order is preserved rather than sorted. The node's job is to remove
+   duplicates and nothing else; if an order is wanted, Sort is the node that
+   provides it — and preserving arrival order means a label list keeps whatever
+   order its source imposed, which a declared column order can then carry
+   through.                                                                   */
+
+/* Columns offered as the single-column selector. A nested enrolment cell is not
+   a label — "all distinct values of Courses" would be a list of arrays — so the
+   COURSES type is excluded, the same exclusion Sort makes for its own reason. */
+function uniqueCols(t) {
+  return t.columns.filter(function(c){ return c.type !== COLTYPE.COURSES; });
+}
+
+/* Resolved against the table rather than trusted from the config, so the schema
+   pass and the row pass reach the same answer from the same columns. A saved
+   query naming a column that a rewired Source no longer produces falls back to
+   all-columns mode in both walks, and the row pass says so in the log. */
+function uniqueCol(node, t) {
+  var key = (node && node.cfg && node.cfg.col) || '';
+  if (!key) return null;
+  var col = colByKey(t, key);
+  if (!col || col.type === COLTYPE.COURSES) return null;
+  return col;
+}
+
+/* One cell to a comparable string. A nested enrolment list is flattened to its
+   course/mark pairs in order, so two students with the same enrolments compare
+   equal instead of being distinguished by array identity — which would make
+   whole-row Unique silently do nothing on any table carrying a Courses
+   column. */
+function uniqueCellKey(col, v) {
+  if (col && col.type === COLTYPE.COURSES) {
+    return (v || []).map(function(e){ return e.code + ':' + e.mark; }).join(',');
+  }
+  return String(v);
+}
+
+function uniqueSchema(node, inSchema) {
+  var col = uniqueCol(node, inSchema);
+  return col ? makeTable([col], []) : inSchema;
+}
+
+function applyUnique(node, t, log) {
+  var col = uniqueCol(node, t);
+  var wanted = (node && node.cfg && node.cfg.col) || '';
+  var before = t.rows.length;
+
+  // Named a column that is not here any more. Said rather than silently
+  // widened, because "distinct course codes" quietly becoming "distinct whole
+  // rows" returns a plausible table that answers a different question.
+  if (wanted && !col) {
+    log.push(logEntry('UNIQUE', [{s:'ignored'}, {c:'val', s:wanted},
+                                 {s:'— not a column in this table'}]));
+  }
+
+  var cols = col ? [col] : t.columns;
+  var idxs = cols.map(function(c){ return colIndex(t, c.key); });
+
+  var seen = {}, rows = [];
+  t.rows.forEach(function(r) {
+    var k = idxs.map(function(i, n) {
+      return uniqueCellKey(cols[n], r[i]);
+    }).join('\u0001');
+    if (seen[k]) return;
+    seen[k] = true;
+    rows.push(col ? [r[idxs[0]]] : r);
+  });
+
+  log.push(logEntry('UNIQUE', col
+    ? [{s:'distinct'}, {c:'val', s:col.label}, {s:'→'},
+       {c:'val', s:rows.length}, {s:'of'}, {c:'val', s:before}, {s:'rows'}]
+    : [{s:'distinct rows'}, {s:'→'}, {c:'val', s:rows.length},
+       {s:'of'}, {c:'val', s:before}]));
+
+  /* meta is carried through in all-columns mode, where the table is the same
+     table with fewer rows, and dropped in one-column mode, where it is not:
+     a Compare's branch metadata does not describe a single column of labels. */
+  return makeTable(cols, rows, col ? {} : t.meta);
 }
 
 var MEASURES = [
@@ -1929,13 +2188,22 @@ function combineTables(node, tables, log) {
    One entry per node type, declaring the two things the graph walks need to
    know: what shape comes out, and how the rows are computed.
 
-     merges   — inputs are unioned into one table before the node runs. False
-                for nodes that read their inputs separately (Compare) or have
-                none (Source).
-     schema   — (node, inSchema) -> table of columns, no rows. The header this
-                node produces, derived from the header it is given.
-     rows     — (node, table, log) -> table | {error}. Omitted by nodes that
-                pass their rows through untouched.
+     schema   — (node, inSchema, ctx) -> table of columns, no rows. The header
+                this node produces, derived from the header it is given.
+                inSchema is the header on the node's primary port; ctx.port(key)
+                reaches the others, which is what a two-input node needs.
+     rows     — (node, table, log) -> table | {error}. The ordinary path: one
+                table in, one table out. Omitted by nodes that pass their rows
+                through untouched.
+     evaluate — (node, ctx) -> {table, error, hasSource}. For nodes that read
+                their inputs separately rather than taking one table: Source
+                (no inputs), Combine and Compare (many).
+
+   `merges` is gone. It meant "union this node's inputs before running it", and
+   that union is what a wire into an occupied port now prevents: a single-input
+   node has one table, so there is nothing to reconcile and no way for rows to
+   disappear into a silent deduplication. Nodes that genuinely take several
+   tables declare a multi port and read them through ctx.
 
    Why a registry rather than branches in two functions: schema propagation and
    evaluation must agree about every node, and until now they agreed by
@@ -1956,7 +2224,6 @@ function passthroughSchema(node, inSchema) { return inSchema; }
 
 var NODE_SPEC = {
   source: {
-    merges: false,
     // No input to derive from: granularity is a Source setting, so the header
     // is a function of the node's own config alone.
     schema: function(node) {
@@ -1971,43 +2238,45 @@ var NODE_SPEC = {
   },
 
   filter: {
-    merges: true,
     schema: passthroughSchema,
     rows: function(node, t, log) { return applyFilter(node, t, log); }
   },
 
   sort: {
-    merges: true,
     schema: passthroughSchema,
     rows: function(node, t, log) { return { table: applySort(node, t, log) }; }
   },
 
   take: {
-    merges: true,
     schema: passthroughSchema,
     rows: function(node, t, log) { return { table: applyTake(node, t, log) }; }
   },
 
+  unique: {
+    // The first built node whose output header depends on its own config
+    // rather than only on its input: naming a column narrows the header to
+    // that column. Both walks call uniqueCol() on the columns they hold, so
+    // they cannot disagree about which mode the node is in.
+    schema: uniqueSchema,
+    rows: function(node, t, log) { return { table: applyUnique(node, t, log) }; }
+  },
+
   aggregate: {
-    merges: true,
     schema: aggregateSchema,
     rows: function(node, t, log) { return { table: applyAggregate(node, t, log) }; }
   },
 
   aggregateColumns: {
-    merges: true,
     schema: aggregateColumnsSchema,
     rows: function(node, t, log) { return { table: applyAggregateColumns(node, t, log) }; }
   },
 
   combine: {
-    /* Reads its inputs separately. Not because it treats them differently the
-       way Compare does — the header is the same for all of them — but because
-       the implicit union it would otherwise pass through deduplicates rows,
-       which is exactly the behaviour Combine exists to put under the user's
-       control. Its header is still whatever arrives, so the schema is the
-       ordinary pass-through. */
-    merges: false,
+    /* One multi port. Where an ordinary node now refuses a second wire, this is
+       the node that exists to accept it: stacking several tables is its job,
+       and how they stack — merge, intersect, difference, dedupe or not — is its
+       settings rather than a rule applied behind the user's back. Its header is
+       whatever arrives, so the schema is the ordinary pass-through. */
     schema: passthroughSchema,
     evaluate: function(node, ctx) {
       // The base is a node the user named, not the wire that happened to be
@@ -2024,9 +2293,8 @@ var NODE_SPEC = {
   },
 
   compare: {
-    // The one node that keeps its inputs apart rather than merging them: each
-    // branch becomes a row, so it reads the branch results directly.
-    merges: false,
+    // The other multi port. Each branch becomes a row, so it reads the branch
+    // results directly rather than receiving one table.
     schema: function(node) { return makeTable(compareColumns(measuresOf(node)), []); },
     evaluate: function(node, ctx) {
       return {
@@ -2037,7 +2305,6 @@ var NODE_SPEC = {
   },
 
   output: {
-    merges: true,
     /* An Output's result IS its input: outputTable() applies the chosen view at
        render time, not here, so the count/average/breakdown reshaping is not
        part of the graph. Nothing reads downstream of an Output — CONNECT_RULES
@@ -2050,10 +2317,25 @@ var NODE_SPEC = {
 
 function specFor(type) { return NODE_SPEC[type] || null; }
 
+/* The context handed to spec.evaluate and spec.schema. One object serves both
+   walks: `at(portKey)` returns what is on that port, whether "what" is a result
+   or a header, so a node's two functions ask the same question in the same
+   words. Nodes that only ever have one input never call it. */
+function portContext(node, valueOf) {
+  return function(portKey) {
+    return inputsOf(node.id, portKey).map(valueOf).filter(Boolean);
+  };
+}
+
 /* GRAPH EVALUATION
    Walks the DAG in topological order. Each node computes from its own inputs,
    so parallel branches stay independent.
-   Returns {res: {nodeId: {table, log, hasSource}}} or {error}. */
+   Returns {res: {nodeId: {table, log, hasSource}}} or {error}.
+
+   The default path is now genuinely single-input: whatever is on the primary
+   port is the table, with no union step to lose rows in. An empty port yields
+   an empty table rather than an error, so a half-built graph still renders and
+   still runs — the node simply has nothing to work on yet. */
 function evaluateGraph() {
   var order = topoSort();
   if (order.length < nodes.length) {
@@ -2073,26 +2355,32 @@ function evaluateGraph() {
       ins.forEach(function(r){ log.push.apply(log, r.log); });
     }
 
-    if (spec.merges) {
-      if (ins.length > 1) log.push(logEntry('MERGE', [{s: ins.length + ' inputs'}]));
-      var merged = unionTables(ins.map(function(r){ return r.table; }));
-      if (merged.error) return { error: merged.error };
-      table = merged;
-      hasSource = ins.some(function(r){ return r.hasSource; });
+    var ctx = {
+      inIds: inIds,
+      ins: ins,
+      res: res,
+      log: log,
+      at: portContext(node, function(id){ return res[id]; })
+    };
+
+    if (spec.evaluate) {
+      var ev = spec.evaluate(node, ctx);
+      // A node that reads its inputs itself can fail the same way a row
+      // transform can — Combine rejects mismatched headers — so the error has
+      // to surface here too, rather than only on the spec.rows path.
+      if (ev.error) return { error: ev.error };
+      table = ev.table;
+      hasSource = ev.hasSource;
+    } else {
+      var head = ctx.at(primaryPort(node.type))[0];
+      table = head ? head.table : makeTable([], []);
+      hasSource = !!(head && head.hasSource);
 
       if (spec.rows) {
         var out = spec.rows(node, table, log);
         if (out.error) return { error: out.error };
         table = out.table;
       }
-    } else {
-      var ev = spec.evaluate(node, { inIds: inIds, ins: ins, res: res, log: log });
-      // A non-merging node can fail the same way a row transform can — Combine
-      // rejects mismatched headers — so the error has to surface here too,
-      // rather than only on the spec.rows path.
-      if (ev.error) return { error: ev.error };
-      table = ev.table;
-      hasSource = ev.hasSource;
     }
 
     res[node.id] = { table: table, log: log, hasSource: hasSource };
@@ -2106,29 +2394,30 @@ function evaluateGraph() {
    built from whatever is actually flowing into them. Cheap enough to run on
    every render because no row is ever touched.
 
-   Both walks now read the same registry, so a node cannot describe one header
-   here and produce another there. */
+   Both walks read the same registry and the same ports, so a node cannot
+   describe one header here and produce another there, and cannot read a
+   different input in the two passes either. */
 function computeSchemas() {
   var order = topoSort();
   var out = {};
   order.forEach(function(node) {
     var spec = specFor(node.type);
     if (!spec) { out[node.id] = makeTable([], []); return; }
-    var ins = inputsOf(node.id).map(function(id){ return out[id]; }).filter(Boolean);
-    // Multiple inputs merge, and a merge requires matching headers — so the
-    // first input's header is the merged header wherever the graph is valid,
-    // and where it is not, evaluateGraph() is what reports it.
-    var inSchema = ins.length ? ins[0] : makeTable([], []);
-    out[node.id] = headerOnly(spec.schema(node, inSchema));
+    var at = portContext(node, function(id){ return out[id]; });
+    var head = at(primaryPort(node.type))[0];
+    out[node.id] = headerOnly(spec.schema(node, head || makeTable([], []), { at: at }));
   });
   return out;
 }
 
 // The header a node's config panel should describe: what arrives, not what
-// leaves. An unconnected node falls back to the student schema so its panel is
-// still meaningful before anything is wired up.
-function inputSchema(node, schemas) {
-  var ins = inputsOf(node.id).map(function(id){ return schemas[id]; }).filter(Boolean);
+// leaves. Reads the primary port, so a two-input node's panel describes its
+// data rather than whichever wire happened to be drawn first. An unconnected
+// node falls back to the student schema so its panel is still meaningful
+// before anything is wired up.
+function inputSchema(node, schemas, portKey) {
+  var key = portKey === undefined ? primaryPort(node.type) : portKey;
+  var ins = inputsOf(node.id, key).map(function(id){ return schemas[id]; }).filter(Boolean);
   if (ins.length) return ins[0];
   return makeTable(STUDENT_COLUMNS, []);
 }
@@ -2385,6 +2674,27 @@ function configHTML(node, schemas) {
         takeCount(node) + '.</div>';
   }
 
+  if (node.type === 'unique') {
+    /* One selector, defaulting to whole rows. The two modes are genuinely
+       different operations — one keeps the table's shape, the other reduces it
+       to a list — so the control says which is which in words rather than
+       leaving the user to infer it from the result. */
+    var ucols = uniqueCols(schema);
+    var ucur  = uniqueCol(node, schema);
+    html += '<div class="cfg-label">Distinct</div>' +
+      '<select' + ctl(id, 'col') + '>' +
+        opt('', ucur ? 'x' : '', 'Whole rows') +
+        ucols.map(function(c) {
+          return opt(c.key, ucur ? ucur.key : '', 'Values of ' + c.label);
+        }).join('') +
+      '</select>';
+    html += '<div class="cmp-hint">' + (ucur
+      ? 'Reduces the table to one column of distinct ' + esc(ucur.label) +
+        ' values, in the order they first appear.'
+      : 'Removes rows identical to one already seen. Columns are unchanged.') +
+      '</div>';
+  }
+
   if (node.type === 'aggregate' || node.type === 'aggregateColumns') {
     var isCols = node.type === 'aggregateColumns';
     var op = aggOp(node);
@@ -2519,8 +2829,31 @@ function configHTML(node, schemas) {
   return html + '</div>';
 }
 
+/* Port stubs are drawn only where they carry information — on a node with more
+   than one input, where the user has to know which is which. A single-input
+   node shows nothing: it has one entry point, in the place arrows have always
+   landed, and decorating it would be noise on every node on the canvas.
+
+   Each stub is positioned by the same fraction as portOffsetY, so the marker on
+   the shape and the arrowhead in the SVG are placed by one rule rather than two
+   that have to be kept in step. An occupied port is styled differently, which
+   is how a user sees that a single input is full before trying to drop on it. */
+function portsHTML(node) {
+  var ps = portsOf(node.type);
+  if (ps.length < 2) return '';
+  return '<span class="node-ports">' + ps.map(function(p, i) {
+    var taken = wiresInto(node.id, p.key).length > 0;
+    var top = 100 * (i + 1) / (ps.length + 1);
+    return '<span class="node-port' + (taken ? ' filled' : '') + '"' +
+           ' style="top:' + top + '%"' +
+           ' title="' + esc(p.label) + (p.multi ? ' (accepts several)' : '') + '">' +
+           '<i></i><em>' + esc(p.label) + '</em></span>';
+  }).join('') + '</span>';
+}
+
 function shapeHTML(node) {
-  var removeBtn = '<button class="node-remove" onclick="removeNode(' + node.id + ')">x</button>';
+  var removeBtn = '<button class="node-remove" onclick="removeNode(' + node.id + ')">x</button>' +
+                  portsHTML(node);
   if (node.type === 'source') return '<div class="node-shape shape-source">' + removeBtn + 'Source</div>';
   if (node.type === 'filter') return '<div class="node-shape shape-filter">' + removeBtn + 'Filter</div>';
   if (node.type === 'compare') {
@@ -2540,6 +2873,13 @@ function shapeHTML(node) {
     var bars = '<span class="take-glyph">' +
       '<i></i><i></i><i></i><b></b><i class="cut"></i></span>';
     return '<div class="node-shape shape-take">' + removeBtn + bars + 'Take</div>';
+  }
+  if (node.type === 'unique') {
+    // Three bars, one of them a repeat struck through: the glyph says "the same
+    // one twice, kept once" rather than restating the word on the label.
+    var uq = '<span class="uniq-glyph">' +
+      '<i></i><i class="dupe"></i><i></i></span>';
+    return '<div class="node-shape shape-unique">' + removeBtn + uq + 'Unique</div>';
   }
   if (node.type === 'aggregate') {
     // Rows funnelling into a single dot: many values, one value out.
@@ -2789,11 +3129,15 @@ function onUp() {
     var gt = findNode(ghostTarget);
     var dir = gt ? resolveDirection(drag.node, gt) : null;
     if (dir) {
+      // Same pair, same port is the duplicate to refuse. The same pair on two
+      // different ports is legitimate — one table can be both the data and the
+      // labels — so the port is part of the identity of a connection.
       var exists = connections.some(function(c) {
-        return c.from === dir.from.id && c.to === dir.to.id;
+        return c.from === dir.from.id && c.to === dir.to.id && c.port === dir.port;
       });
       if (!exists) {
-        connections.push({ from: dir.from.id, to: dir.to.id, color: pickEdgeColor(dir.from) });
+        connections.push({ from: dir.from.id, to: dir.to.id, port: dir.port,
+                           color: pickEdgeColor(dir.from) });
         markStale();
         wired = true;
       }
@@ -2827,10 +3171,15 @@ function pickEdgeColor(fromNode) {
 }
 
 /* CONNECTION REMOVAL */
-function connKey(c) { return c.from + '->' + c.to; }
+// The port is part of a connection's identity: two wires from one node into two
+// different ports of the same target are distinct edges, and hovering or
+// deleting one must not pick up the other.
+function connKey(c) { return c.from + '->' + c.to + ':' + c.port; }
 
-function removeConnection(from, to) {
-  connections = connections.filter(function(c){ return !(c.from === from && c.to === to); });
+function removeConnection(from, to, port) {
+  connections = connections.filter(function(c) {
+    return !(c.from === from && c.to === to && c.port === port);
+  });
   hoverConn = null;
   markStale();
   render();
@@ -2870,7 +3219,7 @@ function buildDeleteBadge(conn, pathEl) {
   g.addEventListener('mousedown', function(e){ e.stopPropagation(); });
   g.addEventListener('click', function(e) {
     e.stopPropagation();
-    removeConnection(conn.from, conn.to);
+    removeConnection(conn.from, conn.to, conn.port);
   });
   return g;
 }
@@ -3033,7 +3382,7 @@ function drawArrows() {
   connections.forEach(function(conn) {
     var a = findNode(conn.from), b = findNode(conn.to);
     if (!a || !b) return;
-    var p0 = shapeExit(a), tip = shapeEntry(b);
+    var p0 = shapeExit(a), tip = shapeEntry(b, conn.port);
 
     var g = svgEl('g');
     svg.appendChild(g);
@@ -3528,7 +3877,12 @@ function setOutput(html) {
    out of the DOM meant an unrendered panel was indistinguishable from an unset
    one, so there was no complete picture of the graph to write down.           */
 
-var FILE_VERSION = 1;
+/* Version 2 adds the `port` field to each connection. Version 1 files still
+   load: the loader resolves a missing port to the target's primary input, which
+   is what a version 1 wire meant when every node had exactly one. The guard
+   below only refuses files from a *newer* tool, so the format widened without
+   breaking anything already written. */
+var FILE_VERSION = 2;
 var FILE_KIND = 'student-data-analyser-query';
 
 function serialiseGraph() {
@@ -3542,7 +3896,7 @@ function serialiseGraph() {
       return { id:n.id, type:n.type, x:n.x, y:n.y, color:n.color, cfg:n.cfg };
     }),
     connections: connections.map(function(c) {
-      return { from:c.from, to:c.to, color:c.color };
+      return { from:c.from, to:c.to, port:c.port, color:c.color };
     })
   };
 }
@@ -3595,7 +3949,20 @@ function deserialiseGraph(raw) {
     });
   });
 
+  /* Ports are resolved rather than trusted. A version 1 file predates them and
+     names none, so every wire lands on the target's primary port — which is
+     what those files meant, since there was only one input to land on.
+
+     The arity rule is applied here as well as at the point of wiring, because a
+     version 1 file may contain the very thing ports were introduced to prevent:
+     two wires into one ordinary node, relying on the implicit merge. Loading
+     such a file keeps the first wire and drops the rest with a warning, rather
+     than quietly evaluating only one of them or reviving a union that no longer
+     exists. Dropping is the honest repair: the query said "merge these", the
+     tool no longer does that implicitly, and the user is told so. */
   var loadedConns = [];
+  var filled = {};   // nodeId:port -> true, for single-arity ports already taken
+
   d.connections.forEach(function(c) {
     if (!c) return;
     var from = parseInt(c.from, 10), to = parseInt(c.to, 10);
@@ -3603,8 +3970,23 @@ function deserialiseGraph(raw) {
     var b = loadedNodes.filter(function(n){ return n.id === to; })[0];
     if (!a || !b) { warnings.push('connection to a missing node'); return; }
     if (!canConnect(a.type, b.type)) { warnings.push('connection breaking the wiring rules'); return; }
-    if (loadedConns.some(function(x){ return x.from === from && x.to === to; })) return;
-    loadedConns.push({ from:from, to:to, color: c.color || EDGE_PALETTE[0] });
+
+    var port = normalisePort(b.type, c.port);
+    var def = portDef(b.type, port);
+    if (!def) { warnings.push('connection to a node that takes no input'); return; }
+
+    if (loadedConns.some(function(x) {
+      return x.from === from && x.to === to && x.port === port;
+    })) return;
+
+    var slot = to + ':' + port;
+    if (!def.multi && filled[slot]) {
+      warnings.push('a second wire into a single input — wire a Combine if you meant to merge');
+      return;
+    }
+    filled[slot] = true;
+
+    loadedConns.push({ from:from, to:to, port:port, color: c.color || EDGE_PALETTE[0] });
   });
 
   return { nodes: loadedNodes, connections: loadedConns, warnings: warnings };
@@ -4070,8 +4452,25 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     findNode: findNode,
     setCfg: setCfg,
     render: render,
-    // test convenience: wire two nodes without simulating a drag
-    connect: function(a, b, color) { connections.push({ from:a, to:b, color: color || '#ffffff' }); },
+    // test convenience: wire two nodes without simulating a drag. The port
+    // defaults to the target's primary input, so existing tests that predate
+    // ports keep working unchanged.
+    connect: function(a, b, color, port) {
+      var to = findNode(b);
+      connections.push({
+        from: a, to: b,
+        port: port || (to ? primaryPort(to.type) : 'in'),
+        color: color || '#ffffff'
+      });
+    },
+
+    // ports
+    NODE_PORTS: NODE_PORTS, portsOf: portsOf, primaryPort: primaryPort,
+    portDef: portDef, normalisePort: normalisePort, wiresInto: wiresInto,
+    portAccepts: portAccepts, freePortsOn: freePortsOn,
+    portOffsetY: portOffsetY, shapeEntry: shapeEntry, shapeExit: shapeExit,
+    nearestFreePort: nearestFreePort, resolveDirection: resolveDirection,
+    inputsOf: inputsOf, connKey: connKey, removeConnection: removeConnection,
 
     // data layer
     STUDENTS: STUDENTS, COURSES: COURSES, SUBJECTS: SUBJECTS, SPECS: SPECS, YEARS: YEARS,
@@ -4111,6 +4510,10 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     aggregateColumnsSchema: aggregateColumnsSchema,
     applyAggregateColumns: applyAggregateColumns,
     columnValues: columnValues,
+
+    // unique
+    uniqueCols: uniqueCols, uniqueCol: uniqueCol, uniqueCellKey: uniqueCellKey,
+    uniqueSchema: uniqueSchema, applyUnique: applyUnique,
 
     // take
     applyTake: applyTake, takeCount: takeCount,
