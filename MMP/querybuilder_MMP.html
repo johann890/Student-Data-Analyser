@@ -96,6 +96,32 @@
 </div>
 
 
+<!-- SAVE DIALOG
+     Static markup like the marquee and selection bar, rather than built on
+     demand: it is one fixed shape, and having it in the page means it can be
+     inspected and restyled without reading the script.
+
+     The buttons are wired inline like the toolbar's. Dismissing by clicking the
+     backdrop is not, because it carries a condition — see app.js. -->
+<div class="save-dialog" id="saveDialog">
+  <div class="save-card" role="dialog" aria-modal="true" aria-labelledby="saveTitle">
+    <h2 class="save-title" id="saveTitle">Save query</h2>
+    <p class="save-sub">The file records the query, not its results. Open it later and press Run Query to evaluate it against the data as it stands then.</p>
+
+    <label class="save-field">
+      <input type="text" id="saveName" spellcheck="false" autocomplete="off"
+             aria-label="File name">
+      <span class="save-ext">.json</span>
+    </label>
+    <div class="save-hint" id="saveHint"></div>
+
+    <div class="save-actions">
+      <button class="file-btn" onclick="closeSaveDialog()">Cancel</button>
+      <button class="save-go" onclick="confirmSaveGraph()">Save</button>
+    </div>
+  </div>
+</div>
+
 <script src="app.js"></script>
 </body>
 </html>

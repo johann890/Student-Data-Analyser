@@ -1021,6 +1021,9 @@ function removeNode(id) {
 function clearAll() {
   nodes = []; connections = []; edgeColorIndex = 0;
   exportData = {}; resultsFresh = false;
+  // Clear starts a new query, so the name of the old one should not follow it
+  // into the next Save dialog.
+  lastQueryName = '';
   selection = [];
   cancelPreviewTimer(); hidePreview();
   view.z = 1; centreView();
@@ -3768,13 +3771,16 @@ function exportTableFor(e) {
 /* Strip path separators and characters Windows rejects, collapse whitespace,
    then trim the separators back off the ends — otherwise a name made entirely
    of slashes sanitises to a lone "-" rather than falling back. */
-function safeName(s) {
+/* The fallback is a parameter because the two things this names have different
+   right answers: a results export is an "output", a saved graph is a "query".
+   Existing callers pass one argument and keep the original default. */
+function safeName(s, fallback) {
   var out = String(s).trim()
     .replace(/[\\/:*?"<>|]+/g, '-')
     .replace(/\s+/g, '-')
     .replace(/-{2,}/g, '-')
     .replace(/^-+|-+$/g, '');
-  return out || 'output';
+  return out || fallback || 'output';
 }
 
 function flashBtn(btn, msg) {
@@ -3910,10 +3916,128 @@ function serialiseGraph() {
   };
 }
 
+/* NAMING A SAVED QUERY
+   ---------------------------------------------------------------------------
+   A saved query is kept and re-opened, so the name is how it is found again
+   months later. A timestamp alone does not say whether the file is the grade
+   histogram or the migration analysis, and renaming afterwards in the file
+   manager is a step nobody takes.
+
+   The extension is not the user's to choose. It is decided by the format, and
+   the loader below refuses anything else, so offering it as editable text would
+   let someone type a name the tool then declines to open. It is therefore shown
+   beside the field but sits outside the input — the same treatment the CSV
+   export name already uses, so the two read as the same kind of control.
+
+   A name typed with ".json" already on the end is accepted and the duplicate
+   dropped, because a user who types the extension is not making a mistake, and
+   "query.json.json" would be a poor way of telling them so. */
+var QUERY_EXT = '.json';
+
+function defaultQueryName() { return 'query-' + timeStamp(true); }
+
+/* Typed text to written filename. Two things happen on the way: the extension
+   is stripped if present so it can be re-added exactly once, and the rest goes
+   through the same sanitiser as every other file this tool writes — a name is
+   a name whether it came from a config field or a dialog. */
+/* Repeated, not once: someone correcting a name by hand can leave
+   "report.json.json" behind, and the intent is plainly one extension. Its own
+   function because the hint below has to strip identically — two copies of this
+   rule would drift, and the symptom would be a hint that fires on names it
+   should not. */
+function stripQueryExt(s) {
+  return String(s == null ? '' : s).trim().replace(/(\.json)+$/i, '');
+}
+
+function queryFileName(raw) {
+  return safeName(stripQueryExt(raw), defaultQueryName()) + QUERY_EXT;
+}
+
+// Which toolbar button opened the dialog, so its confirmation flashes on the
+// control the user actually pressed rather than somewhere in the dialog that is
+// about to disappear.
+var saveDialogBtn = null;
+
+/* The name last saved under, this session only — never persisted. Save, adjust
+   the graph, save again is the ordinary loop, and it almost always wants the
+   same name; offering a fresh timestamp each time would leave a folder of
+   near-identical files distinguishable only by the minute they were written.
+   Cancelling does not set it, so a name is only remembered once it named
+   something. */
+var lastQueryName = '';
+
+function saveDialogEl()  { return document.getElementById('saveDialog'); }
+function saveNameInput() { return document.getElementById('saveName'); }
+function saveDialogOpen() {
+  var d = saveDialogEl();
+  return !!(d && d.classList.contains('open'));
+}
+
 function saveGraph(btn) {
   if (nodes.length === 0) { flashBtn(btn, 'Nothing to save'); return; }
+  openSaveDialog(btn);
+}
+
+function openSaveDialog(btn) {
+  var d = saveDialogEl(), input = saveNameInput();
+  // If the markup is absent — an older page, or a headless harness that loaded
+  // the script alone — saving still works, it just uses the default name. A
+  // missing dialog should not cost the user their query.
+  if (!d || !input) { writeQueryFile(defaultQueryName() + QUERY_EXT, btn); return; }
+
+  saveDialogBtn = btn || null;
+  input.value = lastQueryName || defaultQueryName();
+  // The placeholder is always the timestamp, because that is what an empty
+  // field actually writes — clearing the box should show its own result, not
+  // repeat the name being cleared.
+  input.placeholder = defaultQueryName();
+  updateSaveHint();
+  d.classList.add('open');
+  input.focus();
+  // Selected rather than merely focused: the suggestion is a fallback, not a
+  // prefix to type after, so the common case is one keystroke replacing it.
+  input.select();
+}
+
+function closeSaveDialog() {
+  var d = saveDialogEl();
+  if (d) d.classList.remove('open');
+  var btn = saveDialogBtn;
+  saveDialogBtn = null;
+  // Focus goes back where it came from; leaving it on a hidden input strands
+  // the keyboard user with no visible caret.
+  if (btn && btn.focus) btn.focus();
+}
+
+/* Sanitising is silent everywhere else in the tool, which is fine when the name
+   is typed inches from the file it names. Here the file is written and gone, so
+   a name that changed on the way out is worth one line — and only then, since
+   restating an unchanged name is noise. */
+function updateSaveHint() {
+  var input = saveNameInput(), hint = document.getElementById('saveHint');
+  if (!input || !hint) return;
+  var typed = stripQueryExt(input.value);
+  var name = queryFileName(input.value);
+  var changed = !!typed && name !== typed + QUERY_EXT;
+  hint.textContent = changed ? 'Saves as ' + name : '';
+  hint.classList.toggle('show', changed);
+}
+
+function confirmSaveGraph() {
+  var input = saveNameInput();
+  var name = queryFileName(input ? input.value : '');
+  var btn = saveDialogBtn;
+  // Stored without the extension, which is how the field shows it.
+  lastQueryName = name.replace(/\.json$/i, '');
+  closeSaveDialog();
+  writeQueryFile(name, btn);
+}
+
+// The write itself, with the emptiness check repeated: the graph can be cleared
+// between opening the dialog and confirming it.
+function writeQueryFile(name, btn) {
+  if (nodes.length === 0) { flashBtn(btn, 'Nothing to save'); return; }
   var json = JSON.stringify(serialiseGraph(), null, 2);
-  var name = 'query-' + timeStamp(true) + '.json';
   flashBtn(btn, downloadFile(name, json, 'application/json') ? 'Saved ✓' : 'Save failed');
 }
 
@@ -4064,7 +4188,7 @@ function applyGraph(g) {
 
 function loadGraphFromText(raw, btn) {
   var g = deserialiseGraph(raw);
-  if (g.error) { showError(g.error); flashBtn(btn, 'Load failed'); return; }
+  if (g.error) { showError(g.error); flashBtn(btn, 'Load failed'); return false; }
   applyGraph(g);
 
   var msg = 'Loaded ' + g.nodes.length + ' node' + (g.nodes.length === 1 ? '' : 's') +
@@ -4075,6 +4199,7 @@ function loadGraphFromText(raw, btn) {
   }
   setOutput('<div class="placeholder">' + esc(msg) + ' Press Run Query to evaluate it.</div>');
   flashBtn(btn, 'Loaded ✓');
+  return true;
 }
 
 function openGraphFile(btn) {
@@ -4086,13 +4211,50 @@ function openGraphFile(btn) {
   input.click();
 }
 
+/* A saved query is a few kilobytes; a large one with a hundred nodes is still
+   well under a megabyte. The cap is far above anything this tool writes and far
+   below anything that would hang the tab, so it only ever catches a file that
+   was never a query to begin with. */
+var MAX_QUERY_FILE_BYTES = 8 * 1024 * 1024;
+
+/* Two checks before a byte is read, both about failing early and specifically.
+   Neither is the last line of defence — deserialiseGraph still rejects anything
+   that is not a query file — but by the time that runs the tool has read an
+   arbitrary file into memory and can only report that the contents were wrong,
+   which is a poor description of choosing the wrong file. */
+function graphFileProblem(file) {
+  // `accept` on the input filters the picker; it does not bind. Every browser
+  // offers "All files", and a file can be dragged in or renamed. So the rule
+  // lives here, where the file is actually taken.
+  if (!/\.json$/i.test(file.name)) {
+    return 'Only .json query files can be opened, and "' + file.name + '" is not one.';
+  }
+  if (file.size > MAX_QUERY_FILE_BYTES) {
+    return 'That file is far too large to be a saved query, so it has not been read.';
+  }
+  if (file.size === 0) {
+    return 'That file is empty.';
+  }
+  return null;
+}
+
 function onGraphFileChosen(e) {
   var input = e.target;
   var file = input.files && input.files[0];
   if (!file) return;
   var btn = input._btn;
+
+  var problem = graphFileProblem(file);
+  if (problem) { showError(problem); flashBtn(btn, 'Load failed'); return; }
+
   var reader = new FileReader();
-  reader.onload = function(){ loadGraphFromText(String(reader.result), btn); };
+  reader.onload = function() {
+    // Opening a query, changing it and saving it back should offer the name it
+    // arrived under, rather than silently proposing a second file beside it.
+    if (loadGraphFromText(String(reader.result), btn)) {
+      lastQueryName = stripQueryExt(file.name);
+    }
+  };
   reader.onerror = function(){ showError('Could not read that file.'); flashBtn(btn, 'Load failed'); };
   reader.readAsText(file);
 }
@@ -4310,6 +4472,38 @@ if (panelEl) panelEl.addEventListener('input', onExportNameInput);
 var loadInput = document.getElementById('loadFile');
 if (loadInput) loadInput.addEventListener('change', onGraphFileChosen);
 
+/* The dialog's buttons are wired in the markup like the rest of the toolbar,
+   but the field's keys are not something an attribute expresses well. Enter is
+   handled here rather than by a <form>: there is no form on this page, and
+   adding one would bring a submit-and-navigate default that has to be
+   suppressed anyway. */
+/* Clicking away cancels, but only a press that both starts and ends on the
+   backdrop counts. Checking the target on mousedown alone is not enough: a
+   drag that begins inside the card — selecting the name by dragging across it,
+   and overshooting — releases on the backdrop, and treating that as clicking
+   away would discard the name mid-edit. */
+var saveDialogEl_ = document.getElementById('saveDialog');
+if (saveDialogEl_) {
+  var backdropPress = false;
+  saveDialogEl_.addEventListener('mousedown', function(e) {
+    backdropPress = (e.target === saveDialogEl_);
+  });
+  saveDialogEl_.addEventListener('mouseup', function(e) {
+    if (backdropPress && e.target === saveDialogEl_) closeSaveDialog();
+    backdropPress = false;
+  });
+}
+
+var saveNameEl = document.getElementById('saveName');
+if (saveNameEl) {
+  saveNameEl.addEventListener('input', updateSaveHint);
+  saveNameEl.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter')  { e.preventDefault(); confirmSaveGraph(); }
+    // Escape is left to the document handler above, so cancelling behaves the
+    // same whether or not the field happens to hold focus.
+  });
+}
+
 document.addEventListener('click', closeProcMenu);
 
 /* DESTRUCTIVE SHORTCUTS — THREE GUARDS
@@ -4338,9 +4532,13 @@ function isTypingTarget(t) {
   if (!t || !t.tagName) return false;
   var tag = t.tagName;
   if (tag === 'INPUT' || tag === 'SELECT' || tag === 'TEXTAREA' || t.isContentEditable) return true;
-  // Anything inside a panel counts, control or not: those are the only places
-  // on screen where a keystroke could plausibly have been meant as text.
-  return !!(t.closest && t.closest('.node-config, .output-panel'));
+  // Anything inside a panel or the save dialog counts, control or not: those
+  // are the only places on screen where a keystroke could plausibly have been
+  // meant as text. The dialog is listed even though its only focusable field is
+  // an INPUT already caught above, because the guard is also asked about
+  // document.activeElement, and a click on the dialog's own chrome moves focus
+  // off the input while the dialog is still open.
+  return !!(t.closest && t.closest('.node-config, .output-panel, .save-dialog'));
 }
 
 /* 'canvas' while the user is working on the graph, 'panel' while they are
@@ -4366,6 +4564,10 @@ function safeToDelete(e) {
 
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
+    // The dialog is modal, so it consumes the key. Without this, cancelling a
+    // save would also clear the selection underneath it — a second, unasked-for
+    // change from a keystroke that meant "never mind".
+    if (saveDialogOpen()) { e.preventDefault(); closeSaveDialog(); return; }
     closeProcMenu();
     clearSelection();
     return;
@@ -4435,6 +4637,8 @@ window.copyOutput = copyOutput;
 window.saveOutput = saveOutput;
 window.saveEnrolments = saveEnrolments;
 window.saveGraph = saveGraph;
+window.closeSaveDialog = closeSaveDialog;
+window.confirmSaveGraph = confirmSaveGraph;
 window.openGraphFile = openGraphFile;
 window.zoomIn = zoomIn;
 window.zoomOut = zoomOut;
@@ -4547,7 +4751,17 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     serialiseTable: serialiseTable, exportTableFor: exportTableFor, safeName: safeName,
     serialiseGraph: serialiseGraph, deserialiseGraph: deserialiseGraph,
     applyGraph: applyGraph, loadGraphFromText: loadGraphFromText,
-    FILE_KIND: FILE_KIND, FILE_VERSION: FILE_VERSION
+    FILE_KIND: FILE_KIND, FILE_VERSION: FILE_VERSION,
+
+    // naming and file admission
+    queryFileName: queryFileName, defaultQueryName: defaultQueryName,
+    stripQueryExt: stripQueryExt,
+    lastQueryName: function(){ return lastQueryName; },
+    writeQueryFile: writeQueryFile, graphFileProblem: graphFileProblem,
+    openSaveDialog: openSaveDialog, closeSaveDialog: closeSaveDialog,
+    confirmSaveGraph: confirmSaveGraph, saveDialogOpen: saveDialogOpen,
+    updateSaveHint: updateSaveHint,
+    QUERY_EXT: QUERY_EXT, MAX_QUERY_FILE_BYTES: MAX_QUERY_FILE_BYTES
   };
 }
 

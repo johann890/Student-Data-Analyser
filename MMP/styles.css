@@ -1319,3 +1319,146 @@ th.cmp-num { color: #383838 !important; }
   color: #9a9a9a;
 }
 .add-btn.processing:hover { background: #1a1a1a; }
+
+/* ═══════════════════════════════════════════════════════════
+   SAVE DIALOG
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Hidden by class rather than by a `hidden` attribute so the transition has
+   something to run on, and so the markup reads the same as the marquee and
+   selection bar above. */
+.save-dialog {
+  position: fixed;
+  inset: 0;
+  /* Above everything, including the processing menu at 200. That menu is closed
+     by the same click that opens this dialog, so they cannot overlap in
+     practice — but a modal that is only on top by coincidence is one refactor
+     away from not being. */
+  z-index: 300;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  /* Dark rather than a blur: the canvas behind is nearly black already, and a
+     blur on a page of thin one-pixel arrows turns them to mush. */
+  background: rgba(0, 0, 0, 0.62);
+}
+.save-dialog.open { display: flex; }
+
+.save-card {
+  width: 330px;
+  max-width: calc(100vw - 32px);
+  background: #181818;              /* the toolbar's surface, not a new one */
+  border: 1px solid #2a2a2a;
+  border-radius: 7px;
+  padding: 16px 16px 13px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+}
+
+/* Motion answers the action rather than decorating it: the card arrives from
+   the toolbar's direction, so the dialog reads as belonging to the button that
+   opened it. */
+@keyframes save-card-in {
+  from { opacity: 0; transform: translateY(-7px); }
+  to   { opacity: 1; transform: none; }
+}
+.save-dialog.open .save-card { animation: save-card-in 0.12s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .save-dialog.open .save-card { animation: none; }
+}
+
+.save-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e8e8e8;
+  margin-bottom: 5px;
+}
+.save-sub {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #6f6f6f;
+  margin-bottom: 13px;
+}
+
+/* Deliberately the same construction as .export-name: a bordered strip holding
+   a borderless input beside static extension text. Two places name a file, and
+   they should not look like two different mechanisms. This one is larger,
+   because here the field is the point of the screen rather than one control in
+   a row of them. */
+.save-field {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 9px;
+  background: #121212;
+  border: 1px solid #282828;
+  border-radius: 5px;
+  transition: border-color 0.12s;
+}
+.save-field:focus-within { border-color: #2a5aaa; }
+
+/* Overrides the global input[type=text] rule, which paints a border and a
+   background this field already provides. */
+.save-field input[type=text] {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  color: #d8d8d8;
+  font-size: 12px;
+}
+.save-field input[type=text]:focus { outline: none; border: none; }
+
+/* Shown, never editable — the format decides it, and the loader refuses
+   anything else, so a typed extension could only be a name the tool then
+   declines to open. */
+.save-ext {
+  color: #4a4a4a;
+  font-size: 12px;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Reserves its line whether or not it has text, so the buttons do not jump
+   down as soon as a name needs sanitising. */
+.save-hint {
+  min-height: 15px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: #7d6a3a;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.save-hint.show { opacity: 1; }
+
+.save-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+/* Same treatment as Run Query. Both are the confirming action of the surface
+   they sit on, and Save is the reason this dialog is open. */
+.save-go {
+  background: #051830;
+  border: 1px solid #1e7fff;
+  border-radius: 4px;
+  color: #3db8ff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 16px;
+  cursor: pointer;
+}
+.save-go:hover { background: #0a2e5a; }
+
+/* The dialog is reachable by keyboard, so its focus must be visible — the
+   global `input:focus { outline: none }` is safe only where a border stands in
+   for the ring, which is true of the field and not of the buttons. */
+.save-card button:focus-visible {
+  outline: 2px solid #2a5aaa;
+  outline-offset: 1px;
+}
