@@ -193,10 +193,9 @@ var baseId = 1001;
 });
 
 /* These student-object lookups (courseMark, takesCourse, courseStats, ...) were
-   removed in the table refactor. Every one of them is now a table operation:
-   course predicates go through coursesColIndex(), per-course aggregation through
-   breakdownTable(), and the long enrolment format through toEnrolments(). They
-   worked on arrays of student objects, which no longer travel anywhere. */
+   removed in the table refactor: course predicates now go through
+   coursesColIndex() like every other table operation. They worked on arrays of
+   student objects, which no longer travel anywhere. */
 
 
 /* ============================================================================
@@ -230,11 +229,15 @@ var COLTYPE = {
 
 /* The COURSES column type is the one place a cell holds a structured value
    rather than a scalar. The alternative — flattening every student into eight
-   rows at the Source — would make "count students" wrong by a factor of eight.
-   Instead the nesting is kept, declared in the column type, and unfolded on
-   demand by toEnrolments(). That unfolding is what a separate "Explode" node
-   would have done; making it a property of the type means no extra node and no
-   way to forget it. */
+   rows at the Source — would make "count students" wrong by a factor of eight,
+   which is the trap the old "One per enrolment" Source mode set. Keeping the
+   nesting means a row is always a student, so a count is always a count of
+   students. Filter reads inside the nesting through coursesColIndex() to ask
+   "took this course" without changing what a row is.
+
+   Nothing unfolds nested enrolments into their own rows any more. If that is
+   wanted later it should be a node on the canvas, where the change in row
+   identity is visible, rather than a setting hidden on the Source. */
 
 function makeTable(columns, rows, meta) {
   return { columns: columns || [], rows: rows || [], meta: meta || {} };
@@ -287,115 +290,13 @@ var STUDENT_COLUMNS = [
   { key:'courses',        label:'Courses',        type:COLTYPE.COURSES }
 ];
 
-var ENROLMENT_COLUMNS = [
-  { key:'studentId',      label:'Student',        type:COLTYPE.NUMBER, def:'1001' },
-  { key:'gender',         label:'Gender',         type:COLTYPE.ENUM,   values:['M','F'] },
-  { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS },
-  { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
-  { key:'code',           label:'Course',         type:COLTYPE.ENUM,   values:COURSES.map(function(c){ return c.code; }) },
-  { key:'name',           label:'Course name',    type:COLTYPE.TEXT },
-  { key:'subject',        label:'Subject',        type:COLTYPE.ENUM,   values:SUBJECTS },
-  { key:'points',         label:'Points',         type:COLTYPE.NUMBER, def:'15' },
-  { key:'mark',           label:'Mark',           type:COLTYPE.NUMBER, def:'70' },
-  { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT,   order:GRADE_ORDER }
-];
-
+/* The one table builder: every Source produces this shape, and a row is a
+   student. The student's courses ride along nested in the last cell rather than
+   being flattened into rows of their own. */
 function studentsTable(list) {
   return makeTable(STUDENT_COLUMNS, list.map(function(s) {
     return [s.id, s.gender, s.year, s.specialisation, s.gradeAvg, s.letterGrade, s.courses];
   }));
-}
-
-function enrolmentsTable(list) {
-  var rows = [];
-  list.forEach(function(s) {
-    s.courses.forEach(function(c) {
-      rows.push([s.id, s.gender, s.year, s.specialisation,
-                 c.code, c.name, c.subject, c.points, c.mark, c.letterGrade]);
-    });
-  });
-  return makeTable(ENROLMENT_COLUMNS, rows);
-}
-
-/* Unfold a student table into one row per student-course pair. Returns null if
-   the table has no course information at all, so callers can degrade rather
-   than guess. Already-enrolment tables pass straight through. */
-// Can this table be unfolded at all? Checked before building anything, since
-// runQuery only needs the answer to decide whether to offer the export button.
-// True when a breakdown would have to unfold nested enrolments — i.e. the rows
-// arriving are students, not enrolments. False when the table is already at
-// enrolment granularity and grouping changes nothing about row identity.
-function explodesHere(t) {
-  return coursesColIndex(t) !== -1 && !(hasCol(t, 'code') && hasCol(t, 'mark'));
-}
-
-function canExplode(t) {
-  return (hasCol(t, 'code') && hasCol(t, 'mark')) || coursesColIndex(t) !== -1;
-}
-
-function toEnrolments(t) {
-  if (hasCol(t, 'code') && hasCol(t, 'mark')) return t;
-  var ci = coursesColIndex(t);
-  if (ci === -1) return null;
-
-  // Carry across whatever student-level context this table still has
-  var carry = ['id', 'studentId', 'gender', 'year', 'specialisation']
-    .filter(function(k){ return hasCol(t, k) && colByKey(t, k).type !== COLTYPE.COURSES; });
-  var cols = carry.map(function(k) {
-    var c = colByKey(t, k);
-    return { key: k === 'id' ? 'studentId' : k, label: c.label, type: c.type,
-             values: c.values, filter: c.filter };
-  }).concat([
-    { key:'code',        label:'Course',      type:COLTYPE.ENUM, values:COURSES.map(function(c){ return c.code; }) },
-    { key:'name',        label:'Course name', type:COLTYPE.TEXT },
-    { key:'subject',     label:'Subject',     type:COLTYPE.ENUM, values:SUBJECTS },
-    { key:'points',      label:'Points',      type:COLTYPE.NUMBER, def:'15' },
-    { key:'mark',        label:'Mark',        type:COLTYPE.NUMBER, def:'70' },
-    { key:'letterGrade', label:'Grade',       type:COLTYPE.TEXT }
-  ]);
-
-  var rows = [];
-  t.rows.forEach(function(r) {
-    var prefix = carry.map(function(k){ return cellAt(t, r, k); });
-    var list = r[ci] || [];
-    list.forEach(function(c) {
-      rows.push(prefix.concat([c.code, c.name, c.subject, c.points, c.mark, c.letterGrade]));
-    });
-  });
-  return makeTable(cols, rows);
-}
-
-/* Course breakdown as a table: one row per course over whatever students or
-   enrolments reached this point. Works from either granularity via
-   toEnrolments(), so it needs no knowledge of which one it was handed. */
-var BREAKDOWN_COLUMNS = [
-  { key:'code',    label:'Course',    type:COLTYPE.TEXT },
-  { key:'name',    label:'Name',      type:COLTYPE.TEXT },
-  { key:'subject', label:'Subject',   type:COLTYPE.TEXT },
-  { key:'count',   label:'Students',  type:COLTYPE.NUMBER },
-  { key:'avg',     label:'Avg mark',  type:COLTYPE.NUMBER }
-];
-
-function breakdownTable(t) {
-  var en = toEnrolments(t);
-  if (!en) return makeTable(BREAKDOWN_COLUMNS, []);
-  var acc = {};
-  en.rows.forEach(function(r) {
-    var code = cellAt(en, r, 'code');
-    var a = acc[code] || (acc[code] = {
-      code: code,
-      name: cellAt(en, r, 'name'),
-      subject: cellAt(en, r, 'subject'),
-      count: 0, total: 0
-    });
-    a.count++;
-    a.total += Number(cellAt(en, r, 'mark')) || 0;
-  });
-  var rows = Object.keys(acc).map(function(k) {
-    var a = acc[k];
-    return [a.code, a.name, a.subject, a.count, a.count ? a.total / a.count : 0];
-  }).sort(function(x, y) { return y[3] - x[3] || String(x[0]).localeCompare(String(y[0])); });
-  return makeTable(BREAKDOWN_COLUMNS, rows);
 }
 
 /* Cell formatting is driven by column type, so one renderer and one serialiser
@@ -858,7 +759,7 @@ function resolveDirection(a, b) {
    contains every key a node uses and loading never depends on defaults that
    may have changed since the file was written. */
 function defaultCfg(type) {
-  if (type === 'source')  return { pop:'all', rows:'students' };
+  if (type === 'source')  return { pop:'all' };
   if (type === 'filter')  return { criteria:[newCriterion()] };
   if (type === 'compare') return { measures:DEFAULT_MEASURES.slice(), sort:'wired', labels:{} };
   if (type === 'sort')    return { keys: [newSortKey()] };
@@ -875,7 +776,7 @@ function defaultCfg(type) {
   // dedupe defaults off: merge stacks rows, and discarding identical rows is a
   // decision the user makes rather than one the node makes quietly.
   if (type === 'combine') return { mode: 'merge', dedupe: false, base: '', key: '' };
-  if (type === 'output')  return { show:'rows', avgCol:'', filename:'' };
+  if (type === 'output')  return { show:'rows', filename:'' };
   return {};
 }
 
@@ -1150,10 +1051,6 @@ function sourceTable(node, log) {
   } else {
     log.push(logEntry('SOURCE', [{s:'all_students'}]));
   }
-  if (cfg.rows === 'enrolments') {
-    log.push(logEntry('ROWS', [{s:'one row per enrolment'}]));
-    return enrolmentsTable(list);
-  }
   return studentsTable(list);
 }
 
@@ -1185,11 +1082,12 @@ function unionTables(tables) {
   var first = schemaKey(tables[0]);
   for (var i = 1; i < tables.length; i++) {
     if (schemaKey(tables[i]) !== first) {
-      // Quote the option labels verbatim, so the message points at the control
-      // to change rather than at an abstraction the user has to translate.
-      return { error: 'Merged inputs have different columns. A Source set to ' +
-        '"One per student" and one set to "One per enrolment" cannot feed the same node — ' +
-        'set both to the same Rows option, or give them separate Outputs.' };
+      // Sources are all one shape now, so a mismatch here means the branches
+      // were reshaped on the way down — by an Aggregate, or a Unique in
+      // single-column mode. Name that rather than the Source.
+      return { error: 'Merged inputs have different columns. The branches were ' +
+        'reshaped differently on their way here — make them match before merging, ' +
+        'or give them separate Outputs.' };
     }
   }
   var seen = {}, rows = [];
@@ -1674,10 +1572,9 @@ function applyUnique(node, t, log) {
 }
 
 var MEASURES = [
-  { key:'count',   label:'Students',         head:'Students'  },
-  { key:'average', label:'Avg grade',        head:'Avg grade' },
-  { key:'share',   label:'Share of total',   head:'Share'     },
-  { key:'courses', label:'Distinct courses', head:'Courses'   }
+  { key:'count',   label:'Students',       head:'Students'  },
+  { key:'average', label:'Avg grade',      head:'Avg grade' },
+  { key:'share',   label:'Share of total', head:'Share'     }
 ];
 var DEFAULT_MEASURES = ['count', 'average'];
 
@@ -1761,8 +1658,7 @@ function buildCompare(node, inIds, res, log) {
     b.values = {
       count:   b.table.rows.length,
       average: meanOf(b.table, avgKey),
-      share:   total ? (b.table.rows.length / total) * 100 : 0,
-      courses: breakdownTable(b.table).rows.length
+      share:   total ? (b.table.rows.length / total) * 100 : 0
     };
   });
 
@@ -1795,12 +1691,19 @@ function buildCompare(node, inIds, res, log) {
 /* ============================================================================
    OUTPUT
    ============================================================================
-   Every Output emits a table, including Count and Average — a scalar is a 1x1
-   table. That is what lets one renderer and one CSV writer serve every result
-   shape instead of a branch per output type.                                  */
+   Every Output emits a table, including Count — a scalar is a 1x1 table. That
+   is what lets one renderer and one CSV writer serve every result shape instead
+   of a branch per output type.
 
-var ROW_SHOWS = ['rows', 'count', 'average', 'courses'];
-var CMP_SHOWS = ['summary', 'lists', 'courses'];
+   An Output displays a table; it does not compute one. Averaging and per-course
+   grouping used to live here as shortcuts, which made the same operation exist
+   in two places and hid two of the three steps a breakdown actually performs.
+   Both are reachable by wiring an Aggregate in front of the Output, where the
+   step is visible on the canvas and appears in the query log like every other.
+                                                                               */
+
+var ROW_SHOWS = ['rows', 'count'];
+var CMP_SHOWS = ['summary', 'lists'];
 
 function compareFeedsOutput(node) {
   return inputsOf(node.id).some(function(id) {
@@ -1809,8 +1712,9 @@ function compareFeedsOutput(node) {
   });
 }
 
-// 'courses' is valid on both sides, so rewiring an Output across a Compare
-// keeps the selection instead of resetting it.
+// The two sides no longer share a value, so rewiring an Output across a Compare
+// always lands on that side's nearest equivalent: rows and per-branch lists both
+// mean "show me the data", count and summary both mean "show me the figures".
 function normaliseShow(node) {
   var v = node.cfg && node.cfg.show;
   if (compareFeedsOutput(node)) {
@@ -1818,7 +1722,7 @@ function normaliseShow(node) {
     return (v === 'rows') ? 'lists' : 'summary';
   }
   if (ROW_SHOWS.indexOf(v) !== -1) return v;
-  return (v === 'lists' || v === 'summary') ? 'rows' : 'count';
+  return (v === 'lists') ? 'rows' : 'count';
 }
 
 function outputTable(node, t) {
@@ -1828,19 +1732,6 @@ function outputTable(node, t) {
     return makeTable([{ key:'count', label:'Count', type:COLTYPE.NUMBER }],
                      [[t.rows.length]]);
   }
-  if (show === 'average') {
-    // A saved avgCol can outlive its column — rewiring from a student Source to
-    // an enrolment one is enough. Fall back rather than averaging nothing.
-    var key = (node.cfg && node.cfg.avgCol) || '';
-    if (!key || !hasCol(t, key)) key = defaultAvgCol(t);
-    var col = colByKey(t, key);
-    return makeTable(
-      [{ key:'average', label: col ? ('Average ' + col.label) : 'Average', type:COLTYPE.NUMBER },
-       { key:'n',       label:'Rows',                              type:COLTYPE.NUMBER }],
-      [[meanOf(t, key), t.rows.length]]
-    );
-  }
-  if (show === 'courses') return breakdownTable(t);
   return t; // 'rows', 'summary' and 'lists' all display the incoming table
 }
 
@@ -2227,13 +2118,10 @@ function passthroughSchema(node, inSchema) { return inSchema; }
 
 var NODE_SPEC = {
   source: {
-    // No input to derive from: granularity is a Source setting, so the header
-    // is a function of the node's own config alone.
+    // Every Source now emits the same shape — the rows in the file — so the
+    // header is fixed rather than derived from anything.
     schema: function(node) {
-      var cfg = node.cfg || defaultCfg('source');
-      return headerOnly(cfg.rows === 'enrolments'
-        ? makeTable(ENROLMENT_COLUMNS, [])
-        : makeTable(STUDENT_COLUMNS, []));
+      return headerOnly(makeTable(STUDENT_COLUMNS, []));
     },
     evaluate: function(node, ctx) {
       return { table: sourceTable(node, ctx.log), hasSource: true };
@@ -2566,14 +2454,6 @@ function configHTML(node, schemas) {
       '<select' + ctl(id, 'pop') + '>' +
         opt('all', cfg.pop, 'All students') +
         YEARS.map(function(y){ return opt(String(y), cfg.pop, y + ' only'); }).join('') +
-      '</select>' +
-      // Granularity is a Source setting rather than a separate node: "how many
-      // students" and "how many enrolments" are different questions, and every
-      // downstream panel adapts through the schema.
-      '<div class="cfg-label">Rows</div>' +
-      '<select' + ctl(id, 'rows') + '>' +
-        opt('students', cfg.rows, 'One per student') +
-        opt('enrolments', cfg.rows, 'One per enrolment') +
       '</select>';
   }
 
@@ -2794,35 +2674,12 @@ function configHTML(node, schemas) {
     html += '<div class="cfg-label">Show</div><select' + ctl(id, 'show') + '>';
     if (compareFeedsOutput(node)) {
       html += opt('summary', show, 'Summary table') +
-              opt('lists',   show, 'Summary + row lists') +
-              opt('courses', show, 'Summary + course breakdown');
+              opt('lists',   show, 'Summary + row lists');
     } else {
       html += opt('rows',    show, 'Rows (raw data)') +
-              opt('count',   show, 'Count') +
-              opt('average', show, 'Average') +
-              opt('courses', show, 'Course breakdown');
+              opt('count',   show, 'Count');
     }
     html += '</select>';
-
-    if (show === 'courses' && explodesHere(schema)) {
-      html += '<div class="cmp-hint">Counts every enrolment of the students that arrive, ' +
-        'including courses outside a row filter. Set Rows to “One per enrolment” on the ' +
-        'Source to narrow it.</div>';
-    }
-
-    // Average is no longer hardwired to gradeAvg — the column list comes from
-    // whatever is arriving, so it works on an enrolment stream too.
-    if (show === 'average') {
-      var nums = numericCols(schema).filter(function(c) {
-        return c.key !== 'id' && c.key !== 'studentId';
-      });
-      var cur = cfg.avgCol || defaultAvgCol(schema);
-      html += '<div class="cfg-label">Average of</div>' +
-        (nums.length
-          ? '<select' + ctl(id, 'avgCol') + '>' +
-              nums.map(function(c){ return opt(c.key, cur, c.label); }).join('') + '</select>'
-          : '<div class="cmp-hint">No numeric column upstream.</div>');
-    }
 
     // The file name deliberately lives with the Copy/Save buttons in the results
     // panel rather than here. It describes the exported file, not the query, and
@@ -3520,61 +3377,27 @@ function scalarHTML(t) {
   '</div>';
 }
 
-/* The note under a breakdown states what was aggregated and, when the rows were
-   students, warns that the unfold widens the result past any row-level filter —
-   with the concrete fix rather than just a caution. */
-function breakdownNote(inTable, outTable) {
-  var enrolments = outTable.rows.reduce(function(a, r){ return a + (Number(r[3]) || 0); }, 0);
-  var n = inTable.rows.length;
-
-  if (explodesHere(inTable)) {
-    return '<div class="cmp-empty">' +
-      'Every course taken by these ' + n + ' student' + (n === 1 ? '' : 's') +
-      ' — ' + enrolments + ' enrolments across ' + outTable.rows.length + ' courses. ' +
-      'A student-level filter keeps whole students, so courses outside it still appear here. ' +
-      'To count only certain courses, set the Source to <b>One per enrolment</b> and filter there.' +
-      '</div>';
-  }
-  return '<div class="cmp-empty">' + n + ' enrolment' + (n === 1 ? '' : 's') +
-    ' across ' + outTable.rows.length + ' course' + (outTable.rows.length === 1 ? '' : 's') +
-    '. Ordered by popularity.</div>';
-}
-
 function resultHTML(node, r) {
   var show = normaliseShow(node);
   var t = outputTable(node, r.table);
-  var html;
 
-  if (show === 'count' || show === 'average') {
-    html = scalarHTML(t);
-  } else if (show === 'summary' || show === 'lists' || show === 'courses') {
+  if (show === 'count') return scalarHTML(t);
+
+  if (show === 'summary' || show === 'lists') {
     var branches = (r.table.meta && r.table.meta.branches) || null;
     if (branches) {
       // Compare-fed: the summary first, then per-branch detail if asked for
-      html = tableHTML(t, 'Comparison', branches.length + ' branches');
+      var html = tableHTML(t, 'Comparison', branches.length + ' branches');
       if (show === 'lists') {
         html += branches.map(function(b) {
           return '<div class="cmp-branch-card">' +
             tableHTML(b.table, b.label, String(b.table.rows.length)) + '</div>';
         }).join('');
-      } else if (show === 'courses') {
-        html += branches.map(function(b) {
-          var bt = breakdownTable(b.table);
-          return '<div class="cmp-branch-card">' +
-            tableHTML(bt, b.label, bt.rows.length + ' courses') +
-            breakdownNote(b.table, bt) + '</div>';
-        }).join('');
       }
-    } else if (show === 'courses') {
-      html = tableHTML(t, 'Course breakdown', t.rows.length + ' courses') +
-             breakdownNote(r.table, t);
-    } else {
-      html = tableHTML(t, 'Rows', String(t.rows.length));
+      return html;
     }
-  } else {
-    html = tableHTML(t, 'Rows', String(t.rows.length));
   }
-  return html;
+  return tableHTML(t, 'Rows', String(t.rows.length));
 }
 
 function runQuery() {
@@ -3604,19 +3427,7 @@ function runQuery() {
       var show = normaliseShow(onode);
       var t = outputTable(onode, r.table);
 
-      /* A course breakdown is not one operation. It unfolds each row into its
-         enrolments, groups those by course and counts them — three steps the
-         Output used to perform silently. Logging them is what makes the
-         surprising case legible: filtering "Took subject = SWEN" keeps whole
-         students, so the unfold brings their non-SWEN enrolments along too, and
-         the breakdown lists every course rather than only SWEN ones. The log
-         now shows exactly where that widening happened.
-         (When SelectFor lands these become real nodes and this goes away.) */
       var log = r.log.slice();
-      if (show === 'courses') {
-        if (explodesHere(r.table)) log.push(logEntry('EXPLODE', [{s:'one row per enrolment'}]));
-        log.push(logEntry('GROUP BY', [{s:'course'}]));
-      }
       log.push(logEntry('OUTPUT', [{ c:'val', s:show }]));
 
       exportData[onode.id] = {
@@ -3624,24 +3435,16 @@ function runQuery() {
         show: show,
         name: exportNameOf(onode, oi + 1),
         table: t,
-        source: r.table,          // pre-Output table, for the enrolments export
+        source: r.table,          // pre-Output table, for the per-branch export
         log: log.map(logText)
       };
 
       body = '<div class="query-log">' + log.map(logHTML).join('\n') + '</div>' + resultHTML(onode, r);
 
-      // Individual course marks survive only in the long enrolment format — a
-      // student row carries codes and a breakdown carries averages. Offered
-      // only where that raw detail exists to be exported.
-      var canEnrol = canExplode(r.table);
       actions = '<div class="result-actions">' +
         exportNameHTML(onode, oi + 1) +
         '<button class="rbtn" onclick="copyOutput(' + onode.id + ',this)">Copy</button>' +
         '<button class="rbtn" onclick="saveOutput(' + onode.id + ',this)">Save</button>' +
-        (canEnrol
-          ? '<button class="rbtn" title="One row per student-course pair, with individual marks" ' +
-            'onclick="saveEnrolments(' + onode.id + ',this)">Enrolments</button>'
-          : '') +
       '</div>';
     }
 
@@ -3749,7 +3552,7 @@ function exportTableFor(e) {
   if (!branches || e.show === 'summary') return e.table;
 
   var per = branches.map(function(b) {
-    return { label: b.label, t: e.show === 'courses' ? breakdownTable(b.table) : b.table };
+    return { label: b.label, t: b.table };
   }).filter(function(x){ return x.t.columns.length; });
   if (!per.length) return e.table;
 
@@ -3856,16 +3659,6 @@ function saveOutput(id, btn) {
   if (!e) return;
   var name = safeName(e.name) + '-' + timeStamp(true) + '.csv';
   flashBtn(btn, downloadFile(name, serialiseTable(exportTableFor(e), ',', true), 'text/csv')
-    ? 'Saved ✓' : 'Save failed');
-}
-
-function saveEnrolments(id, btn) {
-  var e = exportEntry(id, btn);
-  if (!e) return;
-  var en = toEnrolments(e.source);
-  if (!en) { flashBtn(btn, 'No courses'); return; }
-  var name = safeName(e.name) + '-enrolments-' + timeStamp(true) + '.csv';
-  flashBtn(btn, downloadFile(name, serialiseTable(en, ',', true), 'text/csv')
     ? 'Saved ✓' : 'Save failed');
 }
 
@@ -4135,7 +3928,7 @@ function mergeCfg(base, saved) {
   // Scalar settings are read straight into HTML attributes and comparisons, so
   // a file supplying an object or array where a string belongs is coerced
   // rather than trusted.
-  ['pop','rows','show','avgCol','filename','sort'].forEach(function(k) {
+  ['pop','show','filename','sort'].forEach(function(k) {
     if (base[k] !== undefined && typeof base[k] !== 'string') {
       base[k] = (base[k] === null || typeof base[k] === 'object') ? '' : String(base[k]);
     }
@@ -4920,7 +4713,6 @@ window.clearAll = clearAll;
 window.runQuery = runQuery;
 window.copyOutput = copyOutput;
 window.saveOutput = saveOutput;
-window.saveEnrolments = saveEnrolments;
 window.saveGraph = saveGraph;
 window.closeSaveDialog = closeSaveDialog;
 window.openHelp = openHelp;
@@ -4980,9 +4772,8 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     // table primitives
     COLTYPE: COLTYPE, makeTable: makeTable, colIndex: colIndex, colByKey: colByKey,
     hasCol: hasCol, cellAt: cellAt, headerOnly: headerOnly, numericCols: numericCols,
-    coursesColIndex: coursesColIndex, studentsTable: studentsTable, enrolmentsTable: enrolmentsTable,
-    toEnrolments: toEnrolments, canExplode: canExplode, explodesHere: explodesHere,
-    breakdownTable: breakdownTable, fmtCell: fmtCell, exportCell: exportCell, schemaKey: schemaKey,
+    coursesColIndex: coursesColIndex, studentsTable: studentsTable,
+    fmtCell: fmtCell, exportCell: exportCell, schemaKey: schemaKey,
 
     // engine
     topoSort: topoSort, evaluateGraph: evaluateGraph, computeSchemas: computeSchemas,

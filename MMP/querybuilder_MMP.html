@@ -399,8 +399,9 @@
           </figure>
 
           <h4 class="help-cat help-cat-source">Source</h4>
-          <p class="help-node-desc">Where a query begins. It reads the enrolment rows and hands them
-             on. Every query needs at least one, and a query with none has nothing to compute.
+          <p class="help-node-desc">Where a query begins. It reads the rows in the data file and
+             hands them on, one row per student, with that student's courses carried inside the
+             row. Every query needs at least one, and a query with none has nothing to compute.
              Several Sources in one graph is normal &mdash; that is how you reach across years.</p>
 
           <h4 class="help-cat help-cat-filter">Filter</h4>
@@ -454,8 +455,9 @@
           <h4 class="help-cat help-cat-output">Output</h4>
           <p class="help-node-desc">Where an answer appears. Each Output becomes a block in the
              results panel. A graph may have several, so one run can answer several questions at
-             once. Its setting chooses what to display &mdash; the rows themselves, or a figure
-             computed from them.</p>
+             once. Its setting chooses between the rows themselves and how many of them there
+             are &mdash; it displays what arrives rather than computing anything, so for an
+             average or any other figure, wire an <b>Aggregate</b> in front of it.</p>
         </section>
 
         <!-- ── RESULTS ─────────────────────────────────────── -->
