@@ -2797,7 +2797,7 @@ function configHTML(node, schemas) {
               opt('lists',   show, 'Summary + row lists') +
               opt('courses', show, 'Summary + course breakdown');
     } else {
-      html += opt('rows',    show, 'All rows') +
+      html += opt('rows',    show, 'Rows (raw data)') +
               opt('count',   show, 'Count') +
               opt('average', show, 'Average') +
               opt('courses', show, 'Course breakdown');
@@ -4461,10 +4461,199 @@ canvasEl.addEventListener('wheel', onCanvasWheel, { passive: false });
 document.addEventListener('mousemove', onCanvasMouseMove);
 document.addEventListener('mouseup', onCanvasMouseUp);
 
+/* ============================================================================
+   RESULTS PANEL WIDTH
+   ============================================================================
+   A results table with eighteen columns cannot be read in 300px, but a panel
+   permanently wide enough for eighteen columns leaves too little canvas to lay
+   a graph out in. So the width is neither fixed nor automatic: it is the user's
+   to set, with a sensible narrow default to come back to.
+
+   Two controls, because there are two different intentions behind widening:
+
+     the handle  — settle on a width that suits this machine and this dataset,
+                   and leave it there
+     Wide        — this one table has too many columns; show me all of them,
+                   then give me my canvas back
+
+   Wide remembers the width it left, so using it does not cost the user the
+   width they had chosen with the handle.
+
+   Widening narrows the canvas rather than floating over it. The alternative —
+   an overlay — would hide whatever node happened to be under it, and the pan
+   clamp would still be working from the old, larger canvas box. Shrinking keeps
+   one source of truth for how much canvas there is.
+
+   None of this is written into a saved query. A .json file records the
+   question; how wide someone likes their panel is a property of the person and
+   the screen, not of the query, and a graph emailed to a supervisor should not
+   rearrange his interface when he opens it. */
+
+var PANEL_MIN     = 240;   // narrower than this and the table headers wrap
+var PANEL_DEFAULT = 300;   // matches the CSS default, which is the real one
+var PANEL_WIDE    = 720;   // enough for the full enrolment row at 11px
+var CANVAS_MIN    = 320;   // canvas is never squeezed past this, however wide the panel goes
+var HANDLE_W      = 5;
+
+var panelWidth   = PANEL_DEFAULT;  // what the panel is now
+var panelRestore = PANEL_DEFAULT;  // what Wide goes back to
+var panelWide    = false;
+
+function panelResizeEl() { return document.getElementById('panelResize'); }
+function panelWideBtnEl() { return document.getElementById('panelWideBtn'); }
+
+function panelMaxWidth() {
+  return Math.max(PANEL_MIN, window.innerWidth - CANVAS_MIN - HANDLE_W);
+}
+function clampPanelWidth(w) {
+  if (typeof w !== 'number' || !isFinite(w)) return PANEL_DEFAULT;
+  return Math.round(Math.max(PANEL_MIN, Math.min(panelMaxWidth(), w)));
+}
+
+/* One write, to the custom property the stylesheet reads. Everything else here
+   only decides what number to pass in. */
+function applyPanelWidth(w, persist) {
+  panelWidth = clampPanelWidth(w);
+  document.documentElement.style.setProperty('--panel-w', panelWidth + 'px');
+  // The canvas has just changed size without a window resize event firing, so
+  // the two things that measure it have to be told by hand.
+  clampPan();
+  applyView();
+  if (persist !== false) savePanelPrefs();
+}
+
+function syncPanelWideBtn() {
+  var b = panelWideBtnEl();
+  if (!b) return;
+  b.setAttribute('aria-pressed', panelWide ? 'true' : 'false');
+  b.title = panelWide
+    ? 'Back to the narrower panel  ( W )'
+    : 'Widen the panel to see every column  ( W )';
+}
+
+function togglePanelWide() {
+  if (panelWide) {
+    panelWide = false;
+    applyPanelWidth(panelRestore);
+  } else {
+    panelRestore = panelWidth;
+    panelWide = true;
+    // Never narrower than it already is: someone who has dragged past the wide
+    // preset asked for that width, and Wide should not take it away.
+    applyPanelWidth(Math.max(PANEL_WIDE, panelWidth));
+  }
+  syncPanelWideBtn();
+  // Focus would otherwise sit on a button whose meaning just inverted, and the
+  // W shortcut is suppressed while a control has focus. Hand it back to the page.
+  if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
+}
+
+/* Persisted outside the document, so it survives a reload — a preference the
+   user should only have to express once. localStorage throws rather than
+   returns null in some file:// and private-window configurations, so every
+   access is guarded: failing to remember is a minor loss, and never a reason
+   for the panel not to work. */
+var PANEL_STORE = 'sda.resultsPanel.v1';
+
+function savePanelPrefs() {
+  try {
+    window.localStorage.setItem(PANEL_STORE, JSON.stringify({
+      w: panelWidth, base: panelRestore, wide: panelWide
+    }));
+  } catch (e) { /* width still holds for this session */ }
+}
+
+function loadPanelPrefs() {
+  var raw = null;
+  try { raw = window.localStorage.getItem(PANEL_STORE); } catch (e) { return; }
+  if (!raw) return;
+  var p;
+  try { p = JSON.parse(raw); } catch (e) { return; }
+  if (!p || typeof p.w !== 'number') return;
+  panelRestore = clampPanelWidth(typeof p.base === 'number' ? p.base : PANEL_DEFAULT);
+  panelWide = !!p.wide;
+  applyPanelWidth(p.w, false);
+  syncPanelWideBtn();
+}
+
+/* DRAG */
+var panelDrag = null;
+
+function onPanelResizeDown(e) {
+  if (e.button !== 0) return;
+  e.preventDefault();   // stop the drag turning into a text selection
+  panelDrag = { startX: e.clientX, startW: panelWidth, moved: false };
+  document.body.classList.add('panel-resizing');
+  var h = panelResizeEl();
+  if (h) h.classList.add('dragging');
+}
+
+function onPanelResizeMove(e) {
+  if (!panelDrag) return;
+  var dx = panelDrag.startX - e.clientX;   // the panel is on the right, so leftwards widens
+  if (Math.abs(dx) > 2) panelDrag.moved = true;
+  applyPanelWidth(panelDrag.startW + dx, false);   // one write at the end, not one per frame
+}
+
+function onPanelResizeUp() {
+  if (!panelDrag) return;
+  var moved = panelDrag.moved;
+  panelDrag = null;
+  document.body.classList.remove('panel-resizing');
+  var h = panelResizeEl();
+  if (h) h.classList.remove('dragging');
+  if (moved) {
+    // A deliberate drag is the user choosing a width. It becomes the width Wide
+    // returns to, and Wide stops claiming to be the reason the panel is wide.
+    panelWide = false;
+    panelRestore = panelWidth;
+    syncPanelWideBtn();
+  }
+  savePanelPrefs();
+}
+
+function onPanelResizeDouble() {
+  panelWide = false;
+  panelRestore = PANEL_DEFAULT;
+  applyPanelWidth(PANEL_DEFAULT);
+  syncPanelWideBtn();
+}
+
+/* The handle is a focusable separator, so it answers the arrow keys too. This
+   is the only way to reach the width without a mouse. */
+function onPanelResizeKey(e) {
+  var step = e.shiftKey ? 40 : 10;
+  if (e.key === 'ArrowLeft')       { e.preventDefault(); nudgePanel(step); }
+  else if (e.key === 'ArrowRight') { e.preventDefault(); nudgePanel(-step); }
+  else if (e.key === 'Home')       { e.preventDefault(); onPanelResizeDouble(); }
+}
+function nudgePanel(by) {
+  panelWide = false;
+  applyPanelWidth(panelWidth + by);
+  panelRestore = panelWidth;
+  syncPanelWideBtn();
+}
+
+(function wirePanelResize() {
+  var h = panelResizeEl();
+  if (!h) return;
+  h.addEventListener('mousedown', onPanelResizeDown);
+  h.addEventListener('dblclick', onPanelResizeDouble);
+  h.addEventListener('keydown', onPanelResizeKey);
+  document.addEventListener('mousemove', onPanelResizeMove);
+  document.addEventListener('mouseup', onPanelResizeUp);
+  loadPanelPrefs();
+})();
+
 // Panning and marquee use screen-space maths against the canvas box, and zoomed
 // out far enough the world is centred rather than pinned — both need revisiting
-// when the canvas changes size.
-window.addEventListener('resize', function() { clampPan(); applyView(); });
+// when the canvas changes size. A narrower window also lowers the ceiling on
+// the panel, so the stored width is re-clamped rather than left overhanging.
+window.addEventListener('resize', function() {
+  applyPanelWidth(panelWidth, false);
+  clampPan();
+  applyView();
+});
 
 var panelEl = document.getElementById('panelBody');
 if (panelEl) panelEl.addEventListener('input', onExportNameInput);
@@ -4477,6 +4666,92 @@ if (loadInput) loadInput.addEventListener('change', onGraphFileChosen);
    handled here rather than by a <form>: there is no form on this page, and
    adding one would bring a submit-and-navigate default that has to be
    suppressed anyway. */
+/* HELP
+   ---------------------------------------------------------------------------
+   The content is markup in the page, not a string built here, so this is only
+   opening, closing and moving around it. */
+function helpDialogEl() { return document.getElementById('helpDialog'); }
+function helpOpen() {
+  var d = helpDialogEl();
+  return !!(d && d.classList.contains('open'));
+}
+
+// The control that opened it, so focus can go back where it came from.
+var helpOpener = null;
+
+function openHelp(btn) {
+  var d = helpDialogEl();
+  if (!d) return;
+  helpOpener = btn || document.querySelector('.help-btn');
+  d.classList.add('open');
+  syncHelpNav();
+  // Focus the scrolling region rather than the first link, so Page Down and the
+  // arrow keys work the moment it opens — the common case is reading, not
+  // tabbing to a section.
+  var body = document.getElementById('helpBody');
+  if (body) { body.setAttribute('tabindex', '-1'); body.focus(); }
+}
+
+function closeHelp() {
+  var d = helpDialogEl();
+  if (d) d.classList.remove('open');
+  // Focus must leave the panel, not merely be hidden with it. Left inside a
+  // closed dialog it belongs to nothing on screen, and the keyboard user is
+  // stranded with no visible caret and no working shortcuts.
+  var btn = helpOpener;
+  helpOpener = null;
+  if (btn && btn.focus) btn.focus();
+}
+
+function scrollHelpTo(id) {
+  var el = document.getElementById(id);
+  if (el) el.scrollIntoView({ block: 'start' });
+}
+
+/* Marks the section currently under the top of the reading area. Driven by
+   scroll rather than by which link was last clicked, so it stays honest when
+   the user scrolls by hand instead of navigating. */
+function syncHelpNav() {
+  var body = document.getElementById('helpBody');
+  var nav = document.getElementById('helpNav');
+  if (!body || !nav) return;
+  var secs = body.querySelectorAll('section');
+  var current = secs.length ? secs[0].id : '';
+  for (var i = 0; i < secs.length; i++) {
+    // 24px of slack, so a section counts as current just before its heading
+    // reaches the edge rather than just after.
+    if (secs[i].offsetTop - body.scrollTop <= 24) current = secs[i].id;
+  }
+  var items = nav.querySelectorAll('.help-navitem');
+  for (var j = 0; j < items.length; j++) {
+    items[j].classList.toggle('current', items[j].getAttribute('data-goto') === current);
+  }
+}
+
+var helpNavEl = document.getElementById('helpNav');
+if (helpNavEl) {
+  helpNavEl.addEventListener('click', function(e) {
+    var btn = e.target.closest ? e.target.closest('.help-navitem') : null;
+    if (btn) scrollHelpTo(btn.getAttribute('data-goto'));
+  });
+}
+var helpBodyEl = document.getElementById('helpBody');
+if (helpBodyEl) helpBodyEl.addEventListener('scroll', syncHelpNav);
+
+/* Same backdrop rule as the save dialog: a press that starts and ends on the
+   backdrop dismisses, a drag that began on the card does not. */
+var helpDlgEl = helpDialogEl();
+if (helpDlgEl) {
+  var helpBackdropPress = false;
+  helpDlgEl.addEventListener('mousedown', function(e) {
+    helpBackdropPress = (e.target === helpDlgEl);
+  });
+  helpDlgEl.addEventListener('mouseup', function(e) {
+    if (helpBackdropPress && e.target === helpDlgEl) closeHelp();
+    helpBackdropPress = false;
+  });
+}
+
 /* Clicking away cancels, but only a press that both starts and ends on the
    backdrop counts. Checking the target on mousedown alone is not enough: a
    drag that begins inside the card — selecting the name by dragging across it,
@@ -4568,10 +4843,17 @@ document.addEventListener('keydown', function(e) {
     // save would also clear the selection underneath it — a second, unasked-for
     // change from a keystroke that meant "never mind".
     if (saveDialogOpen()) { e.preventDefault(); closeSaveDialog(); return; }
+    if (helpOpen())       { e.preventDefault(); closeHelp(); return; }
     closeProcMenu();
     clearSelection();
     return;
   }
+
+  /* Help is modal, so nothing below here applies while it is open. Without
+     this, reading the shortcut table with the canvas behind you would let a
+     stray F or Delete rearrange or destroy the graph you came here to learn
+     about. Escape above is the deliberate exception: it closes it. */
+  if (helpOpen()) return;
   if (isTypingTarget(e.target) || isTypingTarget(document.activeElement)) return;
 
   var mod = e.ctrlKey || e.metaKey;
@@ -4595,6 +4877,9 @@ document.addEventListener('keydown', function(e) {
   if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut(); return; }
   if (e.key === '0' && mod)           { e.preventDefault(); zoomReset(); return; }
   if (e.key === 'f' || e.key === 'F') { if (!mod) { e.preventDefault(); zoomToFit(); } return; }
+  if (e.key === 'w' || e.key === 'W') { if (!mod) { e.preventDefault(); togglePanelWide(); } return; }
+  // Shift-slash on most layouts, so no modifier check: '?' is already shifted.
+  if (e.key === '?') { e.preventDefault(); openHelp(); return; }
 });
 
 document.addEventListener('keyup', function(e) {
@@ -4638,12 +4923,15 @@ window.saveOutput = saveOutput;
 window.saveEnrolments = saveEnrolments;
 window.saveGraph = saveGraph;
 window.closeSaveDialog = closeSaveDialog;
+window.openHelp = openHelp;
+window.closeHelp = closeHelp;
 window.confirmSaveGraph = confirmSaveGraph;
 window.openGraphFile = openGraphFile;
 window.zoomIn = zoomIn;
 window.zoomOut = zoomOut;
 window.zoomReset = zoomReset;
 window.zoomToFit = zoomToFit;
+window.togglePanelWide = togglePanelWide;
 window.deleteSelection = deleteSelection;
 window.clearSelection = clearSelection;
 
@@ -4761,6 +5049,8 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     openSaveDialog: openSaveDialog, closeSaveDialog: closeSaveDialog,
     confirmSaveGraph: confirmSaveGraph, saveDialogOpen: saveDialogOpen,
     updateSaveHint: updateSaveHint,
+    openHelp: openHelp, closeHelp: closeHelp, helpOpen: helpOpen,
+    syncHelpNav: syncHelpNav, scrollHelpTo: scrollHelpTo,
     QUERY_EXT: QUERY_EXT, MAX_QUERY_FILE_BYTES: MAX_QUERY_FILE_BYTES
   };
 }
