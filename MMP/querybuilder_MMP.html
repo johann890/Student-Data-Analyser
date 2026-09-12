@@ -16,7 +16,7 @@
   <div class="proc-wrap">
     <button class="add-btn processing" onclick="toggleProcMenu(event)">Processing <span class="caret">&#9662;</span></button>
     <div class="proc-menu" id="procMenu" onclick="event.stopPropagation()">
-      <div class="proc-group cat-reshape">Reshape rows</div>
+      <div class="proc-group cat-reshape">Reshape</div>
       <button class="proc-item cat-reshape" onclick="addProcNode('sort')">
         <span class="proc-name">Sort</span>
         <span class="proc-desc">Order rows by one or more columns</span>
@@ -28,6 +28,10 @@
       <button class="proc-item cat-reshape" onclick="addProcNode('unique')">
         <span class="proc-name">Unique</span>
         <span class="proc-desc">Drop duplicates, or list a column's distinct values</span>
+      </button>
+      <button class="proc-item cat-reshape" onclick="addProcNode('select')">
+        <span class="proc-name">Select</span>
+        <span class="proc-desc">Keep only the columns you choose</span>
       </button>
       <div class="proc-group cat-summarise">Summarise</div>
       <button class="proc-item cat-summarise" onclick="addProcNode('aggregate')">
@@ -41,7 +45,7 @@
       <div class="proc-group cat-branches">Branches</div>
       <button class="proc-item cat-branches" onclick="addProcNode('combine')">
         <span class="proc-name">Combine</span>
-        <span class="proc-desc">Stack branches with matching columns</span>
+        <span class="proc-desc">Stack rows, or join columns side by side</span>
       </button>
       <button class="proc-item cat-branches" onclick="addProcNode('compare')">
         <span class="proc-name">Compare</span>
@@ -367,35 +371,37 @@
         <!-- ── NODE REFERENCE ──────────────────────────────── -->
         <section id="help-nodes">
           <h3>Node reference</h3>
-          <p>The Processing menu groups its eight nodes by what each does to the shape of the table.
+          <p>The Processing menu groups its nine nodes by what each does to the shape of the table.
              The colour of a node on the canvas is its group, so you can read an unfamiliar graph at
              a glance: where it narrows, where it collapses, where branches meet.</p>
 
           <figure class="help-fig help-fig-narrow">
-            <svg viewBox="0 0 340 344" xmlns="http://www.w3.org/2000/svg" role="img"
+            <svg viewBox="0 0 340 392" xmlns="http://www.w3.org/2000/svg" role="img"
                  aria-label="The Processing menu, showing three colour-coded groups of nodes">
-              <rect x="8" y="8" width="324" height="328" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <rect x="8" y="8" width="324" height="376" rx="6" fill="#141414" stroke="#2a2a2a"/>
 
-              <text x="22" y="32" fill="#b48ce0" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">RESHAPE ROWS</text>
+              <text x="22" y="32" fill="#b48ce0" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">RESHAPE</text>
               <text x="24" y="54" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Sort</text>
               <text x="24" y="67" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Order rows by one or more columns</text>
               <text x="24" y="88" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Take</text>
               <text x="24" y="101" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Keep only the first N rows</text>
               <text x="24" y="122" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Unique</text>
               <text x="24" y="135" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Drop duplicates, or list distinct values</text>
+              <text x="24" y="156" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Select</text>
+              <text x="24" y="169" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Keep only the columns you choose</text>
 
-              <text x="22" y="166" fill="#5ac8c8" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">SUMMARISE</text>
-              <text x="24" y="188" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate</text>
-              <text x="24" y="201" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Whole table down to one value</text>
-              <text x="24" y="222" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Columns</text>
-              <text x="24" y="235" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row out, one value per column</text>
+              <text x="22" y="200" fill="#5ac8c8" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">SUMMARISE</text>
+              <text x="24" y="222" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate</text>
+              <text x="24" y="235" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Whole table down to one value</text>
+              <text x="24" y="256" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Columns</text>
+              <text x="24" y="269" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row out, one value per column</text>
 
-              <text x="22" y="266" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
-              <text x="24" y="288" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
-              <text x="24" y="301" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack branches with matching columns</text>
-              <text x="24" y="322" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
-              <text x="24" y="335" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
-            </svg>
+              <text x="22" y="300" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
+              <text x="24" y="322" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
+              <text x="24" y="335" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
+              <text x="24" y="356" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
+              <text x="24" y="369" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
+              </svg>
           </figure>
 
           <h4 class="help-cat help-cat-source">Source</h4>
@@ -411,8 +417,8 @@
              column &mdash; a number gets <i>at least</i> and <i>at most</i>, a category gets
              <i>is</i> and <i>is not</i>.</p>
 
-          <h4 class="help-cat help-cat-reshape">Reshape rows &mdash; violet</h4>
-          <p class="help-note">Same rows or fewer. The columns are left alone.</p>
+          <h4 class="help-cat help-cat-reshape">Reshape &mdash; violet</h4>
+          <p class="help-note">The same data, narrowed or reordered. Nothing is summarised.</p>
           <dl class="help-defs">
             <dt>Sort</dt>
             <dd>Orders rows by a column, ascending or descending. Add further keys to break ties:
@@ -424,6 +430,12 @@
             <dd>Two modes. With no column named it removes duplicate rows, comparing whole rows.
                 Name a column and it returns that column's distinct values instead, one per row
                 &mdash; which is how you get a list of the courses or the years present in a table.</dd>
+            <dt>Select</dt>
+            <dd>Keeps the columns you tick and drops the rest. The rows are untouched &mdash; same
+                rows, same order, same count &mdash; so this narrows a table without summarising it.
+                Put one in front of an Output to show three columns instead of seven, or in front of
+                an Aggregate to make plain which column is being measured. Columns stay in the order
+                they arrive, and at least one has to be kept.</dd>
           </dl>
 
           <h4 class="help-cat help-cat-summarise">Summarise &mdash; teal</h4>
@@ -442,10 +454,18 @@
              than one wire.</p>
           <dl class="help-defs">
             <dt>Combine</dt>
-            <dd>Stacks branches on top of each other into one longer table, so the columns have to
-                match. It can merge them, keep only rows present in all of them, or keep only rows
-                missing from the others &mdash; which is how you ask who left between two years.
-                Duplicates are kept unless you ask for them to be dropped.</dd>
+            <dd>Four modes, in two kinds. <b>Merge</b> adds vertically: branches stack into one
+                longer table, so their columns have to match, and duplicates are kept unless you ask
+                for them to be dropped. <b>Intersect</b> and <b>Difference</b> narrow that stack to
+                the rows present in every branch, or present in the base alone &mdash; which is how
+                you ask who left between two years.
+                <br><b>Join</b> adds horizontally instead: it matches rows on a column you name and
+                puts the other branches' columns onto the end of each base row, so one student's
+                2022 and 2023 figures sit side by side on one row. The result has the base's rows,
+                never more. A base row with no match is dropped unless you tick
+                <i>Keep base rows with no match</i>, which blanks the missing cells instead. Where
+                two branches carry the same column name, the incoming one is renamed with the node
+                it came from rather than overwriting what is there.</dd>
             <dt>Compare</dt>
             <dd>Puts branches beside each other instead, one column per branch, with a row per
                 measure. Use it to hold two populations up against one another rather than to pool

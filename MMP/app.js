@@ -357,6 +357,7 @@ var SHAPE = {
   sort:    { w:106, h:72 },
   take:    { w:106, h:72 },
   unique:  { w:106, h:72 },
+  select:  { w:106, h:72 },
   aggregate:        { w:106, h:72 },
   aggregateColumns: { w:112, h:72 },
   combine:          { w:106, h:72 },
@@ -592,13 +593,15 @@ function deleteSelection() {
 
    Compare stays output-only. It is superseded, and widening its reach now
    would be work thrown away when it retires. */
-var TABLE_NODES = ['filter', 'sort', 'take', 'unique', 'aggregate', 'aggregateColumns', 'combine'];
+var TABLE_NODES = ['filter', 'sort', 'take', 'unique', 'select',
+                   'aggregate', 'aggregateColumns', 'combine'];
 var CONNECT_RULES = {
   source:           TABLE_NODES.concat(['compare', 'output']),
   filter:           TABLE_NODES.concat(['compare', 'output']),
   sort:             TABLE_NODES.concat(['compare', 'output']),
   take:             TABLE_NODES.concat(['compare', 'output']),
   unique:           TABLE_NODES.concat(['compare', 'output']),
+  select:           TABLE_NODES.concat(['compare', 'output']),
   aggregate:        TABLE_NODES.concat(['compare', 'output']),
   aggregateColumns: TABLE_NODES.concat(['compare', 'output']),
   combine:          TABLE_NODES.concat(['compare', 'output']),
@@ -641,6 +644,7 @@ var NODE_PORTS = {
   sort:             SINGLE_IN,
   take:             SINGLE_IN,
   unique:           SINGLE_IN,
+  select:           SINGLE_IN,
   aggregate:        SINGLE_IN,
   aggregateColumns: SINGLE_IN,
   combine:          [{ key:'in', label:'Tables',   multi:true }],
@@ -776,6 +780,10 @@ function defaultCfg(type) {
   // dedupe defaults off: merge stacks rows, and discarding identical rows is a
   // decision the user makes rather than one the node makes quietly.
   if (type === 'combine') return { mode: 'merge', dedupe: false, base: '', key: '' };
+  // cols:null means "every column", so a fresh Select is a pass-through and
+  // only becomes a narrowing once the user unticks something. An explicit list
+  // of every key would go stale the moment the node was rewired.
+  if (type === 'select')  return { cols: null };
   if (type === 'output')  return { show:'rows', filename:'' };
   return {};
 }
@@ -831,6 +839,26 @@ function setCfg(nodeId, key, value) {
   if (key.indexOf('label:') === 0) {
     n.cfg.labels = n.cfg.labels || {};
     n.cfg.labels[key.slice(6)] = value;
+    return;
+  }
+  if (key.indexOf('column:') === 0) {
+    /* Stored as the list of keys to KEEP, resolved against the header that is
+       actually arriving. That is why the schema is recomputed here rather than
+       read from a cached list: the first untick has to turn "everything" into
+       an explicit set, and only the live header knows what everything is. */
+    var ck = key.slice(7);
+    var head = inputSchema(n, computeSchemas());
+    var all = head.columns.map(function(c){ return c.key; });
+    var cur = Array.isArray(n.cfg.cols)
+      ? all.filter(function(k){ return n.cfg.cols.indexOf(k) !== -1; })
+      : all.slice();
+    var cAt = cur.indexOf(ck);
+    if (value && cAt === -1) cur.push(ck);
+    if (!value && cAt !== -1) cur.splice(cAt, 1);
+    if (!cur.length) return;   // the panel disables the last box; this is the backstop
+    // Stored in header order, not tick order, so unticking and re-ticking a box
+    // puts the column back where it was rather than at the end.
+    n.cfg.cols = all.filter(function(k){ return cur.indexOf(k) !== -1; });
     return;
   }
   if (key.indexOf('measure:') === 0) {
@@ -1571,6 +1599,72 @@ function applyUnique(node, t, log) {
   return makeTable(cols, rows, col ? {} : t.meta);
 }
 
+/* ============================================================================
+   SELECT — choose which columns travel on
+   ============================================================================
+   Aggregate used to do two things at once: measure a column, and leave that
+   column as the only one in the result. Measuring is Aggregate's job. The
+   narrowing is not, and bundling them meant there was no way to narrow a table
+   without also collapsing it to a single row.
+
+   Select is the narrowing on its own. Rows are untouched — same rows, same
+   order, same count — and only the header changes. That makes the two
+   composable: Select then Aggregate measures a column of a narrowed table, and
+   Select alone answers "just show me these three columns" without summarising
+   anything.
+
+   Column order follows the incoming table, not the order the boxes were
+   ticked. Choosing columns and ordering them are different questions, and
+   ticking order is invisible once the panel is closed — a user who unticks a
+   box and ticks it again would otherwise find that column had silently moved to
+   the end. If column order is wanted later it should be its own control, where
+   it can be seen and changed deliberately.                                    */
+
+/* Resolved against the arriving table rather than trusted from config, the same
+   way Aggregate resolves its measure column. A saved key outlives its column
+   easily — rewiring the node behind a different branch is enough — and a config
+   that names nothing still present falls back to the whole header, so a rewired
+   Select passes its data through instead of emptying it. */
+function selectedCols(node, t) {
+  var saved = (node && node.cfg && Array.isArray(node.cfg.cols)) ? node.cfg.cols : null;
+  if (!saved) return t.columns.slice();
+  var keep = t.columns.filter(function(c){ return saved.indexOf(c.key) !== -1; });
+  return keep.length ? keep : t.columns.slice();
+}
+
+function selectSchema(node, inSchema) {
+  return makeTable(selectedCols(node, inSchema), []);
+}
+
+function applySelect(node, t, log) {
+  var keep = selectedCols(node, t);
+
+  if (keep.length === t.columns.length) {
+    // Nothing dropped. Return the same table rather than a copy, so meta —
+    // which describes the rows, and the rows have not changed — survives.
+    log.push(logEntry('SELECT', [{s:'all'}, {c:'val', s:keep.length},
+                                 {s:'columns — nothing dropped'}]));
+    return t;
+  }
+
+  var idx = keep.map(function(c){ return colIndex(t, c.key); });
+  var rows = t.rows.map(function(r) {
+    return idx.map(function(i){ return r[i]; });
+  });
+
+  var dropped = t.columns.length - keep.length;
+  log.push(logEntry('SELECT', [{s:'keep'},
+    {c:'val', s:keep.map(function(c){ return c.label; }).join(', ')},
+    {s:'— ' + dropped + ' column' + (dropped === 1 ? '' : 's') + ' dropped'}]));
+
+  /* meta is dropped even though the rows are unchanged. A Compare's branch
+     metadata holds whole branch tables with the old header, so carrying it past
+     a narrowing would leave the summary and its branches disagreeing about what
+     columns exist. Compare cannot currently feed a Select, so this costs
+     nothing today and is correct if that ever changes. */
+  return makeTable(keep, rows);
+}
+
 var MEASURES = [
   { key:'count',   label:'Students',       head:'Students'  },
   { key:'average', label:'Avg grade',      head:'Avg grade' },
@@ -1783,9 +1877,8 @@ function aggOp(node) {
   return AGG_OPS[0];   // anything unrecognised, including a hand-edited file
 }
 
-// Columns a numeric measure can be applied to. Identifiers are excluded for the
-// same reason Output's Average excludes them: the sum of a set of student IDs
-// is a number, but it is not a fact about anything.
+// Columns a numeric measure can be applied to. Identifiers are excluded: the
+// sum of a set of student IDs is a number, but it is not a fact about anything.
 function ID_KEYS() { return { id:1, studentId:1 }; }
 function measurableCols(t) {
   var skip = ID_KEYS();
@@ -1827,9 +1920,9 @@ function columnValues(t, key) {
 /* ---- Aggregate: whole table -> 1x1 ---------------------------------------- */
 
 /* Which column the measure applies to, resolved against the table rather than
-   trusted from config. A saved key can outlive its column — rewiring a Source
-   from students to enrolments is enough — so this falls back the same way
-   Output's Average does. */
+   trusted from config. A saved key can outlive its column — rewiring the node
+   behind a different branch is enough — so this falls back rather than
+   measuring nothing. */
 function aggregateCol(node, t) {
   var op = aggOp(node);
   if (!op.needsCol) return null;
@@ -1945,8 +2038,15 @@ function applyAggregateColumns(node, t, log) {
    true set union (merge + drop duplicates) alongside intersect and difference,
    which is what "set ops" meant in the first place.                          */
 
+/* Merge adds vertically: more rows, same columns. Join adds horizontally: same
+   rows or fewer, more columns. Intersect and difference are the set operations
+   on rows. All four are one node because they all answer "these branches should
+   become one table" and differ only in how — putting the horizontal case in a
+   node of its own would have meant two nodes with the same two input ports, the
+   same base picker and the same key column, differing in one line. */
 var COMBINE_MODES = [
   { key:'merge',      label:'Merge (stack rows)' },
+  { key:'join',       label:'Join (add columns)' },
   { key:'intersect',  label:'Intersect (in all inputs)' },
   { key:'difference', label:'Difference (in the base only)' }
 ];
@@ -1994,30 +2094,158 @@ function keyValuesOf(t, colKey) {
   return set;
 }
 
-/* Order the input tables so the chosen base is first. Done here rather than in
-   combineTables so the reduction itself has one rule — "the base is tables[0]"
-   — and the mapping from a node id to a position lives with the node ids. */
-function combineOrdered(node, inIds, tables) {
+/* The permutation that puts the chosen base first, as positions rather than as
+   reordered tables. Reordering the tables directly was enough while the base
+   was the only thing position meant; join has to reorder two parallel lists —
+   the tables, and the upstream labels that name their columns — and deriving
+   both from one permutation is what stops them drifting out of step.
+
+   Done here rather than inside combineTables so the reduction itself has one
+   rule, "the base is tables[0]", and the mapping from a node id to a position
+   stays with the node ids. */
+function combineOrder(node, inIds) {
   var baseId = combineBaseId(node, inIds);
   var at = -1;
   for (var i = 0; i < inIds.length; i++) if (inIds[i] === baseId) { at = i; break; }
-  if (at <= 0) return tables;
-  return [tables[at]].concat(tables.filter(function(_, i){ return i !== at; }));
+  var idx = inIds.map(function(_, i){ return i; });
+  if (at <= 0) return idx;
+  return [at].concat(idx.filter(function(i){ return i !== at; }));
 }
 
-function combineTables(node, tables, log) {
-  if (!tables.length) return { table: makeTable([], []) };
+/* The name a joined column carries when it has to say where it came from. */
+function combineInputLabel(id) {
+  var up = findNode(id);
+  return up ? upstreamLabel(up) : ('Input ' + id);
+}
 
-  // Headers must match. The same rule the implicit union enforces, restated
-  // here because Combine bypasses it — and worth its own message, since the
-  // likely mistake is different: stacking two tables that came from different
-  // shapes of query rather than mixing granularities.
-  var first = schemaKey(tables[0]);
+/* ---- Join: the horizontal combination ------------------------------------ */
+
+/* The joined header. The base contributes every column it has. Each other input
+   contributes everything except the key, which is shared rather than repeated.
+
+   A clash is renamed rather than overwritten: two branches off one Source both
+   carry Year, and silently dropping the second would lose data while silently
+   overwriting the first would lose different data. The incoming key gets a
+   suffix and the label says which node it came from, so the header stays unique
+   — which matters beyond the screen, since these become CSV column names.
+
+   Derived from headers alone so the schema pass and the evaluator can call the
+   same function and cannot disagree about the result's shape. */
+function joinColumns(node, heads, labels) {
+  if (!heads.length) return [];
+  var base = heads[0];
+  var keyCol = combineKeyCol(node, base);
+  var cols = base.columns.slice();
+  var used = {};
+  cols.forEach(function(c){ used[c.key] = true; });
+
+  heads.slice(1).forEach(function(h, i) {
+    h.columns.forEach(function(c) {
+      if (keyCol && c.key === keyCol.key) return;
+      var key = c.key, n = 2;
+      while (used[key]) { key = c.key + '_' + n; n++; }
+      used[key] = true;
+      cols.push({
+        key: key,
+        label: (key === c.key) ? c.label : (c.label + ' \u00b7 ' + (labels[i + 1] || 'input ' + (i + 2))),
+        type: c.type, values: c.values, order: c.order, def: c.def, filter: c.filter
+      });
+    });
+  });
+  return cols;
+}
+
+function joinTables(node, tables, labels, log) {
+  var base = tables[0];
+  var keyCol = combineKeyCol(node, base);
+  if (!keyCol) {
+    return { error: 'Join matches rows on a key column, and this table has none that can be used. ' +
+      'Every column here is either nested or absent.' };
+  }
   for (var i = 1; i < tables.length; i++) {
-    if (schemaKey(tables[i]) !== first) {
-      return { error: 'Combine needs inputs with the same columns. ' +
-        'These inputs have different headers, so their rows cannot be stacked — ' +
-        'make the branches produce the same columns, or give them separate Outputs.' };
+    if (!hasCol(tables[i], keyCol.key)) {
+      return { error: 'Join is matching rows on ' + keyCol.label + ', but ' +
+        (labels[i] || 'another input') + ' has no such column. ' +
+        'Pick a key column that every input carries.' };
+    }
+  }
+
+  var cols = joinColumns(node, tables, labels);
+  var keepUnmatched = !!(node && node.cfg && node.cfg.keepUnmatched);
+
+  /* Each other input is indexed by key, first row winning. The alternative —
+     a row out per matching pair, which is what a relational join does — turns a
+     key with repeats into a multiplication: joining two 400-row tables on Year
+     would produce 160,000 rows from a single dropdown change. Looking up one
+     match keeps the output the size of the base, which is the shape the user is
+     looking at when they wire it. Repeats are reported rather than silently
+     resolved, so a badly chosen key says so instead of just being wrong. */
+  var dupeIn = [];
+  var index = tables.slice(1).map(function(t, i) {
+    var ki = colIndex(t, keyCol.key), map = {}, dup = 0;
+    t.rows.forEach(function(r) {
+      var k = 'k' + String(r[ki]);
+      if (map[k] === undefined) map[k] = r; else dup++;
+    });
+    if (dup) dupeIn.push((labels[i + 1] || 'input ' + (i + 2)) + ' (' + dup + ')');
+    return { t: t, map: map };
+  });
+
+  var bi = colIndex(base, keyCol.key);
+  var rows = [], unmatched = 0;
+
+  base.rows.forEach(function(r) {
+    var k = 'k' + String(r[bi]);
+    var extra = [], miss = false;
+    index.forEach(function(ix) {
+      var hit = ix.map[k];
+      if (!hit) miss = true;
+      ix.t.columns.forEach(function(c, ci) {
+        if (c.key === keyCol.key) return;
+        extra.push(hit ? hit[ci] : null);
+      });
+    });
+    if (miss) {
+      unmatched++;
+      if (!keepUnmatched) return;
+    }
+    rows.push(r.concat(extra));
+  });
+
+  log.push(logEntry('COMBINE', [{s:'join on'}, {c:'val', s:keyCol.label}, {s:'\u2192'},
+    {c:'val', s:rows.length}, {s:'rows,'}, {c:'val', s:cols.length}, {s:'columns'}]));
+  if (unmatched) {
+    log.push(logEntry('COMBINE', [{s:(keepUnmatched ? 'kept' : 'dropped')},
+      {c:'val', s:unmatched}, {s:'base row(s) with no match' + (keepUnmatched ? ' — blank cells' : '')}]));
+  }
+  if (dupeIn.length) {
+    log.push(logEntry('COMBINE', [{s:'repeated keys in'}, {c:'val', s:dupeIn.join(', ')},
+      {s:'\u2014 first match used'}]));
+  }
+
+  // meta describes the base's rows against the base's header, which the join has
+  // widened. Dropped for the same reason Select drops it.
+  return { table: makeTable(cols, rows) };
+}
+
+function combineTables(node, tables, log, labels) {
+  if (!tables.length) return { table: makeTable([], []) };
+  labels = labels || [];
+  var mode = combineMode(node);
+
+  /* Matching headers are required by the three modes that work on rows, because
+     a row from one input has to be a row of the other's table too. Join is the
+     one mode where differing headers are the point, so the check is scoped to
+     the modes it describes rather than applied to the node. */
+  if (mode.key !== 'join') {
+    var first = schemaKey(tables[0]);
+    for (var i = 1; i < tables.length; i++) {
+      if (schemaKey(tables[i]) !== first) {
+        return { error: 'Combine needs inputs with the same columns for ' + mode.key + '. ' +
+          'These inputs have different headers, so their rows cannot be stacked — ' +
+          'make the branches produce the same columns, or switch the mode to ' +
+          'Join to put their columns side by side instead.' };
+      }
     }
   }
 
@@ -2026,7 +2254,8 @@ function combineTables(node, tables, log) {
     return { table: tables[0] };
   }
 
-  var mode = combineMode(node);
+  if (mode.key === 'join') return joinTables(node, tables, labels, log);
+
   var base = tables[0];
   var others = tables.slice(1);
 
@@ -2152,6 +2381,15 @@ var NODE_SPEC = {
     rows: function(node, t, log) { return { table: applyUnique(node, t, log) }; }
   },
 
+  select: {
+    // The only node that narrows the header without touching the rows, so both
+    // halves of the registry contract come from selectedCols(): the schema pass
+    // and the evaluator resolve the same keys against the same header and
+    // cannot disagree about what comes out.
+    schema: selectSchema,
+    rows: function(node, t, log) { return { table: applySelect(node, t, log) }; }
+  },
+
   aggregate: {
     schema: aggregateSchema,
     rows: function(node, t, log) { return { table: applyAggregate(node, t, log) }; }
@@ -2168,13 +2406,29 @@ var NODE_SPEC = {
        and how they stack — merge, intersect, difference, dedupe or not — is its
        settings rather than a rule applied behind the user's back. Its header is
        whatever arrives, so the schema is the ordinary pass-through. */
-    schema: passthroughSchema,
+    /* Pass-through for the three row modes: the header that arrives is the
+       header that leaves. Join is the exception — the one mode that produces a
+       header neither input had — so it builds one from every input on the port,
+       through the same function the evaluator uses. */
+    schema: function(node, inSchema, ctx) {
+      if (combineMode(node).key !== 'join') return inSchema;
+      var ids = inputsOf(node.id, 'in');
+      var heads = ctx.at('in');
+      if (heads.length < 2) return inSchema;
+      var sperm = combineOrder(node, ids);
+      return makeTable(joinColumns(node,
+        sperm.map(function(i){ return heads[i]; }),
+        sperm.map(function(i){ return combineInputLabel(ids[i]); })), []);
+    },
     evaluate: function(node, ctx) {
       // The base is a node the user named, not the wire that happened to be
-      // drawn first, so the tables are ordered before the reduction sees them.
-      var ctabs = combineOrdered(node, ctx.inIds,
-        ctx.ins.map(function(r){ return r.table; }));
-      var out = combineTables(node, ctabs, ctx.log);
+      // drawn first, so the tables are ordered before the reduction sees them —
+      // and the labels ride the same permutation, so a renamed joined column
+      // names the node it actually came from.
+      var perm = combineOrder(node, ctx.inIds);
+      var ctabs = perm.map(function(i){ return ctx.ins[i].table; });
+      var clabels = perm.map(function(i){ return combineInputLabel(ctx.inIds[i]); });
+      var out = combineTables(node, ctabs, ctx.log, clabels);
       return {
         table: out.table,
         error: out.error,
@@ -2436,6 +2690,7 @@ function criterionHTML(node, ci, c, schema) {
    before anything has run, so it names the node instead. */
 var NODE_LABELS = {
   source:'Source', filter:'Filter', sort:'Sort', take:'Take',
+  unique:'Unique', select:'Select',
   aggregate:'Aggregate', aggregateColumns:'Agg. Columns',
   combine:'Combine', compare:'Compare', output:'Output'
 };
@@ -2616,6 +2871,34 @@ function configHTML(node, schemas) {
     }
   }
 
+  if (node.type === 'select') {
+    var availCols = schema.columns;
+    if (!availCols.length) {
+      html += '<div class="cmp-hint">Nothing upstream yet — wire a Source in to choose columns.</div>';
+    } else {
+      var kept = selectedCols(node, schema).map(function(c){ return c.key; });
+      html += '<div class="cfg-label">Keep</div><div class="cmp-measures sel-cols">' +
+        availCols.map(function(c) {
+          // The last ticked box is disabled rather than hidden. A Select with no
+          // columns is a table with nothing in it, and the panel it leaves behind
+          // offers no way back — every box would be unticked and identical.
+          var on = kept.indexOf(c.key) !== -1;
+          var locked = on && kept.length === 1;
+          return '<label class="cmp-measure' + (locked ? ' locked' : '') + '"' +
+              (locked ? ' title="At least one column has to be kept"' : '') + '>' +
+            '<input type="checkbox"' + (on ? ' checked' : '') + (locked ? ' disabled' : '') +
+              ctl(id, 'column:' + c.key) + '>' +
+            '<span>' + esc(c.label) + '</span></label>';
+        }).join('') +
+      '</div>';
+      html += '<div class="cmp-hint">' +
+        (kept.length === availCols.length
+          ? 'Every column is kept — untick to narrow. Rows are never touched.'
+          : kept.length + ' of ' + availCols.length + ' columns kept, in the order they arrive.') +
+        '</div>';
+    }
+  }
+
   if (node.type === 'combine') {
     var cinIds = inputsOf(id);
     var cmode = combineMode(node);
@@ -2651,18 +2934,33 @@ function configHTML(node, schemas) {
             }).join('') +
           '</select>';
       }
-      var kcols = combineKeyCols(schema);
-      var kcur = combineKeyCol(node, schema);
+      /* The key column comes from the BASE, not from whichever wire happened to
+         be drawn first. They are usually the same table, and were always assumed
+         to be — but join makes the difference visible: pick the second input as
+         the base and the picker would otherwise offer columns the base does not
+         have, then refuse the key it just offered. */
+      var baseSchema = (schemas && schemas[combineBaseId(node, cinIds)]) || schema;
+      var kcols = combineKeyCols(baseSchema);
+      var kcur = combineKeyCol(node, baseSchema);
       html += '<div class="cfg-label">Match rows on</div>' +
         (kcols.length
           ? '<select' + ctl(id, 'key') + '>' +
               kcols.map(function(c){ return opt(c.key, kcur ? kcur.key : '', c.label); }).join('') +
             '</select>'
           : '<div class="cmp-hint">No column upstream to match on.</div>');
+      if (cmode.key === 'join') {
+        html += '<label class="cmb-check"><input type="checkbox"' +
+            (cfg.keepUnmatched ? ' checked' : '') + ctl(id, 'keepUnmatched') + '>' +
+          '<span>Keep base rows with no match</span></label>';
+      }
       html += '<div class="cmp-hint">' +
         (cmode.key === 'intersect'
           ? 'Keeps base rows whose value also appears in every other input.'
-          : 'Keeps base rows whose value appears in none of the other inputs.') +
+          : cmode.key === 'difference'
+          ? 'Keeps base rows whose value appears in none of the other inputs.'
+          : 'Adds the other inputs\u2019 columns onto each base row, matched on this ' +
+            'column. The result has the base\u2019s rows, not more: where an input ' +
+            'repeats a key, its first matching row is used.') +
         '</div>';
     }
   }
@@ -2749,6 +3047,15 @@ function shapeHTML(node) {
       '<i class="wide"></i><i class="wide dupe"></i>' +
       '<i class="narrow"></i><i class="narrow dupe"></i></span>';
     return '<div class="node-shape shape-unique">' + removeBtn + uq + 'Unique</div>';
+  }
+  if (node.type === 'select') {
+    /* Three columns with the middle one hollow. Every other glyph on the canvas
+       is read top to bottom because it says something about rows; this one is
+       read left to right, which is the distinction the node exists to make. The
+       dropped column is outlined rather than absent, so the glyph shows a
+       choice being made rather than a table that happens to be narrow. */
+    var sg = '<span class="sel-glyph"><i></i><i class="off"></i><i></i></span>';
+    return '<div class="node-shape shape-select">' + removeBtn + sg + 'Select</div>';
   }
   if (node.type === 'aggregate') {
     // Rows funnelling into a single dot: many values, one value out.
@@ -3312,10 +3619,10 @@ function drawArrows() {
 /* ============================================================================
    RESULTS PANEL — one renderer for every table
    ============================================================================
-   Previously there were four: a count card, an average card, a student list, a
-   course breakdown, plus a separate Compare path. They rendered the same kinds
-   of thing in slightly different ways and had to be kept in step by hand. Every
-   result is now a table, so there is one function.                            */
+   Previously there was a card per output type, plus a separate Compare path.
+   They rendered the same kinds of thing in slightly different ways and had to
+   be kept in step by hand. Every result is now a table, so there is one
+   function.                                                                   */
 
 var DISPLAY_ROW_LIMIT = 50;
 
@@ -3938,6 +4245,16 @@ function mergeCfg(base, saved) {
   }
   if (Object.prototype.hasOwnProperty.call(base, 'measures') && !Array.isArray(base.measures)) {
     base.measures = DEFAULT_MEASURES.slice();
+  }
+  /* null is the meaningful default — "keep everything" — so only a value that is
+     neither null nor an array of keys is rejected. Non-string entries are
+     dropped rather than coerced: a column key is compared against real header
+     keys, and "[object Object]" can never match one. */
+  if (Object.prototype.hasOwnProperty.call(base, 'cols')) {
+    base.cols = Array.isArray(base.cols)
+      ? base.cols.filter(function(k){ return typeof k === 'string'; })
+      : null;
+    if (base.cols && !base.cols.length) base.cols = null;
   }
 
   // Only filter nodes carry criteria — a file that attaches them to an Output
@@ -4791,7 +5108,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
 
     // combine
     COMBINE_MODES: COMBINE_MODES, combineMode: combineMode, combineTables: combineTables,
-    combineBaseId: combineBaseId, combineOrdered: combineOrdered, combineKeyCol: combineKeyCol, combineKeyCols: combineKeyCols,
+    combineBaseId: combineBaseId, combineKeyCol: combineKeyCol, combineKeyCols: combineKeyCols,
     upstreamLabel: upstreamLabel,
 
     // aggregation
@@ -4806,6 +5123,8 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     // unique
     uniqueCols: uniqueCols, uniqueCol: uniqueCol, uniqueCellKey: uniqueCellKey,
     uniqueSchema: uniqueSchema, applyUnique: applyUnique,
+    selectedCols: selectedCols, selectSchema: selectSchema, applySelect: applySelect,
+    combineOrder: combineOrder, joinColumns: joinColumns, joinTables: joinTables,
 
     // take
     applyTake: applyTake, takeCount: takeCount,
