@@ -13,7 +13,14 @@ module.exports = ({ describe, test }) => {
       assert.includes(R.source, 'filter');
       assert.includes(R.source, 'output');
       assert.includes(R.filter, 'filter');
-      assert.deepEqual(R.compare, ['output'], 'a comparison table cannot be filtered again');
+      /* Compare was output-only. That was reversed: a comparison is the only
+         labelled multi-row answer the tool can currently produce, and refusing
+         to let it be aggregated made "count per year, then average those
+         counts" unbuildable through it — the exact case app.js:212 cites. */
+      assert.includes(R.compare, 'output');
+      assert.includes(R.compare, 'aggregate', 'a comparison must be aggregatable');
+      assert.deepEqual(R.compare, R.filter,
+        'Compare now goes wherever any other table-producing node goes');
     });
 
     test('every node type appears in the rule table', () => {

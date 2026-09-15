@@ -21,6 +21,10 @@
         <span class="proc-name">Sort</span>
         <span class="proc-desc">Order rows by one or more columns</span>
       </button>
+      <button class="proc-item cat-reshape" onclick="addProcNode('reverse')">
+        <span class="proc-name">Reverse</span>
+        <span class="proc-desc">Flip row order &mdash; put before Take for the last N</span>
+      </button>
       <button class="proc-item cat-reshape" onclick="addProcNode('take')">
         <span class="proc-name">Take</span>
         <span class="proc-desc">Keep only the first N rows</span>
@@ -371,36 +375,38 @@
         <!-- ── NODE REFERENCE ──────────────────────────────── -->
         <section id="help-nodes">
           <h3>Node reference</h3>
-          <p>The Processing menu groups its nine nodes by what each does to the shape of the table.
+          <p>The Processing menu groups its ten nodes by what each does to the shape of the table.
              The colour of a node on the canvas is its group, so you can read an unfamiliar graph at
              a glance: where it narrows, where it collapses, where branches meet.</p>
 
           <figure class="help-fig help-fig-narrow">
-            <svg viewBox="0 0 340 392" xmlns="http://www.w3.org/2000/svg" role="img"
+            <svg viewBox="0 0 340 413" xmlns="http://www.w3.org/2000/svg" role="img"
                  aria-label="The Processing menu, showing three colour-coded groups of nodes">
-              <rect x="8" y="8" width="324" height="376" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <rect x="8" y="8" width="324" height="397" rx="6" fill="#141414" stroke="#2a2a2a"/>
 
               <text x="22" y="32" fill="#b48ce0" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">RESHAPE</text>
               <text x="24" y="54" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Sort</text>
               <text x="24" y="67" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Order rows by one or more columns</text>
-              <text x="24" y="88" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Take</text>
-              <text x="24" y="101" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Keep only the first N rows</text>
-              <text x="24" y="122" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Unique</text>
-              <text x="24" y="135" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Drop duplicates, or list distinct values</text>
-              <text x="24" y="156" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Select</text>
-              <text x="24" y="169" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Keep only the columns you choose</text>
+              <text x="24" y="88" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Reverse</text>
+              <text x="24" y="101" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Flip row order</text>
+              <text x="24" y="122" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Take</text>
+              <text x="24" y="135" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Keep only the first N rows</text>
+              <text x="24" y="156" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Unique</text>
+              <text x="24" y="169" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Drop duplicates, or list distinct values</text>
+              <text x="24" y="190" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Select</text>
+              <text x="24" y="203" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Keep only the columns you choose</text>
 
-              <text x="22" y="200" fill="#5ac8c8" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">SUMMARISE</text>
-              <text x="24" y="222" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate</text>
-              <text x="24" y="235" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Whole table down to one value</text>
-              <text x="24" y="256" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Columns</text>
-              <text x="24" y="269" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row out, one value per column</text>
+              <text x="22" y="221" fill="#5ac8c8" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">SUMMARISE</text>
+              <text x="24" y="243" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate</text>
+              <text x="24" y="256" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Whole table down to one value</text>
+              <text x="24" y="277" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Columns</text>
+              <text x="24" y="290" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row out, one value per column</text>
 
-              <text x="22" y="300" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
-              <text x="24" y="322" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
-              <text x="24" y="335" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
-              <text x="24" y="356" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
-              <text x="24" y="369" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
+              <text x="22" y="321" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
+              <text x="24" y="343" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
+              <text x="24" y="356" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
+              <text x="24" y="377" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
+              <text x="24" y="390" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
               </svg>
           </figure>
 
@@ -423,9 +429,17 @@
             <dt>Sort</dt>
             <dd>Orders rows by a column, ascending or descending. Add further keys to break ties:
                 the first key decides, the second settles what the first left equal.</dd>
+            <dt>Reverse</dt>
+            <dd>Turns the row order upside down. Same rows, same columns, same count &mdash; last
+                becomes first. Its use is in front of <b>Take</b>: Take keeps the first N rows, so
+                Sort, Reverse, Take is how you ask for the <i>last</i> N. It needs no column, which
+                is what makes it work on a table whose order did not come from a Sort at all
+                &mdash; the order rows arrived from a Combine, or the order branches were wired
+                into a Compare.</dd>
             <dt>Take</dt>
             <dd>Keeps the first N rows and drops the rest. On its own that is arbitrary, so it is
-                nearly always used straight after Sort &mdash; together they mean <i>top N</i>.</dd>
+                nearly always used straight after Sort &mdash; together they mean <i>top N</i>,
+                or <i>bottom N</i> with a Reverse between them.</dd>
             <dt>Unique</dt>
             <dd>Two modes. With no column named it removes duplicate rows, comparing whole rows.
                 Name a column and it returns that column's distinct values instead, one per row

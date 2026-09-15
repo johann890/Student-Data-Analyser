@@ -355,6 +355,7 @@ var SHAPE = {
   filter:  { w:106, h:84 },
   compare: { w:112, h:78 },
   sort:    { w:106, h:72 },
+  reverse: { w:106, h:72 },
   take:    { w:106, h:72 },
   unique:  { w:106, h:72 },
   select:  { w:106, h:72 },
@@ -593,19 +594,34 @@ function deleteSelection() {
 
    Compare stays output-only. It is superseded, and widening its reach now
    would be work thrown away when it retires. */
-var TABLE_NODES = ['filter', 'sort', 'take', 'unique', 'select',
+var TABLE_NODES = ['filter', 'sort', 'reverse', 'take', 'unique', 'select',
                    'aggregate', 'aggregateColumns', 'combine'];
 var CONNECT_RULES = {
   source:           TABLE_NODES.concat(['compare', 'output']),
   filter:           TABLE_NODES.concat(['compare', 'output']),
   sort:             TABLE_NODES.concat(['compare', 'output']),
+  reverse:          TABLE_NODES.concat(['compare', 'output']),
   take:             TABLE_NODES.concat(['compare', 'output']),
   unique:           TABLE_NODES.concat(['compare', 'output']),
   select:           TABLE_NODES.concat(['compare', 'output']),
   aggregate:        TABLE_NODES.concat(['compare', 'output']),
   aggregateColumns: TABLE_NODES.concat(['compare', 'output']),
   combine:          TABLE_NODES.concat(['compare', 'output']),
-  compare:          ['output'],
+  /* Compare was output-only, on the grounds that it is superseded by SelectFor
+     and widening its reach would be work thrown away. That reasoning held while
+     the cost was hypothetical. It is not: a Compare's result is the only
+     labelled multi-row answer the tool can currently produce — "how many in
+     each year", "the average for each branch" — and refusing to let it be
+     aggregated made "count per year, then average those counts" unbuildable
+     through it. That is the exact example app.js:212 cites as the thing the
+     table refactor existed to fix.
+
+     Nothing downstream needed changing. Every row node already decides for
+     itself whether a Compare's branch metadata still describes its rows, and
+     says so where it does it — Sort and Take carry meta, Select and the
+     one-column mode of Unique drop it. Those comments were written against this
+     day arriving. */
+  compare:          TABLE_NODES.concat(['compare', 'output']),
   output:           []
 };
 function canConnect(fromType, toType) {
@@ -642,6 +658,7 @@ var NODE_PORTS = {
   source:           [],
   filter:           SINGLE_IN,
   sort:             SINGLE_IN,
+  reverse:          SINGLE_IN,
   take:             SINGLE_IN,
   unique:           SINGLE_IN,
   select:           SINGLE_IN,
@@ -768,6 +785,9 @@ function defaultCfg(type) {
   if (type === 'compare') return { measures:DEFAULT_MEASURES.slice(), sort:'wired', labels:{} };
   if (type === 'sort')    return { keys: [newSortKey()] };
   if (type === 'take')    return { n: String(TAKE_DEFAULT) };
+  // Reverse has nothing to configure: it takes no column, no direction and no
+  // count. An empty cfg is the honest answer, not a placeholder key.
+  if (type === 'reverse') return {};
   // col:'' means all columns — whole-row deduplication. Naming a column
   // switches to the label-producing mode and rewrites the header.
   if (type === 'unique')  return { col: '' };
@@ -1445,6 +1465,37 @@ function applySort(node, t, log) {
      reorder a sibling branch's data as a side effect — and the bug would only
      appear on graphs that fork. */
   return makeTable(t.columns, decorated.map(function(d){ return d.row; }), t.meta);
+}
+
+/* REVERSE
+   Flips row order. Its reason for existing is Take: Take deliberately keeps the
+   FIRST N rows and does not rank, so "the last N" and "the bottom 10" had no
+   expression at all. Sort, Reverse, Take says it in three nodes that each do
+   one thing, rather than growing Take a direction setting that would duplicate
+   what Sort already decides.
+
+   Sort with the direction flipped covers most of the same ground, but not all
+   of it: reversing needs no column, so it works on a table whose order came
+   from somewhere other than a sort — the order rows arrived from a Combine, or
+   the order a Compare's branches were wired in. Those have no key to sort on.
+
+   Like Take it is a pure row operation: no column is added, removed, renamed or
+   retyped, so the outgoing header is the incoming header and the schema pass
+   needs nothing but passthroughSchema.
+
+   meta is carried through for the same reason Sort and Take carry it — the rows
+   are the same rows in a different order, so whatever a producer upstream
+   recorded about them is still true.                                          */
+function applyReverse(node, t, log) {
+  var n = t.rows.length;
+  log.push(logEntry('REVERSE', n
+    ? [{s:'row order of'}, {c:'val', s:n}, {s:'rows'}]
+    : [{s:'no rows to reverse'}]));
+  /* slice() first: reverse() is in place, and one node's result object is read
+     by every node wired downstream of it, so reversing t.rows directly would
+     reorder a sibling branch's data as a side effect. Sort guards the same way
+     and for the same reason — the bug would only show up on graphs that fork. */
+  return makeTable(t.columns, t.rows.slice().reverse(), t.meta);
 }
 
 /* TAKE
@@ -2381,6 +2432,12 @@ var NODE_SPEC = {
     rows: function(node, t, log) { return { table: applySort(node, t, log) }; }
   },
 
+  reverse: {
+    // Nothing to declare: same header out as in, and no config to read.
+    schema: passthroughSchema,
+    rows: function(node, t, log) { return { table: applyReverse(node, t, log) }; }
+  },
+
   take: {
     schema: passthroughSchema,
     rows: function(node, t, log) { return { table: applyTake(node, t, log) }; }
@@ -2703,7 +2760,7 @@ function criterionHTML(node, ci, c, schema) {
    that produced them, which needs results; this is needed at render time,
    before anything has run, so it names the node instead. */
 var NODE_LABELS = {
-  source:'Source', filter:'Filter', sort:'Sort', take:'Take',
+  source:'Source', filter:'Filter', sort:'Sort', reverse:'Reverse', take:'Take',
   unique:'Unique', select:'Select',
   aggregate:'Aggregate', aggregateColumns:'Agg. Columns',
   combine:'Combine', compare:'Compare', output:'Output'
@@ -2813,6 +2870,17 @@ function configHTML(node, schemas) {
         html += '<div class="cmp-hint">Row 1 decides; the rest break its ties.</div>';
       }
     }
+  }
+
+  if (node.type === 'reverse') {
+    /* No controls. The panel still earns its place by saying what the node is
+       for: on its own Reverse looks like a node that does nothing useful, and
+       the pairing with Take is the whole point of it. */
+    var rn = inputsOf(id).length
+      ? 'Last row first, first row last. Columns and row count are unchanged.'
+      : 'Wire a table in. This flips the order its rows arrive in.';
+    html += '<div class="cmp-hint">' + rn + ' Put it before a <b>Take</b> to keep ' +
+      'the last few rows instead of the first.</div>';
   }
 
   if (node.type === 'take') {
@@ -3038,6 +3106,17 @@ function shapeHTML(node) {
     var sbars = '<span class="sort-glyph"><i style="width:9px"></i>' +
       '<i style="width:16px"></i><i style="width:23px"></i></span>';
     return '<div class="node-shape shape-sort">' + removeBtn + sbars + 'Sort</div>';
+  }
+  if (node.type === 'reverse') {
+    /* Sort's ascending bars, upside down, with a turn arrow beside them. Read
+       against Sort the inversion is the message: same bars, opposite order. The
+       arrow is what stops it being mistaken for "sort descending", which is a
+       different node reached a different way. */
+    var rv = '<span class="rev-glyph">' +
+      '<span class="rev-bars"><i style="width:23px"></i>' +
+      '<i style="width:16px"></i><i style="width:9px"></i></span>' +
+      '<b class="rev-turn"></b></span>';
+    return '<div class="node-shape shape-reverse">' + removeBtn + rv + 'Reverse</div>';
   }
   if (node.type === 'take') {
     // Three kept bars above the cut, one dropped below it — the glyph says
@@ -3891,7 +3970,17 @@ function serialiseTable(t, sep, quote) {
 // name prepended. That is the shape a pivot table wants.
 function exportTableFor(e) {
   var branches = e.source && e.source.meta && e.source.meta.branches;
-  if (!branches || e.show === 'summary') return e.table;
+  /* Only the "Summary + row lists" view exports long. The test used to be
+     "branches exist and the view is not the summary", which was the same thing
+     while branch metadata could only reach an Output across a direct wire from
+     a Compare — the two views available there are exactly summary and lists.
+
+     It stopped being the same thing when Compare was allowed to feed the row
+     nodes. Sort and Take carry meta through, quite correctly, so a
+     Compare -> Take(1) -> Output showed one row on screen and exported every
+     row of every branch: the export silently ignored the Take. Naming the one
+     view that means "long" keeps the two in step whatever arrives. */
+  if (!branches || e.show !== 'lists') return e.table;
 
   var per = branches.map(function(b) {
     return { label: b.label, t: b.table };

@@ -97,6 +97,8 @@ bridges them back to getters so tests can write `app.nodes`, in one place —
 | `09-ui-state` | Config lives in the model; dragging does not rebuild the DOM; typing does not destroy the field; escaping |
 | `10-aggregation` | Aggregate and AggregateColumns: the operation set, every measure cross-checked against the dataset, empty input, the registry invariant, persistence |
 | `11-edge-preview` | The hover preview: the column cap and the stylesheet width held together, what is shown and which columns, real edges |
+| `12-compare-downstream` | Compare feeding the row nodes: every downstream node accepts a comparison, the registry invariant holds for each, and branch metadata stops being honoured the moment it stops describing the rows |
+| `13-reverse` | The Reverse node: registration in all six tables, row order, the Sort/Reverse/Take pairing, and the in-place-mutation guard |
 
 ### What was removed, and why
 
@@ -117,6 +119,24 @@ changed deliberately. Each says so at the point of the change:
 - Year *is* filterable now (`03-filter`, `04-schema`) — `app.js:1149` explains why.
 - Saved CSVs carry **no** timestamp (`06-export`) — the name typed is the name written.
 - `saveGraph` opens a naming dialog rather than writing immediately (`07-saveload`).
+- `CONNECT_RULES.compare` is no longer `['output']` (`08-graph`) — a comparison
+  can be sorted, taken and aggregated like any other table.
+
+## Tests that must be able to fail
+
+Two guards here assert the *absence* of a bug, which makes them easy to write in
+a form that can never go red. Both were checked by reintroducing the bug and
+confirming the suite caught it:
+
+- **`13-reverse` › a sibling branch off the same Source is unaffected.** Change
+  `t.rows.slice().reverse()` to `t.rows.reverse()` in `applyReverse` and three
+  tests fail. Without a forking graph the in-place version passes everything.
+- **`12-compare-downstream` › a Take past a Compare exports the rows it kept.**
+  Change `e.show !== 'lists'` back to `e.show === 'summary'` in
+  `exportTableFor` and this fails. It needs a node *between* the Compare and the
+  Output to show up at all.
+
+If either is ever rewritten, re-check it the same way.
 
 ## Conventions
 

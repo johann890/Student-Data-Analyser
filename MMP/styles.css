@@ -887,6 +887,38 @@ th.cmp-num { color: #383838 !important; }
 }
 .shape-sort:active { cursor: grabbing; }
 
+/* ── REVERSE SHAPE ───────────────────────────────────────── */
+.shape-reverse {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-reverse:active { cursor: grabbing; }
+
+/* Sort's bars, inverted, with a turn arrow beside them. Laid out as a row so
+   the arrow sits next to the stack rather than under it, which would read as a
+   fourth bar. */
+.rev-glyph { display: flex; align-items: center; gap: 5px; }
+.rev-bars { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.rev-bars i { display: block; height: 3px; border-radius: 1px; opacity: 0.75; }
+/* A U-turn: an open square with its right side drawn, plus a head. Built from
+   borders rather than an SVG so it inherits currentColor with the rest of the
+   family and needs no extra file. */
+.rev-turn {
+  display: block;
+  width: 7px; height: 13px;
+  border-radius: 2px;
+  opacity: 0.75;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 55% 100%, 55% 72%,
+                     100% 72%, 100% 28%, 0 28%);
+}
+
 /* Ascending bars — "ordered". Take's glyph is equal bars with a cut through
    them, so the two Processing nodes are distinguishable at a glance even
    though they share the family colour. */
@@ -1313,6 +1345,7 @@ th.cmp-num { color: #383838 !important; }
 
 /* ── RESHAPE ROWS ── violet ─────────────────────────────── */
 .shape-sort,
+.shape-reverse,
 .shape-take,
 .shape-unique,
 .shape-select {
@@ -1359,6 +1392,8 @@ th.cmp-num { color: #383838 !important; }
    to agree; currentColor makes the shape's `color` the single source, so a
    category's hue is set once and the bars, dots and rules follow it. */
 .sort-glyph i,
+.rev-bars i,
+.rev-turn,
 .take-glyph i,
 .take-glyph b,
 .uniq-glyph i,
