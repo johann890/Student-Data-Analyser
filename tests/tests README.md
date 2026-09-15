@@ -103,6 +103,7 @@ bridges them back to getters so tests can write `app.nodes`, in one place —
 | `15-output-columns` | Choosing columns on an Output: the control, that it changes the view and never the answer, where the picker does and does not appear, and both empty-selection guards |
 | `16-range` | The `between` operator: that it can be found at all, which columns may carry a range and which may not, the amber band's appearance, bounds cross-checked against the dataset on numbers, years and grade letters, reversed and incomplete bounds |
 | `17-shape-styling` | The model's `SHAPE` geometry against the stylesheet's, and that every processing node is named in its family's colour rule and its menu group |
+| `18-project` | The Project node: the unfold cross-checked against the raw enrolments, that the change in row identity is *visible*, the header being statically known, and use case (f) |
 
 ### What was removed, and why
 
@@ -155,6 +156,30 @@ confirming the suite caught it:
   `[ .. 70]` as the only clue.
 
 If any of these is ever rewritten, re-check it the same way.
+
+## Testing that something is visible
+
+`18-project` has a describe block called "the change in row identity is
+visible", and it is the unusual half of that suite. Project is correct if it
+produces the right rows; it is *finished* only if a person can see that a row
+has stopped being a student. That distinction is not pedantry — the same
+operation used to be a dropdown on the Source, and it was removed precisely
+because it made "count students" wrong by a factor of eight with nothing on
+screen to say so.
+
+So four separate things are asserted, because each is a separate way the node
+announces itself and any one could be removed without the numbers changing:
+
+| Signal | Test |
+|---|---|
+| `id` becomes `studentId` | the old name must not survive |
+| the log states the multiplication | 80 rows → 640 rows, one per course |
+| the panel warns before anything runs | "counts enrolments" |
+| the warning is coloured | `.proj-warn`, the only coloured hint on any panel |
+
+All four were checked by removing them one at a time. Dropping the rename fails
+eight tests, dropping the log line fails one, and making the warning a plain
+grey hint fails exactly the test that says so.
 
 ## Why `17-shape-styling` exists
 

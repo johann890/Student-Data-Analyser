@@ -359,6 +359,7 @@ var SHAPE = {
   take:    { w:106, h:72 },
   unique:  { w:106, h:72 },
   select:  { w:106, h:72 },
+  project: { w:106, h:72 },
   aggregate:        { w:106, h:72 },
   aggregateColumns: { w:112, h:72 },
   aggregateRows:    { w:112, h:72 },
@@ -595,7 +596,7 @@ function deleteSelection() {
 
    Compare stays output-only. It is superseded, and widening its reach now
    would be work thrown away when it retires. */
-var TABLE_NODES = ['filter', 'sort', 'reverse', 'take', 'unique', 'select',
+var TABLE_NODES = ['filter', 'sort', 'reverse', 'take', 'unique', 'select', 'project',
                    'aggregate', 'aggregateColumns', 'aggregateRows', 'combine'];
 var CONNECT_RULES = {
   source:           TABLE_NODES.concat(['compare', 'output']),
@@ -605,6 +606,7 @@ var CONNECT_RULES = {
   take:             TABLE_NODES.concat(['compare', 'output']),
   unique:           TABLE_NODES.concat(['compare', 'output']),
   select:           TABLE_NODES.concat(['compare', 'output']),
+  project:          TABLE_NODES.concat(['compare', 'output']),
   aggregate:        TABLE_NODES.concat(['compare', 'output']),
   aggregateColumns: TABLE_NODES.concat(['compare', 'output']),
   aggregateRows:    TABLE_NODES.concat(['compare', 'output']),
@@ -664,6 +666,7 @@ var NODE_PORTS = {
   take:             SINGLE_IN,
   unique:           SINGLE_IN,
   select:           SINGLE_IN,
+  project:          SINGLE_IN,
   aggregate:        SINGLE_IN,
   aggregateColumns: SINGLE_IN,
   aggregateRows:    SINGLE_IN,
@@ -811,6 +814,10 @@ function defaultCfg(type) {
   // only becomes a narrowing once the user unticks something. An explicit list
   // of every key would go stale the moment the node was rewired.
   if (type === 'select')  return { cols: null };
+  // Nothing to configure: what it unfolds is decided by the data, not by a
+  // setting. A node with no options is the honest shape for an operation with
+  // no choices in it.
+  if (type === 'project') return {};
   // cols:null means "every column", the same convention Select uses, so the
   // validator mergeCfg already applies to that key covers this one too.
   if (type === 'output')  return { show:'rows', filename:'', cols:null };
@@ -2101,6 +2108,135 @@ function outputTable(node, t) {
 }
 
 /* ============================================================================
+   PROJECT — unfold the nested enrolments into rows of their own
+   ============================================================================
+   The one node that makes a row mean something different on the way out than it
+   meant on the way in. Everywhere else a row is a student; after a Project a row
+   is a single enrolment, so one student becomes eight rows and a count counts
+   course registrations rather than people.
+
+   That used to be a setting on the Source — "one per student" or "one per
+   enrolment" — and it was removed because a granularity switch hidden in a
+   dropdown made "count students" wrong by a factor of eight with nothing on
+   screen to say so. app.js:238 recorded what should replace it:
+
+     Nothing unfolds nested enrolments into their own rows any more. If that is
+     wanted later it should be a node on the canvas, where the change in row
+     identity is visible, rather than a setting hidden on the Source.
+
+   This is that node, and "where the change is visible" is its whole design
+   brief rather than a nicety:
+     - it is a node, so the step appears on the canvas and in the query log;
+     - it has its own colour and its own group in the menu, because it is not
+       the same kind of operation as the ones that narrow or reorder;
+     - it renames `id` to `studentId`, because after the unfold that column no
+       longer identifies a row — the same student now owns eight of them;
+     - its panel states the multiplication, and says what it does to a count.
+
+   Without it, nothing in the tool can reach a mark or a grade in a particular
+   course as a VALUE. Filter can already ask "did this student take SWEN421",
+   because it reads inside the nesting, but the mark itself can never become a
+   column, so a distribution of grades in one course is unaskable. That is use
+   case (f), and (g) on top of it.
+
+   The header is a function of the incoming header alone — the enrolment columns
+   are fixed, and which student columns come across is decided by their keys —
+   so computeSchemas answers without seeing a single row, and the registry
+   invariant holds with no special case.                                        */
+
+/* The columns an enrolment contributes. Fixed, because an enrolment has the
+   shape the data file gives it. */
+function enrolmentColumns() {
+  return [
+    { key:'code',        label:'Course',      type:COLTYPE.ENUM,   values:COURSES.map(function(c){ return c.code; }) },
+    { key:'name',        label:'Course name', type:COLTYPE.TEXT },
+    { key:'subject',     label:'Subject',     type:COLTYPE.ENUM,   values:SUBJECTS },
+    { key:'points',      label:'Points',      type:COLTYPE.NUMBER, def:'15' },
+    { key:'mark',        label:'Mark',        type:COLTYPE.NUMBER, def:'70' },
+    { key:'letterGrade', label:'Grade',       type:COLTYPE.TEXT,   order:GRADE_ORDER }
+  ];
+}
+
+/* Whether this node has anything to do. A table with no nested column has
+   nothing to unfold, and a Project wired behind an Aggregate is a mistake worth
+   reporting rather than an error worth stopping for — the same treatment a
+   Filter gives a criterion whose column has gone. */
+function canProject(t) { return coursesColIndex(t) !== -1; }
+
+/* Which of the incoming columns survive the unfold, and under what names.
+
+   The nested column itself goes, having become rows. `id` is renamed, because
+   after the unfold it identifies a student rather than a row and leaving it
+   called "ID" invites exactly the miscount this node exists to make visible.
+
+   A column whose key an enrolment also uses is dropped rather than carried: a
+   student row's `letterGrade` is their average grade, an enrolment's is their
+   grade in that course, and on a table of enrolments the second is the one the
+   name should mean. The log names what was replaced, so nothing vanishes
+   quietly. Derived by key rather than from a fixed list, so a column added to
+   the Source schema tomorrow is carried without this function changing. */
+function projectCarried(t) {
+  var taken = {};
+  enrolmentColumns().forEach(function(c){ taken[c.key] = true; });
+  return t.columns.filter(function(c) {
+    return c.type !== COLTYPE.COURSES && !taken[c.key];
+  });
+}
+
+function projectColumns(t) {
+  return projectCarried(t).map(function(c) {
+    // Same column, new name where the name would now mislead.
+    return c.key === 'id'
+      ? { key:'studentId', label:'Student', type:c.type, def:c.def, values:c.values, filter:c.filter }
+      : c;
+  }).concat(enrolmentColumns());
+}
+
+function projectSchema(node, inSchema) {
+  if (!canProject(inSchema)) return inSchema;
+  return makeTable(projectColumns(inSchema), []);
+}
+
+function applyProject(node, t, log) {
+  if (!canProject(t)) {
+    log.push(logEntry('PROJECT', [{s:'nothing to expand — no course data on this table'}]));
+    return t;
+  }
+
+  var ci = coursesColIndex(t);
+  var carry = projectCarried(t);
+  var carryIdx = carry.map(function(c){ return colIndex(t, c.key); });
+  var cols = projectColumns(t);
+
+  var rows = [];
+  t.rows.forEach(function(r) {
+    var prefix = carryIdx.map(function(i){ return r[i]; });
+    var list = r[ci] || [];
+    list.forEach(function(e) {
+      rows.push(prefix.concat([e.code, e.name, e.subject, e.points, e.mark, e.letterGrade]));
+    });
+  });
+
+  /* The row count is the message. Saying "80 rows -> 640 rows, one per course"
+     in the log puts the multiplication in the same place every other step
+     reports itself, so a count that looks eight times too large downstream has
+     an explanation one line above it. */
+  log.push(logEntry('PROJECT', [
+    {c:'val', s:t.rows.length}, {s:'rows'}, {c:'op', s:'->'},
+    {c:'val', s:rows.length}, {s:'rows, one per course'}
+  ]));
+
+  var replaced = t.columns.filter(function(c) {
+    return c.type !== COLTYPE.COURSES && carry.indexOf(c) === -1;
+  });
+  if (replaced.length) {
+    log.push(logEntry('PROJECT', [{s:'replaced by course values:'},
+      {c:'val', s:replaced.map(function(c){ return c.label; }).join(', ')}]));
+  }
+  return makeTable(cols, rows);
+}
+
+/* ============================================================================
    AGGREGATION
    ============================================================================
    Two nodes, one implementation. Both reduce a set of values to one value; they
@@ -2750,6 +2886,15 @@ var NODE_SPEC = {
     rows: function(node, t, log) { return { table: applySelect(node, t, log) }; }
   },
 
+  project: {
+    // The only node that changes what a ROW means. Its header still follows
+    // from the incoming header alone — the enrolment columns are fixed and the
+    // carried ones are chosen by key — so it needs no more of the registry than
+    // any other node, however different its effect.
+    schema: projectSchema,
+    rows: function(node, t, log) { return { table: applyProject(node, t, log) }; }
+  },
+
   aggregate: {
     schema: aggregateSchema,
     rows: function(node, t, log) { return { table: applyAggregate(node, t, log) }; }
@@ -3148,7 +3293,7 @@ function criterionHTML(node, ci, c, schema) {
    before anything has run, so it names the node instead. */
 var NODE_LABELS = {
   source:'Source', filter:'Filter', sort:'Sort', reverse:'Reverse', take:'Take',
-  unique:'Unique', select:'Select',
+  unique:'Unique', select:'Select', project:'Project',
   aggregate:'Aggregate', aggregateColumns:'Agg. Columns', aggregateRows:'Agg. Rows',
   combine:'Combine', compare:'Compare', output:'Output'
 };
@@ -3388,6 +3533,28 @@ function configHTML(node, schemas) {
     }
   }
 
+  if (node.type === 'project') {
+    /* No controls, so the panel exists entirely to say what the node does to
+       the meaning of a row. That is the thing this node was asked to make
+       visible, and a panel that said nothing would put it back where it was
+       when it lived hidden on the Source. */
+    if (!canProject(schema)) {
+      html += '<div class="cmp-hint">No course data on this table, so there is ' +
+        'nothing to expand &mdash; the rows pass through unchanged. Wire this ' +
+        'straight after a Source or a Filter.</div>';
+    } else {
+      var pCols = projectColumns(schema);
+      var pGained = enrolmentColumns().map(function(c){ return c.label; }).join(', ');
+      html += '<div class="cfg-label">One row per course</div>' +
+        '<div class="cmp-hint proj-warn">Every row becomes one row per course ' +
+        'taken, so a row is an enrolment from here on, not a student. ' +
+        '<b>A count after this counts enrolments.</b></div>' +
+        '<div class="cmp-hint">Adds ' + esc(pGained) + '. ' +
+        'ID becomes Student, because it no longer names a row on its own. ' +
+        pCols.length + ' columns out.</div>';
+    }
+  }
+
   if (node.type === 'combine') {
     var cinIds = inputsOf(id);
     var cmode = combineMode(node);
@@ -3591,6 +3758,17 @@ function shapeHTML(node) {
        choice being made rather than a table that happens to be narrow. */
     var sg = '<span class="sel-glyph"><i></i><i class="off"></i><i></i></span>';
     return '<div class="node-shape shape-select">' + removeBtn + sg + 'Select</div>';
+  }
+  if (node.type === 'project') {
+    /* One bar fanning out into three. Every other glyph on the canvas shows
+       rows being kept, dropped, reordered or reduced; this is the only one that
+       shows them multiplying, which is the single fact about this node worth
+       recognising from across the canvas. Drawn left to right, like Select's,
+       because both change the header — but opening out rather than narrowing. */
+    var pj = '<span class="proj-glyph">' +
+      '<i class="proj-one"></i><b class="proj-fan"></b>' +
+      '<span class="proj-many"><i></i><i></i><i></i></span></span>';
+    return '<div class="node-shape shape-project">' + removeBtn + pj + 'Project</div>';
   }
   if (node.type === 'aggregate') {
     // Rows funnelling into a single dot: many values, one value out.
@@ -5722,6 +5900,9 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     uniqueCols: uniqueCols, uniqueCol: uniqueCol, uniqueCellKey: uniqueCellKey,
     uniqueSchema: uniqueSchema, applyUnique: applyUnique,
     selectedCols: selectedCols, selectSchema: selectSchema, applySelect: applySelect,
+    canProject: canProject, projectCarried: projectCarried, projectColumns: projectColumns,
+    projectSchema: projectSchema, applyProject: applyProject,
+    enrolmentColumns: enrolmentColumns,
     combineOrder: combineOrder, joinColumns: joinColumns, joinTables: joinTables,
 
     // take

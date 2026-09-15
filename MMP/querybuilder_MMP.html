@@ -37,6 +37,11 @@
         <span class="proc-name">Select</span>
         <span class="proc-desc">Keep only the columns you choose</span>
       </button>
+      <div class="proc-group cat-expand">Expand</div>
+      <button class="proc-item cat-expand" onclick="addProcNode('project')">
+        <span class="proc-name">Project</span>
+        <span class="proc-desc">One row per course &mdash; a row stops being a student</span>
+      </button>
       <div class="proc-group cat-summarise">Summarise</div>
       <button class="proc-item cat-summarise" onclick="addProcNode('aggregate')">
         <span class="proc-name">Aggregate</span>
@@ -379,14 +384,14 @@
         <!-- ── NODE REFERENCE ──────────────────────────────── -->
         <section id="help-nodes">
           <h3>Node reference</h3>
-          <p>The Processing menu groups its eleven nodes by what each does to the shape of the table.
+          <p>The Processing menu groups its twelve nodes by what each does to the shape of the table.
              The colour of a node on the canvas is its group, so you can read an unfamiliar graph at
              a glance: where it narrows, where it collapses, where branches meet.</p>
 
           <figure class="help-fig help-fig-narrow">
-            <svg viewBox="0 0 340 447" xmlns="http://www.w3.org/2000/svg" role="img"
+            <svg viewBox="0 0 340 505" xmlns="http://www.w3.org/2000/svg" role="img"
                  aria-label="The Processing menu, showing three colour-coded groups of nodes">
-              <rect x="8" y="8" width="324" height="431" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <rect x="8" y="8" width="324" height="489" rx="6" fill="#141414" stroke="#2a2a2a"/>
 
               <text x="22" y="32" fill="#b48ce0" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">RESHAPE</text>
               <text x="24" y="54" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Sort</text>
@@ -400,19 +405,23 @@
               <text x="24" y="190" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Select</text>
               <text x="24" y="203" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Keep only the columns you choose</text>
 
-              <text x="22" y="221" fill="#5ac8c8" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">SUMMARISE</text>
-              <text x="24" y="243" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate</text>
-              <text x="24" y="256" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Whole table down to one value</text>
-              <text x="24" y="277" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Columns</text>
-              <text x="24" y="290" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row out, one value per column</text>
-              <text x="24" y="311" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Rows</text>
-              <text x="24" y="324" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One value per row, one column out</text>
+              <text x="22" y="234" fill="#a8d050" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">EXPAND</text>
+              <text x="24" y="256" fill="#a8d050" font-size="11" font-family="system-ui, sans-serif">Project</text>
+              <text x="24" y="269" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row per course</text>
 
-              <text x="22" y="355" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
-              <text x="24" y="377" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
-              <text x="24" y="390" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
-              <text x="24" y="411" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
-              <text x="24" y="424" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
+              <text x="22" y="279" fill="#5ac8c8" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">SUMMARISE</text>
+              <text x="24" y="301" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate</text>
+              <text x="24" y="314" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Whole table down to one value</text>
+              <text x="24" y="335" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Columns</text>
+              <text x="24" y="348" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row out, one value per column</text>
+              <text x="24" y="369" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Rows</text>
+              <text x="24" y="382" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One value per row, one column out</text>
+
+              <text x="22" y="413" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
+              <text x="24" y="435" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
+              <text x="24" y="448" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
+              <text x="24" y="469" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
+              <text x="24" y="482" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
               </svg>
           </figure>
 
@@ -466,6 +475,26 @@
                 Put one in front of an Output to show three columns instead of seven, or in front of
                 an Aggregate to make plain which column is being measured. Columns stay in the order
                 they arrive, and at least one has to be kept.</dd>
+          </dl>
+
+          <h4 class="help-cat help-cat-expand">Expand &mdash; lime</h4>
+          <p class="help-note">The one node that changes what a row <i>means</i>. It has a group to
+             itself for that reason.</p>
+          <dl class="help-defs">
+            <dt>Project</dt>
+            <dd>Turns each row into one row per course taken, so a student with eight courses
+                becomes eight rows. <b>From here on a row is an enrolment, not a student</b>, and a
+                Count after a Project counts course registrations rather than people. The node says
+                so on its panel, and the query log prints the before and after row counts, because
+                this is the one step that can make a later number look eight times too big.
+                <br><br>
+                It is how a mark or a grade <i>in a particular course</i> becomes something you can
+                filter, sort or average. Without it the tool can ask whether a student took SWEN421
+                but never what they got for it, because the marks sit nested inside the row rather
+                than in a column of their own. Wire it after a Source, filter on <b>Course</b>, and
+                <b>Mark</b> and <b>Grade</b> are ordinary columns from that point.
+                <br><br>
+                To get back to one row per student afterwards, use <b>Unique</b> on Student.</dd>
           </dl>
 
           <h4 class="help-cat help-cat-summarise">Summarise &mdash; teal</h4>

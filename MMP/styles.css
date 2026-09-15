@@ -283,6 +283,16 @@ select option {
   background: #141414;
   color: #c8c8c8;
 }
+/* The one hint on any panel that warns rather than explains, so it is the one
+   hint that is coloured. A Project silently changing what a count counts is the
+   bug this whole node exists to prevent. */
+.cmp-hint.proj-warn {
+  border-left: 2px solid #4a6a1e;
+  padding-left: 6px;
+  color: #93b048;
+}
+.cmp-hint.proj-warn b { color: #a8d050; }
+
 /* ── RANGE BAND ──────────────────────────────────────────── */
 /* Appears under a criterion whose operator is "in range", and only then. It is
    banded down the left exactly as .criterion-row is, so it reads as belonging
@@ -1429,6 +1439,33 @@ th.cmp-num { color: #383838 !important; }
   color: #b48ce0;
 }
 
+/* Project shares the box, not the colour — see the Expand group below. */
+.shape-project {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid #4a6a1e;
+  background: #0d1405;
+  color: #a8d050;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-project:active { cursor: grabbing; }
+
+/* One bar opening into three: rows multiplying, which no other glyph shows. */
+.proj-glyph { display: flex; align-items: center; gap: 3px; }
+.proj-glyph .proj-one { display: block; width: 4px; height: 13px; border-radius: 1px; opacity: 0.8; }
+.proj-glyph .proj-fan {
+  display: block; width: 0; height: 0;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-left: 7px solid currentColor;
+  opacity: 0.55;
+}
+.proj-many { display: flex; flex-direction: column; gap: 2px; }
+.proj-many i { display: block; width: 13px; height: 3px; border-radius: 1px; opacity: 0.8; }
+
 /* Columns side by side, the middle one hollow. Drawn in currentColor so it
    cannot drift out of step with the shape around it, and laid out on the
    horizontal axis while every other glyph runs vertically — the axis is the
@@ -1455,6 +1492,19 @@ th.cmp-num { color: #383838 !important; }
   color: #5ac8c8;
 }
 
+/* ── EXPAND ── lime ─────────────────────────────────────── */
+/* Its own colour and its own group because it is its own kind of operation:
+   every other processing node leaves a row meaning what it meant, and this one
+   does not. The menu placement and the colour are load-bearing rather than
+   decorative — they are two of the four ways this node announces that it
+   changes row identity. Lime is already in the edge palette, so it is a colour
+   this interface owns rather than a seventh hue invented here. */
+.shape-project {
+  border-color: #4a6a1e;
+  background: #0d1405;
+  color: #a8d050;
+}
+
 /* ── BRANCHES ── rose ───────────────────────────────────── */
 .shape-combine,
 .shape-compare {
@@ -1468,6 +1518,8 @@ th.cmp-num { color: #383838 !important; }
    to agree; currentColor makes the shape's `color` the single source, so a
    category's hue is set once and the bars, dots and rules follow it. */
 .sort-glyph i,
+.proj-glyph .proj-one,
+.proj-many i,
 .rev-bars i,
 .rev-turn,
 .take-glyph i,
@@ -1524,6 +1576,8 @@ th.cmp-num { color: #383838 !important; }
 .proc-item.cat-summarise .proc-name { color: #5ac8c8; }
 .proc-group.cat-branches,
 .proc-item.cat-branches  .proc-name { color: #e089ae; }
+.proc-group.cat-expand,
+.proc-item.cat-expand    .proc-name { color: #a8d050; }
 
 .proc-group { opacity: 0.72; }
 
@@ -1880,6 +1934,7 @@ th.cmp-num { color: #383838 !important; }
 .help-cat-filter    { color: #f0944a; }
 .help-cat-reshape   { color: #b48ce0; }
 .help-cat-summarise { color: #5ac8c8; }
+.help-cat-expand    { color: #a8d050; }
 .help-cat-branches  { color: #e089ae; }
 .help-cat-output    { color: #3db8ff; }
 

@@ -29,7 +29,7 @@ const CSS = (() => {
 const CLASS = {
   source: 'shape-source', filter: 'shape-filter', compare: 'shape-compare',
   sort: 'shape-sort', reverse: 'shape-reverse', take: 'shape-take',
-  unique: 'shape-unique', select: 'shape-select',
+  unique: 'shape-unique', select: 'shape-select', project: 'shape-project',
   aggregate: 'shape-aggregate', aggregateColumns: 'shape-aggcols',
   aggregateRows: 'shape-aggrows', combine: 'shape-combine', output: 'shape-output'
 };
@@ -38,6 +38,10 @@ const CLASS = {
    These are the values in the stylesheet's own group headings. */
 const FAMILY = {
   reshape:   { colour: '#5a3a7a', types: ['sort', 'reverse', 'take', 'unique', 'select'] },
+  /* Project has a family to itself. That is deliberate rather than an oversight
+     waiting to be tidied: it is the only node that changes what a row means, and
+     its colour and its own menu group are two of the ways it says so. */
+  expand:    { colour: '#4a6a1e', types: ['project'] },
   summarise: { colour: '#1f6a6a', types: ['aggregate', 'aggregateColumns', 'aggregateRows'] },
   branches:  { colour: '#7a2f52', types: ['combine', 'compare'] }
 };
@@ -143,7 +147,8 @@ module.exports = ({ describe, test }) => {
     });
 
     test('each menu entry carries its family class', () => {
-      const CAT = { reshape: 'cat-reshape', summarise: 'cat-summarise', branches: 'cat-branches' };
+      const CAT = { reshape: 'cat-reshape', expand: 'cat-expand',
+                    summarise: 'cat-summarise', branches: 'cat-branches' };
       const h = boot();
       h.qa('.proc-item').forEach(b => {
         const t = (b.getAttribute('onclick').match(/addProcNode\('([^']+)'\)/) || [])[1];
