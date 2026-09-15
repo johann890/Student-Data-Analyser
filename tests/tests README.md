@@ -99,6 +99,8 @@ bridges them back to getters so tests can write `app.nodes`, in one place —
 | `11-edge-preview` | The hover preview: the column cap and the stylesheet width held together, what is shown and which columns, real edges |
 | `12-compare-downstream` | Compare feeding the row nodes: every downstream node accepts a comparison, the registry invariant holds for each, and branch metadata stops being honoured the moment it stops describing the rows |
 | `13-reverse` | The Reverse node: registration in all six tables, row order, the Sort/Reverse/Take pairing, and the in-place-mutation guard |
+| `14-aggregate-rows` | AggregateRows: the mirror of AggregateColumns, values cross-checked against the dataset, which cells feed the measure, and composition with Select |
+| `15-output-columns` | Choosing columns on an Output: the control, that it changes the view and never the answer, where the picker does and does not appear, and both empty-selection guards |
 
 ### What was removed, and why
 
@@ -135,8 +137,15 @@ confirming the suite caught it:
   Change `e.show !== 'lists'` back to `e.show === 'summary'` in
   `exportTableFor` and this fails. It needs a node *between* the Compare and the
   Output to show up at all.
+- **`15-output-columns` › the two empty-selection guards.** An Output is stopped
+  from showing no columns twice over — `setCfg` refuses to write an empty list,
+  and `selectedCols` falls back to the whole header if one reaches it anyway.
+  They are tested separately *because* a single test of the outcome passes when
+  either one is removed. That is how the first version of this test was written,
+  and it could not fail. Remove each guard in turn and exactly one test should
+  go red.
 
-If either is ever rewritten, re-check it the same way.
+If any of these is ever rewritten, re-check it the same way.
 
 ## Conventions
 

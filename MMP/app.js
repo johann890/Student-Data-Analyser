@@ -361,6 +361,7 @@ var SHAPE = {
   select:  { w:106, h:72 },
   aggregate:        { w:106, h:72 },
   aggregateColumns: { w:112, h:72 },
+  aggregateRows:    { w:112, h:72 },
   combine:          { w:106, h:72 },
   output:  { w:106, h:66 }
 };
@@ -595,7 +596,7 @@ function deleteSelection() {
    Compare stays output-only. It is superseded, and widening its reach now
    would be work thrown away when it retires. */
 var TABLE_NODES = ['filter', 'sort', 'reverse', 'take', 'unique', 'select',
-                   'aggregate', 'aggregateColumns', 'combine'];
+                   'aggregate', 'aggregateColumns', 'aggregateRows', 'combine'];
 var CONNECT_RULES = {
   source:           TABLE_NODES.concat(['compare', 'output']),
   filter:           TABLE_NODES.concat(['compare', 'output']),
@@ -606,6 +607,7 @@ var CONNECT_RULES = {
   select:           TABLE_NODES.concat(['compare', 'output']),
   aggregate:        TABLE_NODES.concat(['compare', 'output']),
   aggregateColumns: TABLE_NODES.concat(['compare', 'output']),
+  aggregateRows:    TABLE_NODES.concat(['compare', 'output']),
   combine:          TABLE_NODES.concat(['compare', 'output']),
   /* Compare was output-only, on the grounds that it is superseded by SelectFor
      and widening its reach would be work thrown away. That reasoning held while
@@ -664,6 +666,7 @@ var NODE_PORTS = {
   select:           SINGLE_IN,
   aggregate:        SINGLE_IN,
   aggregateColumns: SINGLE_IN,
+  aggregateRows:    SINGLE_IN,
   combine:          [{ key:'in', label:'Tables',   multi:true }],
   compare:          [{ key:'in', label:'Branches', multi:true }],
   output:           SINGLE_IN
@@ -797,6 +800,10 @@ function defaultCfg(type) {
   // Source granularity is changed underneath it.
   if (type === 'aggregate')        return { op: AGG_DEFAULT_OP, col: '' };
   if (type === 'aggregateColumns') return { op: 'sum' };
+  // Same shape, and sum for the same reason: totalling is the measure a row of
+  // measures is usually wanted for, and it is the one that is obviously wrong
+  // if the input is not a row of measures.
+  if (type === 'aggregateRows')    return { op: 'sum' };
   // dedupe defaults off: merge stacks rows, and discarding identical rows is a
   // decision the user makes rather than one the node makes quietly.
   if (type === 'combine') return { mode: 'merge', dedupe: false, base: '', key: '' };
@@ -804,7 +811,9 @@ function defaultCfg(type) {
   // only becomes a narrowing once the user unticks something. An explicit list
   // of every key would go stale the moment the node was rewired.
   if (type === 'select')  return { cols: null };
-  if (type === 'output')  return { show:'rows', filename:'' };
+  // cols:null means "every column", the same convention Select uses, so the
+  // validator mergeCfg already applies to that key covers this one too.
+  if (type === 'output')  return { show:'rows', filename:'', cols:null };
   return {};
 }
 
@@ -1870,6 +1879,28 @@ function normaliseShow(node) {
   return (v === 'lists') ? 'rows' : 'count';
 }
 
+/* COLUMN SELECTION ON AN OUTPUT
+   ---------------------------------------------------------------------------
+   A deliberate duplication of what Select does, and worth being explicit about
+   why, because the Output's other shortcuts were removed for being exactly
+   this. Average and the course breakdown were removed because they COMPUTED —
+   they hid steps that changed the answer, and hid them somewhere the query log
+   could not describe. Choosing which columns to look at changes no answer. It
+   is a property of the view, which is what an Output is.
+
+   The supervisor put it as a question: one could always wire a Select in front,
+   but so many Outputs would need the pair that the duplication earns its place.
+   Both routes stay open, and they compose — a Select upstream narrows what
+   arrives, this narrows what is shown of it.
+
+   Applied to the row view alone. A count is a count of rows however many
+   columns are on them, and a Compare's summary already has the measure
+   checkboxes on the Compare itself; offering a second way to hide those would
+   be the duplication that is not worth it. */
+function outputCols(node, t) {
+  return selectedCols(node, t);
+}
+
 function outputTable(node, t) {
   var show = normaliseShow(node);
 
@@ -1877,7 +1908,18 @@ function outputTable(node, t) {
     return makeTable([{ key:'count', label:'Count', type:COLTYPE.NUMBER }],
                      [[t.rows.length]]);
   }
-  return t; // 'rows', 'summary' and 'lists' all display the incoming table
+  if (show !== 'rows') return t;   // 'summary' and 'lists' display as they arrive
+
+  var keep = outputCols(node, t);
+  if (keep.length === t.columns.length) return t;   // same table, so meta survives
+
+  var idx = keep.map(function(c){ return colIndex(t, c.key); });
+  /* meta is dropped for the reason Select drops it: branch tables carry the
+     header that arrived, and keeping them past a narrowing would leave the
+     summary and its branches disagreeing about what columns exist. */
+  return makeTable(keep, t.rows.map(function(r) {
+    return idx.map(function(i){ return r[i]; });
+  }));
 }
 
 /* ============================================================================
@@ -2073,6 +2115,75 @@ function applyAggregateColumns(node, t, log) {
     log.push(logEntry('AGGREGATE COLUMNS', [{s:'left blank:'}, {c:'val', s:skipped.join(', ')}]));
   }
   return makeTable(out.columns, [row]);
+}
+
+/* ---- AggregateRows: one row -> one value, per row ------------------------- */
+
+/* The third member of the family, and the one that runs the other way. Aggregate
+   collapses a table to a cell; AggregateColumns collapses each column to a cell
+   and emits one row; AggregateRows collapses each ROW to a cell and emits one
+   column. Row count is preserved, which is what makes it the counterpart of
+   AggregateColumns rather than a second spelling of it:
+
+     AggregateColumns   N rows x M cols  ->  1 row  x M cols   (down each column)
+     AggregateRows      N rows x M cols  ->  N rows x 1 col    (across each row)
+
+   THE WHOLE ROW IS REPLACED, not appended to. The settled position is that row
+   aggregation assumes a row of measures: totalling a row that still carries a
+   student id is not a meaningful operation, so the question of whether the
+   answer replaces the row or joins it never arises. Narrowing to the measures
+   first is a Select, which is a node that exists — so the composition is
+   Select then AggregateRows, and neither node grows a column picker for the
+   other's benefit.
+
+   The cost is that a label column goes with everything else: total a histogram
+   of one row per year and the years are not in the result. That is the honest
+   consequence of the rule above rather than an oversight, and the fix, if it is
+   ever wanted, is the general "say which columns are aggregated" approach the
+   supervisor described and explicitly deferred. */
+function aggregateRowsColumn(node) {
+  var op = aggOp(node);
+  // No single input column to name, so the measure names itself. Keyed on the
+  // op so two of these in series produce distinguishable headers.
+  return { key: op.key, label: op.label, type: COLTYPE.NUMBER };
+}
+
+function aggregateRowsSchema(node, inSchema) {
+  return makeTable([aggregateRowsColumn(node)], []);
+}
+
+/* Which cells of a row feed the measure. The same rule AggregateColumns uses,
+   applied along the other axis: Count asks how many values are present and any
+   column can answer that, while the arithmetic measures take only the columns
+   that hold a number and are not an identifier. Resolved once for the table
+   rather than per row, since the header does not change between rows. */
+function aggregateRowsIdx(node, t) {
+  var op = aggOp(node);
+  var idx = [];
+  t.columns.forEach(function(c, i) {
+    if (op.key === 'count' || isMeasurable(t, c)) idx.push(i);
+  });
+  return idx;
+}
+
+function applyAggregateRows(node, t, log) {
+  var op = aggOp(node);
+  var out = aggregateRowsColumn(node);
+  var idx = aggregateRowsIdx(node, t);
+
+  var rows = t.rows.map(function(r) {
+    return [reduceValues(op.key, idx.map(function(i){ return r[i]; }))];
+  });
+
+  var skipped = t.columns.length - idx.length;
+  log.push(logEntry('AGGREGATE ROWS', [{s:op.label.toLowerCase() + ' across'},
+                                       {c:'val', s:idx.length},
+                                       {s:'column' + (idx.length === 1 ? '' : 's') + ', per row'}]));
+  if (skipped > 0) {
+    log.push(logEntry('AGGREGATE ROWS', [{s:'ignored'}, {c:'val', s:skipped},
+      {s:'non-measure column' + (skipped === 1 ? '' : 's')}]));
+  }
+  return makeTable([out], rows);
 }
 
 /* ============================================================================
@@ -2471,6 +2582,13 @@ var NODE_SPEC = {
     rows: function(node, t, log) { return { table: applyAggregateColumns(node, t, log) }; }
   },
 
+  aggregateRows: {
+    // Header depends only on the chosen measure, never on the incoming columns,
+    // so the schema walk knows it without looking at anything upstream.
+    schema: aggregateRowsSchema,
+    rows: function(node, t, log) { return { table: applyAggregateRows(node, t, log) }; }
+  },
+
   combine: {
     /* One multi port. Where an ordinary node now refuses a second wire, this is
        the node that exists to accept it: stacking several tables is its job,
@@ -2522,11 +2640,16 @@ var NODE_SPEC = {
 
   output: {
     /* An Output's result IS its input: outputTable() applies the chosen view at
-       render time, not here, so the count/average/breakdown reshaping is not
-       part of the graph. Nothing reads downstream of an Output — CONNECT_RULES
-       gives it no outgoing edges — so the distinction costs nothing today. If
-       an Output ever becomes chainable, this is the entry that has to grow a
-       real schema, and outputTable() is already the function to call. */
+       render time, not here, so neither the count reshaping nor the column
+       narrowing is part of the graph. Nothing reads downstream of an Output —
+       CONNECT_RULES gives it no outgoing edges — so the distinction costs
+       nothing today, and passthroughSchema stays honest because no node ever
+       asks what an Output produces.
+
+       If an Output ever becomes chainable this is the entry that has to grow a
+       real schema, and it is now a real piece of work rather than a formality:
+       the header depends on the view AND on the column selection, so the answer
+       is makeTable(outputTable(node, inSchema).columns, []). */
     schema: passthroughSchema
   }
 };
@@ -2762,7 +2885,7 @@ function criterionHTML(node, ci, c, schema) {
 var NODE_LABELS = {
   source:'Source', filter:'Filter', sort:'Sort', reverse:'Reverse', take:'Take',
   unique:'Unique', select:'Select',
-  aggregate:'Aggregate', aggregateColumns:'Agg. Columns',
+  aggregate:'Aggregate', aggregateColumns:'Agg. Columns', aggregateRows:'Agg. Rows',
   combine:'Combine', compare:'Compare', output:'Output'
 };
 function upstreamLabel(node) {
@@ -2915,8 +3038,10 @@ function configHTML(node, schemas) {
       '</div>';
   }
 
-  if (node.type === 'aggregate' || node.type === 'aggregateColumns') {
+  if (node.type === 'aggregate' || node.type === 'aggregateColumns' ||
+      node.type === 'aggregateRows') {
     var isCols = node.type === 'aggregateColumns';
+    var isRows = node.type === 'aggregateRows';
     var op = aggOp(node);
 
     html += '<div class="cfg-label">Measure</div>' +
@@ -2924,7 +3049,7 @@ function configHTML(node, schemas) {
         AGG_OPS.map(function(o){ return opt(o.key, op.key, o.label); }).join('') +
       '</select>';
 
-    if (!isCols && op.needsCol) {
+    if (!isCols && !isRows && op.needsCol) {
       // Only the whole-table Aggregate picks a column: AggregateColumns applies
       // the measure to every column at once, which is the point of it.
       var mcols = measurableCols(schema);
@@ -2940,7 +3065,25 @@ function configHTML(node, schemas) {
     // Say what will come out, in the same words the result will use. The shape
     // of an aggregation is the thing people get wrong about it, and stating it
     // before the query runs is cheaper than explaining it afterwards.
-    if (isCols) {
+    if (isRows) {
+      /* Naming the count of contributing columns is the whole warning: if it
+         says 1, the measure is reducing a single column to itself, and if it
+         counts a column the user thinks of as a label, the label is being
+         added into the total. */
+      var rIdx = aggregateRowsIdx(node, schema);
+      var rTotal = schema.columns.length;
+      var rSkip = rTotal - rIdx.length;
+      html += '<div class="cmp-hint">' +
+        'One column out, one row per row in &mdash; ' + esc(op.label.toLowerCase()) +
+        ' across ' + (rTotal
+          ? rIdx.length + ' of ' + rTotal + ' column' + (rTotal === 1 ? '' : 's')
+          : 'each row') + '.' +
+        (rSkip > 0
+          ? ' ' + rSkip + ' non-measure column' + (rSkip === 1 ? ' is' : 's are') + ' ignored.'
+          : '') +
+        ' The rest of the row is replaced, so put a <b>Select</b> in front if the ' +
+        'row still carries anything that is not a measure.</div>';
+    } else if (isCols) {
       var ncols = schema.columns.length;
       html += '<div class="cmp-hint">One row out, ' +
         (ncols ? ncols + ' column' + (ncols === 1 ? '' : 's') : 'one column per column in') +
@@ -3061,6 +3204,41 @@ function configHTML(node, schemas) {
     }
     html += '</select>';
 
+    /* The column picker appears only on the row view. It is the same control as
+       Select's, deliberately — two panels that do the same thing should look
+       the same — and it reads the header that is actually arriving, so an
+       Output rewired behind a different branch offers that branch's columns. */
+    if (show === 'rows') {
+      var oCols = schema.columns;
+      if (!oCols.length) {
+        html += '<div class="cmp-hint">Nothing wired in yet &mdash; connect a Source to ' +
+          'choose which columns to show.</div>';
+      } else {
+        var oKept = outputCols(node, schema).map(function(c){ return c.key; });
+        html += '<div class="cfg-label">Show columns</div><div class="cmp-measures sel-cols">' +
+          oCols.map(function(c) {
+            // Last box locked for Select's reason: an Output showing no columns
+            // has nothing to show, and the panel it leaves behind offers no way
+            // back, since every box would be unticked and identical.
+            var on = oKept.indexOf(c.key) !== -1;
+            var locked = on && oKept.length === 1;
+            return '<label class="cmp-measure' + (locked ? ' locked' : '') + '"' +
+                (locked ? ' title="At least one column has to be shown"' : '') + '>' +
+              '<input type="checkbox"' + (on ? ' checked' : '') + (locked ? ' disabled' : '') +
+                ctl(id, 'column:' + c.key) + '>' +
+              '<span>' + esc(c.label) + '</span></label>';
+          }).join('') +
+        '</div>';
+        html += '<div class="cmp-hint">' +
+          (oKept.length === oCols.length
+            ? 'Every column is shown. Untick to narrow the view &mdash; no rows are lost, ' +
+              'and Copy and Save follow what is shown.'
+            : oKept.length + ' of ' + oCols.length + ' columns shown. Copy and Save ' +
+              'write these columns, every row.') +
+          '</div>';
+      }
+    }
+
     // The file name deliberately lives with the Copy/Save buttons in the results
     // panel rather than here. It describes the exported file, not the query, and
     // putting it on the node implied it was part of what gets computed.
@@ -3164,6 +3342,16 @@ function shapeHTML(node) {
       '<span class="aggc-col"><i></i><i></i><b></b></span>' +
       '<span class="aggc-col"><i></i><i></i><b></b></span></span>';
     return '<div class="node-shape shape-aggcols">' + removeBtn + agc + 'Agg. Columns</div>';
+  }
+  if (node.type === 'aggregateRows') {
+    /* AggregateColumns' glyph turned through ninety degrees: three ROWS, each
+       collapsing rightwards to its own value. Read beside its sibling the axis
+       is the whole message — one reduces down the page, the other across it. */
+    var aggr = '<span class="aggr-glyph">' +
+      '<span class="aggr-row"><i></i><i></i><b></b></span>' +
+      '<span class="aggr-row"><i></i><i></i><b></b></span>' +
+      '<span class="aggr-row"><i></i><i></i><b></b></span></span>';
+    return '<div class="node-shape shape-aggrows">' + removeBtn + aggr + 'Agg. Rows</div>';
   }
   if (node.type === 'combine') {
     // Two streams converging into one: the mirror image of Compare's glyph,
@@ -5256,6 +5444,9 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     aggregateSchema: aggregateSchema, applyAggregate: applyAggregate,
     aggregateColumnsSchema: aggregateColumnsSchema,
     applyAggregateColumns: applyAggregateColumns,
+    aggregateRowsColumn: aggregateRowsColumn, aggregateRowsSchema: aggregateRowsSchema,
+    aggregateRowsIdx: aggregateRowsIdx, applyAggregateRows: applyAggregateRows,
+    outputCols: outputCols,
     columnValues: columnValues,
 
     // unique

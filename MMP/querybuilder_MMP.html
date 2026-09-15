@@ -46,6 +46,10 @@
         <span class="proc-name">Aggregate Columns</span>
         <span class="proc-desc">One row out, one value per column</span>
       </button>
+      <button class="proc-item cat-summarise" onclick="addProcNode('aggregateRows')">
+        <span class="proc-name">Aggregate Rows</span>
+        <span class="proc-desc">One value per row, one column out</span>
+      </button>
       <div class="proc-group cat-branches">Branches</div>
       <button class="proc-item cat-branches" onclick="addProcNode('combine')">
         <span class="proc-name">Combine</span>
@@ -375,14 +379,14 @@
         <!-- ── NODE REFERENCE ──────────────────────────────── -->
         <section id="help-nodes">
           <h3>Node reference</h3>
-          <p>The Processing menu groups its ten nodes by what each does to the shape of the table.
+          <p>The Processing menu groups its eleven nodes by what each does to the shape of the table.
              The colour of a node on the canvas is its group, so you can read an unfamiliar graph at
              a glance: where it narrows, where it collapses, where branches meet.</p>
 
           <figure class="help-fig help-fig-narrow">
-            <svg viewBox="0 0 340 413" xmlns="http://www.w3.org/2000/svg" role="img"
+            <svg viewBox="0 0 340 447" xmlns="http://www.w3.org/2000/svg" role="img"
                  aria-label="The Processing menu, showing three colour-coded groups of nodes">
-              <rect x="8" y="8" width="324" height="397" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <rect x="8" y="8" width="324" height="431" rx="6" fill="#141414" stroke="#2a2a2a"/>
 
               <text x="22" y="32" fill="#b48ce0" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">RESHAPE</text>
               <text x="24" y="54" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Sort</text>
@@ -401,12 +405,14 @@
               <text x="24" y="256" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Whole table down to one value</text>
               <text x="24" y="277" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Columns</text>
               <text x="24" y="290" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row out, one value per column</text>
+              <text x="24" y="311" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Rows</text>
+              <text x="24" y="324" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One value per row, one column out</text>
 
-              <text x="22" y="321" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
-              <text x="24" y="343" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
-              <text x="24" y="356" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
-              <text x="24" y="377" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
-              <text x="24" y="390" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
+              <text x="22" y="355" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
+              <text x="24" y="377" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
+              <text x="24" y="390" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
+              <text x="24" y="411" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
+              <text x="24" y="424" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
               </svg>
           </figure>
 
@@ -456,11 +462,17 @@
           <p class="help-note">Rows collapse to a summary, and the columns are rewritten.</p>
           <dl class="help-defs">
             <dt>Aggregate</dt>
-            <dd>Reduces the whole table to a single value: a count, sum, average, minimum or
-                maximum of one column.</dd>
+            <dd>Reduces the whole table to a single value: a count, sum, average, median,
+                minimum or maximum of one column.</dd>
             <dt>Aggregate Columns</dt>
             <dd>One row out, with the chosen calculation applied to every numeric column at once.
                 Use it for a profile of a group rather than a single figure.</dd>
+            <dt>Aggregate Rows</dt>
+            <dd>The mirror of Aggregate Columns, and the one that runs across the page instead of
+                down it: one value for every row, and a single column out. The row count is
+                unchanged. It replaces the whole row rather than adding to it, because totalling a
+                row that still carries an ID is not a meaningful thing to have done &mdash; so put
+                a <b>Select</b> in front to narrow the row to the figures you mean to combine.</dd>
           </dl>
 
           <h4 class="help-cat help-cat-branches">Branches &mdash; rose</h4>
@@ -492,6 +504,11 @@
              once. Its setting chooses between the rows themselves and how many of them there
              are &mdash; it displays what arrives rather than computing anything, so for an
              average or any other figure, wire an <b>Aggregate</b> in front of it.</p>
+          <p class="help-node-desc">Showing the rows, it also offers a tick box per column, so you
+             can look at three columns of a wide table without wiring anything. This changes the
+             view and never the answer: no rows are lost, and Copy and Save write exactly the
+             columns shown. A <b>Select</b> upstream does the same job to the data itself, and the
+             two compose &mdash; Select narrows what arrives, this narrows what is shown of it.</p>
         </section>
 
         <!-- ── RESULTS ─────────────────────────────────────── -->

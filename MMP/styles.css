@@ -1131,6 +1131,26 @@ th.cmp-num { color: #383838 !important; }
   cursor: grab; position: relative; flex-shrink: 0;
   flex-direction: column; gap: 5px;
 }
+
+/* ── AGGREGATE ROWS SHAPE ────────────────────────────────── */
+.shape-aggrows {
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+
+/* Three rows, each collapsing rightwards to a single mark. The sibling glyph
+   runs down the page; this one runs across it, which is the only difference
+   between the two nodes and so the only thing the drawing has to say. */
+.aggr-glyph { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.aggr-row { display: flex; align-items: center; gap: 2px; }
+.aggr-row i { display: block; width: 5px; height: 3px; border-radius: 1px; opacity: 0.55; }
+.aggr-row b { display: block; width: 3px; height: 3px; border-radius: 50%; margin-left: 2px; opacity: 0.9; }
 .shape-aggregate { width: 106px; height: 72px; }
 .shape-aggcols   { width: 112px; height: 72px; }
 .shape-aggregate:active,
@@ -1401,6 +1421,8 @@ th.cmp-num { color: #383838 !important; }
 .agg-glyph b,
 .aggc-col i,
 .aggc-col b,
+.aggr-row i,
+.aggr-row b,
 .cmb-in i,
 .cmb-out i,
 .cmb-glyph b,
