@@ -18,7 +18,7 @@ module.exports = ({ describe, test }) => {
     h.set(s.id, 'pop', String(h.app.YEARS[0]));
     h.set(f.id, 'crit.0.field', 'specialisation');
     h.set(f.id, 'crit.0.value:specialisation', 'Data Science');
-    h.set(o.id, 'show', 'courses');
+    h.set(o.id, 'show', 'count');
     // The file name now lives beside Copy/Save, so it is set after a run.
     h.w.runQuery();
     h.setExportName(o.id, 'ds-cohort');
@@ -59,7 +59,7 @@ module.exports = ({ describe, test }) => {
       assert.ok(src.cfg.pop);
       assert.equal(flt.cfg.criteria[0].field, 'specialisation');
       assert.equal(flt.cfg.criteria[0].values.specialisation, 'Data Science');
-      assert.equal(out.cfg.show, 'courses');
+      assert.equal(out.cfg.show, 'count');
       assert.equal(out.cfg.filename, 'ds-cohort');
     });
 
@@ -222,7 +222,13 @@ module.exports = ({ describe, test }) => {
       }));
       const cfg = r.nodes[0].cfg;
       assert.equal(cfg.filename, '', 'should be defaulted, not undefined');
-      assert.ok('avgCol' in cfg);
+      // 'avgCol' used to be asserted here; the Output's Average shortcut that
+      // needed it is gone. The claim is about mergeCfg filling in absent keys,
+      // so it is made against a key the node actually has today.
+      assert.ok('show' in cfg, 'every key in defaultCfg should survive the merge');
+      assert.deepEqual(Object.keys(cfg).sort(),
+        Object.keys(boot().app.defaultCfg('output')).sort(),
+        'a loaded cfg should have exactly the shape a fresh one has');
     });
 
     test('a filter with no criteria gets one rather than an empty panel', () => {
@@ -261,12 +267,31 @@ module.exports = ({ describe, test }) => {
   });
 
   describe('saving to disk', () => {
-    test('save writes a .json file', () => {
+    test('save opens a naming dialog rather than writing immediately', () => {
+      // Changed in 1032821: a saved query is kept and re-opened months later,
+      // so it is named on the way out instead of getting a bare timestamp.
       const h = built();
       h.w.saveGraph(h.doc.createElement('button'));
+      assert.equal(h.saved.length, 0, 'nothing should be written before confirming');
+      assert.ok(h.app.saveDialogOpen(), 'the dialog should be open');
+    });
+
+    test('confirming the dialog writes a .json file under the typed name', () => {
+      const h = built();
+      h.w.saveGraph(h.doc.createElement('button'));
+      h.doc.getElementById('saveName').value = 'ds cohort';
+      h.w.confirmSaveGraph();
       const f = h.saved[h.saved.length - 1];
-      assert.ok(/\.json$/.test(f.name), f.name);
+      assert.equal(f.name, 'ds-cohort.json');
       assert.equal(JSON.parse(f.content).kind, KIND);
+    });
+
+    test('a typed extension is not doubled', () => {
+      const h = built();
+      h.w.saveGraph(h.doc.createElement('button'));
+      h.doc.getElementById('saveName').value = 'report.json';
+      h.w.confirmSaveGraph();
+      assert.equal(h.saved[h.saved.length - 1].name, 'report.json');
     });
 
     test('saving an empty canvas is refused with a message', () => {

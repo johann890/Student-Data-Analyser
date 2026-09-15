@@ -16,30 +16,38 @@
   <div class="proc-wrap">
     <button class="add-btn processing" onclick="toggleProcMenu(event)">Processing <span class="caret">&#9662;</span></button>
     <div class="proc-menu" id="procMenu" onclick="event.stopPropagation()">
-      <div class="proc-group">Reshape rows</div>
-      <button class="proc-item" onclick="addProcNode('sort')">
+      <div class="proc-group cat-reshape">Reshape</div>
+      <button class="proc-item cat-reshape" onclick="addProcNode('sort')">
         <span class="proc-name">Sort</span>
         <span class="proc-desc">Order rows by one or more columns</span>
       </button>
-      <button class="proc-item" onclick="addProcNode('take')">
+      <button class="proc-item cat-reshape" onclick="addProcNode('take')">
         <span class="proc-name">Take</span>
         <span class="proc-desc">Keep only the first N rows</span>
       </button>
-      <div class="proc-group">Summarise</div>
-      <button class="proc-item" onclick="addProcNode('aggregate')">
+      <button class="proc-item cat-reshape" onclick="addProcNode('unique')">
+        <span class="proc-name">Unique</span>
+        <span class="proc-desc">Drop duplicates, or list a column's distinct values</span>
+      </button>
+      <button class="proc-item cat-reshape" onclick="addProcNode('select')">
+        <span class="proc-name">Select</span>
+        <span class="proc-desc">Keep only the columns you choose</span>
+      </button>
+      <div class="proc-group cat-summarise">Summarise</div>
+      <button class="proc-item cat-summarise" onclick="addProcNode('aggregate')">
         <span class="proc-name">Aggregate</span>
         <span class="proc-desc">Whole table down to one value</span>
       </button>
-      <button class="proc-item" onclick="addProcNode('aggregateColumns')">
+      <button class="proc-item cat-summarise" onclick="addProcNode('aggregateColumns')">
         <span class="proc-name">Aggregate Columns</span>
         <span class="proc-desc">One row out, one value per column</span>
       </button>
-      <div class="proc-group">Branches</div>
-      <button class="proc-item" onclick="addProcNode('combine')">
+      <div class="proc-group cat-branches">Branches</div>
+      <button class="proc-item cat-branches" onclick="addProcNode('combine')">
         <span class="proc-name">Combine</span>
-        <span class="proc-desc">Stack branches with matching columns</span>
+        <span class="proc-desc">Stack rows, or join columns side by side</span>
       </button>
-      <button class="proc-item" onclick="addProcNode('compare')">
+      <button class="proc-item cat-branches" onclick="addProcNode('compare')">
         <span class="proc-name">Compare</span>
         <span class="proc-desc">Put branches side by side</span>
       </button>
@@ -61,6 +69,13 @@
   <button class="file-btn" onclick="zoomToFit()" title="Fit every node on screen  ( F )">Fit</button>
   <div class="sep"></div>
   <button class="clear-btn" onclick="clearAll()">Clear</button>
+  <!-- Help sits with Clear at the end of the left-hand run of controls. Both are
+       things you reach for occasionally rather than while building, so they read
+       as one group. Run Query alone is pushed to the right edge by its auto
+       margin, anchoring the corner where the eye finishes, and the empty gap in
+       between keeps the destructive Clear well away from the button people press
+       constantly. -->
+  <button class="help-btn" onclick="openHelp(this)" title="How to use this tool  ( ? )" aria-label="Help">?</button>
   <button class="run-btn" onclick="runQuery()">Run Query</button>
 </div>
 
@@ -83,14 +98,533 @@
       <button class="sel-del" onclick="deleteSelection()" title="Delete selected nodes  ( Delete )">Delete</button>
     </div>
   </div>
-  <div class="output-panel">
-    <div class="panel-head">Results</div>
+  <!-- The panel is deliberately narrow by default: a wide results column is a
+       narrow canvas, and most of the time the canvas is what is being worked on.
+       Two ways to widen it, because they answer different needs. The handle is
+       for settling on a width and leaving it there. The Wide button is for the
+       one table with too many columns to read at the default width — one click
+       out, one click back, with the chosen handle width remembered underneath so
+       returning does not lose it. -->
+  <div class="panel-resize" id="panelResize" role="separator" aria-orientation="vertical"
+       tabindex="0" aria-label="Resize the results panel"
+       title="Drag to resize the results panel  ( double-click to reset )"></div>
+  <div class="output-panel" id="outputPanel">
+    <div class="panel-head">
+      <span>Results</span>
+      <button class="panel-wide-btn" id="panelWideBtn" onclick="togglePanelWide(this)"
+              aria-pressed="false" title="Widen the panel to see every column  ( W )">Wide</button>
+    </div>
     <div class="panel-body" id="panelBody">
       <div class="placeholder">Run a query to see results</div>
     </div>
   </div>
 </div>
 
+
+<!-- HELP DIALOG
+     Content lives here in markup rather than in a JavaScript string, so it can
+     be read, corrected and translated without touching the application logic.
+     The script only opens, closes and scrolls it.
+
+     The figures are drawn, not captured. Each is inline SVG in the interface's
+     own palette, which means it scales with the page, needs no image files
+     alongside the HTML, and cannot rot into a stale screenshot of an older
+     build the way a PNG would. Numbered badges on the drawing key into the
+     numbered list beneath it, so the explanations stay selectable text. -->
+<div class="help-dialog" id="helpDialog" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+  <div class="help-card">
+
+    <div class="help-top">
+      <h2 class="help-title" id="helpTitle">Student Data Analyser &mdash; how to use it</h2>
+      <button class="help-close" onclick="closeHelp()" aria-label="Close help">&times;</button>
+    </div>
+
+    <div class="help-main">
+      <nav class="help-nav" id="helpNav">
+        <button class="help-navitem" data-goto="help-start">Start here</button>
+        <button class="help-navitem" data-goto="help-toolbar">The toolbar</button>
+        <button class="help-navitem" data-goto="help-node">Anatomy of a node</button>
+        <button class="help-navitem" data-goto="help-connect">Connecting nodes</button>
+        <button class="help-navitem" data-goto="help-nodes">Node reference</button>
+        <button class="help-navitem" data-goto="help-results">Reading results</button>
+        <button class="help-navitem" data-goto="help-files">Saving a query</button>
+        <button class="help-navitem" data-goto="help-keys">Keyboard and mouse</button>
+      </nav>
+
+      <div class="help-body" id="helpBody">
+
+        <!-- ── START ───────────────────────────────────────── -->
+        <section id="help-start">
+          <h3>Start here</h3>
+          <p>This tool answers questions about student enrolment data by letting you build the
+             question out of parts, instead of writing a query in a language. Each part is a
+             <em>node</em> on the canvas. You wire nodes together, and data flows along the wires
+             from left to right.</p>
+
+          <p>Every query has the same three-part spine:</p>
+          <ol class="help-steps">
+            <li><b>A Source</b> &mdash; where the rows come from. Every query starts with one.</li>
+            <li><b>Processing</b> &mdash; any number of nodes that narrow, reorder, summarise or
+                combine those rows. This part can be empty.</li>
+            <li><b>An Output</b> &mdash; where the answer appears, in the panel on the right.</li>
+          </ol>
+
+          <p>Nothing is calculated until you press <b>Run Query</b>. Until then the canvas is a
+             description of a question, not an answer to it &mdash; so you can build and rearrange
+             freely without waiting for anything.</p>
+
+          <div class="help-tip">
+            <b>The quickest possible start:</b> click <b>Source</b>, then <b>Output</b>, drag the
+            Output near the Source until a wire appears, and press <b>Run Query</b>.
+          </div>
+        </section>
+
+        <!-- ── TOOLBAR ─────────────────────────────────────── -->
+        <section id="help-toolbar">
+          <h3>The toolbar</h3>
+          <p>Everything you can do to a query lives along the top, grouped by purpose: build it on
+             the left, manage the file in the middle, change your view on the right.</p>
+
+          <figure class="help-fig">
+            <svg viewBox="0 0 900 78" xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="The toolbar, with its six groups of controls numbered">
+              <rect x="4" y="14" width="892" height="44" rx="6" fill="#181818" stroke="#252525"/>
+
+              <text x="18" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">ADD</text>
+              <rect x="44"  y="25" width="58" height="22" rx="5" fill="none" stroke="#2d6640"/>
+              <text x="73"  y="40" fill="#5ec87a" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Source</text>
+              <rect x="108" y="25" width="50" height="22" rx="5" fill="none" stroke="#7a4a18"/>
+              <text x="133" y="40" fill="#f0944a" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Filter</text>
+              <rect x="164" y="25" width="94" height="22" rx="5" fill="none" stroke="#5a3a7a"/>
+              <text x="211" y="40" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Processing &#9662;</text>
+              <rect x="264" y="25" width="56" height="22" rx="5" fill="none" stroke="#1e7fff"/>
+              <text x="292" y="40" fill="#3db8ff" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Output</text>
+
+              <line x1="332" y1="26" x2="332" y2="46" stroke="#2a2a2a"/>
+              <text x="344" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">QUERY</text>
+              <rect x="384" y="25" width="42" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
+              <text x="405" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Save</text>
+              <rect x="432" y="25" width="42" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
+              <text x="453" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Load</text>
+
+              <line x1="486" y1="26" x2="486" y2="46" stroke="#2a2a2a"/>
+              <text x="498" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">VIEW</text>
+              <rect x="536" y="25" width="98" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
+              <line x1="568" y1="27" x2="568" y2="45" stroke="#2a2a2a"/>
+              <line x1="602" y1="27" x2="602" y2="45" stroke="#2a2a2a"/>
+              <text x="552" y="40" fill="#b0b0b0" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">&minus;</text>
+              <text x="585" y="40" fill="#b0b0b0" font-size="10" font-family="system-ui, sans-serif" text-anchor="middle">100%</text>
+              <text x="618" y="40" fill="#b0b0b0" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">+</text>
+              <rect x="642" y="25" width="36" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
+              <text x="660" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Fit</text>
+
+              <rect x="688" y="25" width="44" height="22" rx="5" fill="none" stroke="#4a2020"/>
+              <text x="710" y="40" fill="#c07070" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Clear</text>
+
+              <circle cx="749" cy="36" r="13" fill="none" stroke="#2a2a2a"/>
+              <text x="749" y="40" fill="#b0b0b0" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">?</text>
+              <rect x="802" y="25" width="78" height="22" rx="5" fill="#051830" stroke="#1e7fff"/>
+              <text x="841" y="40" fill="#3db8ff" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle" font-weight="600">Run Query</text>
+
+              <g font-family="system-ui, sans-serif" font-size="10" font-weight="700" text-anchor="middle">
+                <circle cx="44"  cy="14" r="8.5" fill="#e8e8e8"/><text x="44"  y="17.5" fill="#111">1</text>
+                <circle cx="164" cy="14" r="8.5" fill="#e8e8e8"/><text x="164" y="17.5" fill="#111">2</text>
+                <circle cx="384" cy="14" r="8.5" fill="#e8e8e8"/><text x="384" y="17.5" fill="#111">3</text>
+                <circle cx="536" cy="14" r="8.5" fill="#e8e8e8"/><text x="536" y="17.5" fill="#111">4</text>
+                <circle cx="736" cy="20" r="8.5" fill="#e8e8e8"/><text x="736" y="23.5" fill="#111">5</text>
+                <circle cx="802" cy="14" r="8.5" fill="#e8e8e8"/><text x="802" y="17.5" fill="#111">6</text>
+              </g>
+            </svg>
+            <ol class="help-key">
+              <li><b>Add</b> &mdash; puts a new node on the canvas. Source and Output are single
+                  buttons because there is only one of each.</li>
+              <li><b>Processing</b> &mdash; opens a menu of the eight processing nodes, grouped
+                  by what they do to the shape of the table.</li>
+              <li><b>Query</b> &mdash; Save writes the whole graph to a <code>.json</code> file;
+                  Load opens one back.</li>
+              <li><b>View</b> &mdash; zoom out, current zoom (click to return to 100%), zoom in,
+                  and Fit to bring every node back on screen.</li>
+              <li><b>Help</b> &mdash; this window.</li>
+              <li><b>Run Query</b> &mdash; evaluates the graph and fills the results panel. Nothing
+                  computes until you press it. It sits at the right-hand end of the bar, where the
+                  building sequence finishes.</li>
+            </ol>
+          </figure>
+        </section>
+
+        <!-- ── NODE ANATOMY ────────────────────────────────── -->
+        <section id="help-node">
+          <h3>Anatomy of a node</h3>
+          <p>Every node has the same two parts: a coloured shape you drag around, and a settings
+             panel underneath it. The shape says what kind of node it is; the panel says what this
+             particular one does.</p>
+
+          <figure class="help-fig">
+            <svg viewBox="0 0 420 250" xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="A Filter node, with its shape, remove button, result readout and settings panel numbered">
+              <rect x="157" y="26" width="106" height="84" rx="3" fill="#110900" stroke="#7a4a18" stroke-width="2.5"/>
+              <text x="210" y="62" fill="#f0944a" font-size="9" font-weight="700" letter-spacing="1"
+                    font-family="system-ui, sans-serif" text-anchor="middle">FILTER</text>
+              <text x="210" y="82" fill="#9dd0ff" font-size="11" font-weight="700"
+                    font-family="system-ui, sans-serif" text-anchor="middle">112 rows</text>
+
+              <circle cx="252" cy="36" r="9" fill="#1a1a1a" stroke="#3a3a3a"/>
+              <text x="252" y="40" fill="#888" font-size="10" font-family="system-ui, sans-serif" text-anchor="middle">&times;</text>
+
+              <rect x="100" y="120" width="220" height="106" rx="7" fill="#0c0c0c" stroke="#202020"/>
+              <text x="112" y="138" fill="#888" font-size="8" letter-spacing="0.8"
+                    font-family="system-ui, sans-serif">FIELD</text>
+              <rect x="110" y="144" width="200" height="24" rx="4" fill="#121212" stroke="#282828"/>
+              <text x="121" y="160" fill="#d0d0d0" font-size="10" font-family="system-ui, sans-serif">Grade average</text>
+              <text x="297" y="160" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">&#9662;</text>
+              <rect x="110" y="180" width="86" height="24" rx="4" fill="#121212" stroke="#282828"/>
+              <text x="121" y="196" fill="#d0d0d0" font-size="10" font-family="system-ui, sans-serif">at least</text>
+              <text x="183" y="196" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">&#9662;</text>
+              <rect x="204" y="180" width="106" height="24" rx="4" fill="#121212" stroke="#282828"/>
+              <text x="215" y="196" fill="#d0d0d0" font-size="10" font-family="system-ui, sans-serif">5.0</text>
+
+              <g font-family="system-ui, sans-serif" font-size="10" font-weight="700" text-anchor="middle">
+                <circle cx="157" cy="26" r="8.5" fill="#e8e8e8"/><text x="157" y="29.5" fill="#111">1</text>
+                <circle cx="272" cy="28" r="8.5" fill="#e8e8e8"/><text x="272" y="31.5" fill="#111">2</text>
+                <circle cx="290" cy="82" r="8.5" fill="#e8e8e8"/><text x="290" y="85.5" fill="#111">3</text>
+                <circle cx="100" cy="120" r="8.5" fill="#e8e8e8"/><text x="100" y="123.5" fill="#111">4</text>
+              </g>
+            </svg>
+            <ol class="help-key">
+              <li><b>The shape.</b> Drag it to move the node. Colour and outline say what it is:
+                  a green circle is a Source, an orange rectangle a Filter, a blue rounded box an
+                  Output, and processing nodes take the colour of their category.</li>
+              <li><b>Remove.</b> Appears when you hover over the node. Deletes it and any wires
+                  attached to it.</li>
+              <li><b>Result readout.</b> After a run, each node shows what came out of it &mdash;
+                  usually a row count. This is how you find the step where a query went wrong,
+                  rather than only seeing the final answer.</li>
+              <li><b>Settings.</b> What this node does. The options offered depend on the columns
+                  actually arriving, so a node wired to a different branch may offer different
+                  choices.</li>
+            </ol>
+          </figure>
+        </section>
+
+        <!-- ── CONNECTING ──────────────────────────────────── -->
+        <section id="help-connect">
+          <h3>Connecting nodes</h3>
+          <p>There are no wires to draw by hand. <b>Drag one node near another</b> and a wire
+             appears between them; drag it away again and the wire goes. Direction is worked out
+             from what the two nodes are, so a Filter dropped beside a Source is always fed by it,
+             never the other way round.</p>
+
+          <figure class="help-fig">
+            <svg viewBox="0 0 540 200" xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="Two Source nodes feeding a Combine node, which feeds an Output node">
+              <defs>
+                <marker id="hArrow" markerWidth="9" markerHeight="9" refX="8" refY="3"
+                        orient="auto"><path d="M0,0 L8,3 L0,6 z" fill="#4a4a4a"/></marker>
+              </defs>
+
+              <circle cx="62" cy="52" r="33" fill="#071510" stroke="#2d6640" stroke-width="2.5"/>
+              <text x="62" y="49" fill="#5ec87a" font-size="8" font-weight="700" letter-spacing="1"
+                    font-family="system-ui, sans-serif" text-anchor="middle">SOURCE</text>
+              <text x="62" y="62" fill="#6f6f6f" font-size="8" font-family="system-ui, sans-serif" text-anchor="middle">2022</text>
+
+              <circle cx="62" cy="148" r="33" fill="#071510" stroke="#2d6640" stroke-width="2.5"/>
+              <text x="62" y="145" fill="#5ec87a" font-size="8" font-weight="700" letter-spacing="1"
+                    font-family="system-ui, sans-serif" text-anchor="middle">SOURCE</text>
+              <text x="62" y="158" fill="#6f6f6f" font-size="8" font-family="system-ui, sans-serif" text-anchor="middle">2023</text>
+
+              <path d="M96,58 C150,66 165,80 208,90" fill="none" stroke="#4a4a4a" stroke-width="1.5" marker-end="url(#hArrow)"/>
+              <path d="M96,142 C150,134 165,120 208,110" fill="none" stroke="#4a4a4a" stroke-width="1.5" marker-end="url(#hArrow)"/>
+
+              <rect x="220" y="62" width="106" height="76" rx="3" fill="#170a11" stroke="#7a2f52" stroke-width="2.5"/>
+              <text x="273" y="105" fill="#e089ae" font-size="9" font-weight="700" letter-spacing="1"
+                    font-family="system-ui, sans-serif" text-anchor="middle">COMBINE</text>
+
+              <path d="M330,100 L400,100" fill="none" stroke="#4a4a4a" stroke-width="1.5" marker-end="url(#hArrow)"/>
+
+              <rect x="410" y="67" width="106" height="66" rx="10" fill="#051830" stroke="#1e7fff" stroke-width="2.5"/>
+              <text x="463" y="104" fill="#3db8ff" font-size="9" font-weight="700" letter-spacing="1"
+                    font-family="system-ui, sans-serif" text-anchor="middle">OUTPUT</text>
+
+              <g font-family="system-ui, sans-serif" font-size="10" font-weight="700" text-anchor="middle">
+                <circle cx="152" cy="62" r="8.5" fill="#e8e8e8"/><text x="152" y="65.5" fill="#111">1</text>
+                <circle cx="220" cy="62" r="8.5" fill="#e8e8e8"/><text x="220" y="65.5" fill="#111">2</text>
+                <circle cx="365" cy="88" r="8.5" fill="#e8e8e8"/><text x="365" y="91.5" fill="#111">3</text>
+              </g>
+            </svg>
+            <ol class="help-key">
+              <li><b>A wire</b> carries a table from one node to the next. Hover over it to see the
+                  columns and the first rows passing through &mdash; the fastest way to check that a
+                  step did what you meant.</li>
+              <li><b>Combine and Compare accept several wires.</b> They exist to bring branches
+                  together, so more than one arrow may land on them.</li>
+              <li><b>Every other node takes exactly one input.</b> Dragging a second wire onto a
+                  node that is already fed is refused rather than silently merged, so a query never
+                  quietly means something other than it looks like.</li>
+            </ol>
+          </figure>
+
+          <p>To branch, wire several nodes to the <em>same</em> source: one table can feed any number
+             of downstream nodes. That is how you ask two questions of one population and then bring
+             the answers back together with Compare.</p>
+        </section>
+
+        <!-- ── NODE REFERENCE ──────────────────────────────── -->
+        <section id="help-nodes">
+          <h3>Node reference</h3>
+          <p>The Processing menu groups its nine nodes by what each does to the shape of the table.
+             The colour of a node on the canvas is its group, so you can read an unfamiliar graph at
+             a glance: where it narrows, where it collapses, where branches meet.</p>
+
+          <figure class="help-fig help-fig-narrow">
+            <svg viewBox="0 0 340 392" xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="The Processing menu, showing three colour-coded groups of nodes">
+              <rect x="8" y="8" width="324" height="376" rx="6" fill="#141414" stroke="#2a2a2a"/>
+
+              <text x="22" y="32" fill="#b48ce0" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">RESHAPE</text>
+              <text x="24" y="54" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Sort</text>
+              <text x="24" y="67" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Order rows by one or more columns</text>
+              <text x="24" y="88" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Take</text>
+              <text x="24" y="101" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Keep only the first N rows</text>
+              <text x="24" y="122" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Unique</text>
+              <text x="24" y="135" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Drop duplicates, or list distinct values</text>
+              <text x="24" y="156" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Select</text>
+              <text x="24" y="169" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Keep only the columns you choose</text>
+
+              <text x="22" y="200" fill="#5ac8c8" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">SUMMARISE</text>
+              <text x="24" y="222" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate</text>
+              <text x="24" y="235" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Whole table down to one value</text>
+              <text x="24" y="256" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Columns</text>
+              <text x="24" y="269" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row out, one value per column</text>
+
+              <text x="22" y="300" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
+              <text x="24" y="322" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
+              <text x="24" y="335" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
+              <text x="24" y="356" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
+              <text x="24" y="369" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
+              </svg>
+          </figure>
+
+          <h4 class="help-cat help-cat-source">Source</h4>
+          <p class="help-node-desc">Where a query begins. It reads the rows in the data file and
+             hands them on, one row per student, with that student's courses carried inside the
+             row. Every query needs at least one, and a query with none has nothing to compute.
+             Several Sources in one graph is normal &mdash; that is how you reach across years.</p>
+
+          <h4 class="help-cat help-cat-filter">Filter</h4>
+          <p class="help-node-desc">Keeps the rows that match a condition and discards the rest.
+             Add more than one condition to narrow further; a row must satisfy all of them. The
+             fields on offer come from whatever is arriving, and the comparison changes to suit the
+             column &mdash; a number gets <i>at least</i> and <i>at most</i>, a category gets
+             <i>is</i> and <i>is not</i>.</p>
+
+          <h4 class="help-cat help-cat-reshape">Reshape &mdash; violet</h4>
+          <p class="help-note">The same data, narrowed or reordered. Nothing is summarised.</p>
+          <dl class="help-defs">
+            <dt>Sort</dt>
+            <dd>Orders rows by a column, ascending or descending. Add further keys to break ties:
+                the first key decides, the second settles what the first left equal.</dd>
+            <dt>Take</dt>
+            <dd>Keeps the first N rows and drops the rest. On its own that is arbitrary, so it is
+                nearly always used straight after Sort &mdash; together they mean <i>top N</i>.</dd>
+            <dt>Unique</dt>
+            <dd>Two modes. With no column named it removes duplicate rows, comparing whole rows.
+                Name a column and it returns that column's distinct values instead, one per row
+                &mdash; which is how you get a list of the courses or the years present in a table.</dd>
+            <dt>Select</dt>
+            <dd>Keeps the columns you tick and drops the rest. The rows are untouched &mdash; same
+                rows, same order, same count &mdash; so this narrows a table without summarising it.
+                Put one in front of an Output to show three columns instead of seven, or in front of
+                an Aggregate to make plain which column is being measured. Columns stay in the order
+                they arrive, and at least one has to be kept.</dd>
+          </dl>
+
+          <h4 class="help-cat help-cat-summarise">Summarise &mdash; teal</h4>
+          <p class="help-note">Rows collapse to a summary, and the columns are rewritten.</p>
+          <dl class="help-defs">
+            <dt>Aggregate</dt>
+            <dd>Reduces the whole table to a single value: a count, sum, average, minimum or
+                maximum of one column.</dd>
+            <dt>Aggregate Columns</dt>
+            <dd>One row out, with the chosen calculation applied to every numeric column at once.
+                Use it for a profile of a group rather than a single figure.</dd>
+          </dl>
+
+          <h4 class="help-cat help-cat-branches">Branches &mdash; rose</h4>
+          <p class="help-note">Several tables in, one out. These are the only nodes that take more
+             than one wire.</p>
+          <dl class="help-defs">
+            <dt>Combine</dt>
+            <dd>Four modes, in two kinds. <b>Merge</b> adds vertically: branches stack into one
+                longer table, so their columns have to match, and duplicates are kept unless you ask
+                for them to be dropped. <b>Intersect</b> and <b>Difference</b> narrow that stack to
+                the rows present in every branch, or present in the base alone &mdash; which is how
+                you ask who left between two years.
+                <br><b>Join</b> adds horizontally instead: it matches rows on a column you name and
+                puts the other branches' columns onto the end of each base row, so one student's
+                2022 and 2023 figures sit side by side on one row. The result has the base's rows,
+                never more. A base row with no match is dropped unless you tick
+                <i>Keep base rows with no match</i>, which blanks the missing cells instead. Where
+                two branches carry the same column name, the incoming one is renamed with the node
+                it came from rather than overwriting what is there.</dd>
+            <dt>Compare</dt>
+            <dd>Puts branches beside each other instead, one column per branch, with a row per
+                measure. Use it to hold two populations up against one another rather than to pool
+                them.</dd>
+          </dl>
+
+          <h4 class="help-cat help-cat-output">Output</h4>
+          <p class="help-node-desc">Where an answer appears. Each Output becomes a block in the
+             results panel. A graph may have several, so one run can answer several questions at
+             once. Its setting chooses between the rows themselves and how many of them there
+             are &mdash; it displays what arrives rather than computing anything, so for an
+             average or any other figure, wire an <b>Aggregate</b> in front of it.</p>
+        </section>
+
+        <!-- ── RESULTS ─────────────────────────────────────── -->
+        <section id="help-results">
+          <h3>Reading results</h3>
+          <p>Pressing Run Query fills the panel on the right, one block per Output node, in the
+             order the Outputs were added.</p>
+
+          <figure class="help-fig help-fig-narrow">
+            <svg viewBox="0 0 300 250" xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="The results panel showing a table of rows and the export controls">
+              <rect x="4" y="4" width="292" height="242" rx="4" fill="#0e0e0e" stroke="#1c1c1c"/>
+              <text x="18" y="26" fill="#484848" font-size="9" letter-spacing="1" font-family="system-ui, sans-serif">RESULTS</text>
+              <line x1="4" y1="36" x2="296" y2="36" stroke="#1c1c1c"/>
+
+              <text x="18" y="56" fill="#3db8ff" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">OUTPUT 1</text>
+              <text x="282" y="56" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif" text-anchor="end">112 rows</text>
+
+              <rect x="18" y="66" width="264" height="20" fill="#141414"/>
+              <text x="28"  y="80" fill="#8f8f8f" font-size="9" font-family="system-ui, sans-serif">ID</text>
+              <text x="130" y="80" fill="#8f8f8f" font-size="9" font-family="system-ui, sans-serif">Course</text>
+              <text x="228" y="80" fill="#8f8f8f" font-size="9" font-family="system-ui, sans-serif">Grade</text>
+              <text x="28"  y="100" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">300103250</text>
+              <text x="130" y="100" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">COMP261</text>
+              <text x="228" y="100" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">A</text>
+              <rect x="18" y="106" width="264" height="20" fill="#121212"/>
+              <text x="28"  y="120" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">300103250</text>
+              <text x="130" y="120" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">DATA201</text>
+              <text x="228" y="120" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">D</text>
+              <text x="28"  y="140" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">300118904</text>
+              <text x="130" y="140" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">SWEN221</text>
+              <text x="228" y="140" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">B+</text>
+
+              <rect x="18" y="162" width="44" height="20" rx="4" fill="none" stroke="#2f2f2f"/>
+              <text x="40" y="176" fill="#9a9a9a" font-size="9" font-family="system-ui, sans-serif" text-anchor="middle">Copy</text>
+              <rect x="68" y="162" width="44" height="20" rx="4" fill="none" stroke="#2f2f2f"/>
+              <text x="90" y="176" fill="#9a9a9a" font-size="9" font-family="system-ui, sans-serif" text-anchor="middle">Save</text>
+
+              <rect x="18" y="196" width="180" height="24" rx="4" fill="#121212" stroke="#282828"/>
+              <text x="28"  y="212" fill="#d0d0d0" font-size="10" font-family="system-ui, sans-serif">output1</text>
+              <text x="176" y="212" fill="#4a4a4a" font-size="10" font-family="system-ui, sans-serif">.csv</text>
+
+              <g font-family="system-ui, sans-serif" font-size="10" font-weight="700" text-anchor="middle">
+                <circle cx="18"  cy="56"  r="8.5" fill="#e8e8e8"/><text x="18"  y="59.5" fill="#111">1</text>
+                <circle cx="18"  cy="66"  r="0"   fill="none"/>
+                <circle cx="18"  cy="162" r="8.5" fill="#e8e8e8"/><text x="18"  y="165.5" fill="#111">2</text>
+                <circle cx="18"  cy="196" r="8.5" fill="#e8e8e8"/><text x="18"  y="199.5" fill="#111">3</text>
+              </g>
+            </svg>
+            <ol class="help-key">
+              <li><b>One block per Output</b>, with the row count beside its name, then the table
+                  itself. Long tables scroll inside the panel.</li>
+              <li><b>Copy</b> puts the table on the clipboard, ready to paste into a spreadsheet.
+                  <b>Save</b> writes it out as a CSV file.</li>
+              <li><b>The file name</b> for that CSV. The <code>.csv</code> ending is fixed and
+                  cannot be typed over.</li>
+            </ol>
+          </figure>
+
+          <h4>Making the panel wider</h4>
+          <p>The panel starts narrow so that the canvas has room. When a table has more columns
+             than fit, there are two ways to widen it, and the canvas gives up the space rather
+             than being covered.</p>
+          <ul class="help-steps">
+            <li><b>Wide</b>, at the top of the panel, opens it far enough to read a full row at
+               once, and a second press puts it back. <kbd>W</kbd> does the same.</li>
+            <li><b>The edge between the canvas and the panel</b> can be dragged to any width in
+               between. Double-click it to return to the starting width.</li>
+          </ul>
+          <p>Whichever width you settle on is remembered the next time you open the tool. It is a
+             setting of your own, not part of a query &mdash; saved <code>.json</code> files carry
+             the graph only, so opening someone else's query leaves your layout alone.</p>
+
+          <div class="help-tip">
+            <b>Checking a query rather than trusting it:</b> every node shows its own row count
+            after a run, and hovering a wire shows the table passing along it. Between them you can
+            follow the data step by step and find the point where a result stopped being what you
+            expected.
+          </div>
+        </section>
+
+        <!-- ── FILES ───────────────────────────────────────── -->
+        <section id="help-files">
+          <h3>Saving a query</h3>
+          <p><b>Save</b> writes the whole graph &mdash; every node, its settings and every wire
+             &mdash; to a <code>.json</code> file, and asks you to name it first. The
+             <code>.json</code> ending is fixed, so a saved query is always one the tool can open
+             again. Save a second time and it offers the name you used before, so revising a query
+             does not scatter near-identical files.</p>
+          <p><b>Load</b> opens one back onto the canvas, replacing whatever is there. Only
+             <code>.json</code> files are accepted.</p>
+          <p>What a file holds is the <em>question</em>, not the answer. Opening a saved query
+             restores the graph, and pressing Run Query evaluates it against the data as it stands
+             then &mdash; so the same query re-run next year gives next year's answer.</p>
+        </section>
+
+        <!-- ── KEYS ────────────────────────────────────────── -->
+        <section id="help-keys">
+          <h3>Keyboard and mouse</h3>
+          <table class="help-keys">
+            <tr><td>Drag a node near another</td><td>Wire them together</td></tr>
+            <tr><td>Drag a node away</td><td>Break the wire</td></tr>
+            <tr><td>Hover a wire</td><td>Preview the table passing along it</td></tr>
+            <tr><td>Drag on empty canvas</td><td>Select everything inside the box</td></tr>
+            <tr><td><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>A</kbd></td><td>Select all nodes</td></tr>
+            <tr><td><kbd>Delete</kbd> or <kbd>Backspace</kbd></td><td>Delete the selection</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>Clear the selection, or close a dialog</td></tr>
+            <tr><td>Hold <kbd>Space</kbd> and drag, or drag with the middle button</td><td>Pan the canvas</td></tr>
+            <tr><td>Scroll, or <kbd>+</kbd> and <kbd>&minus;</kbd></td><td>Zoom in and out</td></tr>
+            <tr><td><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>0</kbd></td><td>Back to 100%</td></tr>
+            <tr><td><kbd>F</kbd></td><td>Fit every node on screen</td></tr>
+            <tr><td><kbd>W</kbd></td><td>Widen the results panel, and back again</td></tr>
+            <tr><td>Drag the panel's left edge</td><td>Set the results panel to any width</td></tr>
+            <tr><td><kbd>?</kbd></td><td>Open this window</td></tr>
+          </table>
+        </section>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SAVE DIALOG
+     Static markup like the marquee and selection bar, rather than built on
+     demand: it is one fixed shape, and having it in the page means it can be
+     inspected and restyled without reading the script.
+
+     The buttons are wired inline like the toolbar's. Dismissing by clicking the
+     backdrop is not, because it carries a condition — see app.js. -->
+<div class="save-dialog" id="saveDialog">
+  <div class="save-card" role="dialog" aria-modal="true" aria-labelledby="saveTitle">
+    <h2 class="save-title" id="saveTitle">Save query</h2>
+    <p class="save-sub">The file records the query, not its results. Open it later and press Run Query to evaluate it against the data as it stands then.</p>
+
+    <label class="save-field">
+      <input type="text" id="saveName" spellcheck="false" autocomplete="off"
+             aria-label="File name">
+      <span class="save-ext">.json</span>
+    </label>
+    <div class="save-hint" id="saveHint"></div>
+
+    <div class="save-actions">
+      <button class="file-btn" onclick="closeSaveDialog()">Cancel</button>
+      <button class="save-go" onclick="confirmSaveGraph()">Save</button>
+    </div>
+  </div>
+</div>
 
 <script src="app.js"></script>
 </body>

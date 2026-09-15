@@ -312,20 +312,79 @@ select option {
 .remove-criterion-btn:hover { color: #c05050; }
 
 /* OUTPUT PANEL */
+/* The width is a custom property rather than a fixed value so the drag handle
+   and the Wide button can both drive it by writing one number, and so the
+   default lives here in the stylesheet instead of being hard-coded in script. */
+:root { --panel-w: 300px; }
 .output-panel {
-  width: 300px;
+  width: var(--panel-w);
   background: #0e0e0e;
   border-left: 1px solid #1c1c1c;
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
+  min-width: 0;
 }
+
+/* The grab strip sits in the flex row between canvas and panel, so widening the
+   panel narrows the canvas rather than covering it. Nodes keep their world
+   coordinates either way, but shrinking means nothing ends up hidden behind an
+   overlay, and the existing pan clamp already knows how to cope with a canvas
+   that changed size. The strip is 5px of real estate with a 9px hit area hung
+   off it, which is what makes it catchable without making it visible. */
+.panel-resize {
+  width: 5px;
+  flex-shrink: 0;
+  background: #0e0e0e;
+  border-left: 1px solid #141414;
+  cursor: col-resize;
+  position: relative;
+  z-index: 6;
+}
+.panel-resize::after {
+  content: "";
+  position: absolute;
+  top: 0; bottom: 0; left: -4px; right: -4px;
+}
+.panel-resize:hover,
+.panel-resize:focus-visible { background: #1e7fff33; outline: none; }
+.panel-resize.dragging { background: #1e7fff66; }
+
+/* While a drag is live the cursor must not flicker as the pointer crosses nodes
+   or text, and nothing on the page should select. Both are set on <body> for
+   the duration rather than guessed at per element. */
+body.panel-resizing { cursor: col-resize; user-select: none; -webkit-user-select: none; }
+body.panel-resizing * { cursor: col-resize !important; }
+
 .panel-head {
-  padding: 11px 16px;
+  padding: 8px 10px 8px 16px;
   border-bottom: 1px solid #1c1c1c;
   font-size: 10px; color: #484848;
   text-transform: uppercase; letter-spacing: 1px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 37px;  /* holds the original head height now that a button lives in it */
+}
+.panel-wide-btn {
+  background: transparent;
+  border: 1px solid #242424;
+  border-radius: 3px;
+  color: #5a5a5a;
+  font-family: inherit;
+  font-size: 9px;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  cursor: pointer;
+  flex-shrink: 0;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.panel-wide-btn:hover { border-color: #1e7fff; color: #3db8ff; background: #051830; }
+.panel-wide-btn[aria-pressed="true"] {
+  border-color: #1e7fff; color: #3db8ff; background: #051830;
 }
 .panel-body {
   flex: 1; overflow-y: auto;
@@ -472,10 +531,14 @@ select option {
   position: absolute;
   z-index: 50;
   pointer-events: none; /* never steals hover from the line beneath it */
-  width: 230px;
-  max-width: 230px;
-  /* The table inside sizes to its content by default, so a wide row pushed
-     straight through this border instead of being clipped by it. */
+  /* Widened from 230px once fixed table layout made overflow impossible. The
+     original width was chosen while a wide row could still push through the
+     border; the fix for that was `table-layout: fixed` plus per-cell ellipsis
+     below, not the narrow box, so the box no longer has to pay for it. Sized to
+     hold PREVIEW_COLS columns at the same density the four-column version had —
+     change the two together or columns start to crowd. */
+  width: 340px;
+  max-width: 340px;
   overflow: hidden;
   background: #0b0b0c;
   border: 1px solid #2a2a2e;
@@ -704,9 +767,6 @@ th.cmp-num { color: #383838 !important; }
 }
 .crs-cell:hover { color: #7ab3ff; }
 
-/* Course breakdown tables reuse .rtable/.cmp-table. The code column is fixed so
-   the two numeric columns keep a stable position down the list. */
-.crs-table th:first-child { width: 44%; }
 .result-card .cmp-table td.cmp-cell-label {
   font-variant-numeric: tabular-nums;
   cursor: help;
@@ -1119,3 +1179,663 @@ th.cmp-num { color: #383838 !important; }
   padding: 1px 0;
 }
 .cmb-check input { width: auto; margin: 0; cursor: pointer; }
+
+/* ═══════════════════════════════════════════════════════════
+   UNIQUE NODE
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Geometry only. The colour comes from the PROCESSING CATEGORY COLOURS block at
+   the foot of this file, where Unique is grouped with Sort and Take as a
+   row-shaping node — a hue set once for the category rather than per node.
+
+   The glyph is defined there too, for the same reason: it is drawn in
+   currentColor, so it cannot drift out of step with the shape around it. */
+.shape-unique {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-unique:active { cursor: grabbing; }
+
+/* Geometry only; the violet comes from the category block at the foot of this
+   file, where Select joins Sort, Take and Unique. It belongs with them because
+   it leaves the data alone — Unique in single-column mode already narrows a
+   table to one column, so the group has held a projection all along. */
+.shape-select {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-select:active { cursor: grabbing; }
+
+/* ═══════════════════════════════════════════════════════════
+   INPUT PORTS
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Drawn only on nodes with more than one input, where the user has to be able
+   to tell them apart. The markers sit on the shape's left edge at the same
+   fractions used by portOffsetY(), so a stub and the arrowhead that lands on it
+   are placed by one rule.
+
+   The rail is pointer-events:none throughout. Ports are a read-out, not a
+   target: wiring is done by dragging a node near another, and making the stubs
+   clickable would suggest a second, non-existent way to connect. */
+.node-ports {
+  position: absolute; inset: 0;
+  pointer-events: none; z-index: 20;
+}
+
+.node-port {
+  position: absolute; left: 0;
+  transform: translate(-50%, -50%);
+  display: flex; align-items: center; gap: 4px;
+}
+
+/* The dot itself. Hollow while the port is empty, filled once a wire lands, so
+   "this input is taken" is visible without hovering or counting arrows. */
+.node-port > i {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #1a1a1a;
+  border: 1.5px solid #4a4a4a;
+  box-sizing: border-box;
+  flex: none;
+}
+.node-port.filled > i { background: #6a6a6a; border-color: #8a8a8a; }
+
+/* Label sits to the LEFT of the dot, out in the wrapper gutter — the shape is
+   narrower than .node, and that margin is otherwise unused. Right-aligned so
+   the text grows away from the shape instead of over it. */
+.node-port > em {
+  position: absolute; right: 10px;
+  font-style: normal;
+  font-size: 9px; line-height: 1;
+  color: #6f6f6f;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.node-port.filled > em { color: #8f8f8f; }
+
+/* Select lists one box per incoming column, and a student header is seven of
+   them — a single column of checkboxes would make the node twice the height of
+   everything around it. Two columns keeps it in proportion; the list stays in
+   header order, read down the first column then the second. */
+.sel-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 4px;
+}
+/* The locked last box still has to read as ticked rather than as unavailable:
+   it is not disabled because the option is missing, but because removing it
+   would leave nothing behind. */
+.cmp-measure.locked { opacity: 0.75; cursor: default; }
+.cmp-measure.locked input { cursor: default; }
+
+/* ═══════════════════════════════════════════════════════════
+   PROCESSING CATEGORY COLOURS
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Until now every processing node was one violet, and the glyph carried the
+   whole burden of telling them apart. That worked while there were four; with
+   seven it does not, and it also threw away information the toolbar already
+   knows — the menu has grouped these nodes for some time, and the canvas said
+   nothing about it.
+
+   Colour now carries the category and the glyph carries the node:
+
+     Reshape rows  violet   Sort, Take, Unique
+                            same rows or fewer, header untouched
+     Summarise     teal     Aggregate, Aggregate Columns
+                            rows collapse, header rewritten
+     Branches      rose     Combine, Compare
+                            several tables in, one out
+
+   The split is by what a node does to the shape of the table, which is the
+   axis the supervisor proposed and the one the dropdown groups already follow.
+   A reader who learns the three colours once can then read an unfamiliar graph
+   at a glance: where it narrows, where it collapses, where branches meet.
+
+   Only the palette lives here. The shapes themselves keep their own geometry
+   and glyphs above, so recolouring a category is three values in one place and
+   adding a node to one is a class, not a new block. */
+
+/* ── RESHAPE ROWS ── violet ─────────────────────────────── */
+.shape-sort,
+.shape-take,
+.shape-unique,
+.shape-select {
+  border-color: #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+}
+
+/* Columns side by side, the middle one hollow. Drawn in currentColor so it
+   cannot drift out of step with the shape around it, and laid out on the
+   horizontal axis while every other glyph runs vertically — the axis is the
+   point, since this is the one node that changes the header and not the rows. */
+.sel-glyph { display: flex; gap: 3px; align-items: center; }
+.sel-glyph i {
+  display: block; width: 5px; height: 16px;
+  border-radius: 1px;
+  background: currentColor; opacity: 0.75;
+  box-sizing: border-box;
+}
+.sel-glyph i.off {
+  background: none;
+  border: 1px solid currentColor;
+  opacity: 0.35;
+}
+
+/* ── SUMMARISE ── teal ──────────────────────────────────── */
+.shape-aggregate,
+.shape-aggcols {
+  border-color: #1f6a6a;
+  background: #041416;
+  color: #5ac8c8;
+}
+
+/* ── BRANCHES ── rose ───────────────────────────────────── */
+.shape-combine,
+.shape-compare {
+  border-color: #7a2f52;
+  background: #170a11;
+  color: #e089ae;
+}
+
+/* Glyphs inherit the shape's colour rather than naming one. Every glyph part
+   above hardcoded the violet, which meant a recolour was a dozen edits that had
+   to agree; currentColor makes the shape's `color` the single source, so a
+   category's hue is set once and the bars, dots and rules follow it. */
+.sort-glyph i,
+.take-glyph i,
+.take-glyph b,
+.uniq-glyph i,
+.agg-glyph i,
+.agg-glyph b,
+.aggc-col i,
+.aggc-col b,
+.cmb-in i,
+.cmb-out i,
+.cmb-glyph b,
+.cmp-glyph i {
+  background: currentColor;
+}
+.take-glyph b {
+  background: none;
+  border-top-color: currentColor;
+}
+
+/* ── UNIQUE GLYPH ───────────────────────────────────────── */
+/* Two pairs. Each pair is one value: a solid bar kept, then an outline of the
+   same width dropped. Widths differ between the pairs so the eye reads "these
+   two are the same, those two are the same" rather than "four bars getting
+   shorter", which is Aggregate's glyph. */
+.uniq-glyph {
+  display: flex; flex-direction: column;
+  gap: 2px; align-items: flex-start;
+  width: auto;
+}
+.uniq-glyph i {
+  display: block; height: 3px; border-radius: 1px;
+  box-sizing: border-box;
+  opacity: 0.8;
+}
+.uniq-glyph i.wide   { width: 22px; }
+.uniq-glyph i.narrow { width: 13px; }
+.uniq-glyph i.dupe {
+  background: none;
+  border: 1px solid currentColor;
+  opacity: 0.34;
+}
+
+/* ── THE MENU TEACHES THE MAPPING ───────────────────────── */
+/* The dropdown is where a user meets these nodes first, so it is where the
+   colours have to be learnable. Group heading and item name both take the
+   category hue; the description stays grey, because colouring the whole row
+   would make the menu shout rather than group. */
+.proc-group.cat-reshape,
+.proc-item.cat-reshape   .proc-name { color: #b48ce0; }
+.proc-group.cat-summarise,
+.proc-item.cat-summarise .proc-name { color: #5ac8c8; }
+.proc-group.cat-branches,
+.proc-item.cat-branches  .proc-name { color: #e089ae; }
+
+.proc-group { opacity: 0.72; }
+
+.proc-item.cat-reshape:hover   { background: #1c1226; }
+.proc-item.cat-summarise:hover { background: #0a1e20; }
+.proc-item.cat-branches:hover  { background: #21101a; }
+
+/* The Processing button itself goes neutral. It opens a menu holding all three
+   categories, so painting it violet would say violet is what Processing means —
+   which was true when every processing node was violet and is now false. Grey
+   claims none of the three. */
+.add-btn.processing {
+  border-color: #3d3d3d;
+  color: #9a9a9a;
+}
+.add-btn.processing:hover { background: #1a1a1a; }
+
+/* ═══════════════════════════════════════════════════════════
+   SAVE DIALOG
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Hidden by class rather than by a `hidden` attribute so the transition has
+   something to run on, and so the markup reads the same as the marquee and
+   selection bar above. */
+.save-dialog {
+  position: fixed;
+  inset: 0;
+  /* Above everything, including the processing menu at 200. That menu is closed
+     by the same click that opens this dialog, so they cannot overlap in
+     practice — but a modal that is only on top by coincidence is one refactor
+     away from not being. */
+  z-index: 300;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  /* Dark rather than a blur: the canvas behind is nearly black already, and a
+     blur on a page of thin one-pixel arrows turns them to mush. */
+  background: rgba(0, 0, 0, 0.62);
+}
+.save-dialog.open { display: flex; }
+
+.save-card {
+  width: 330px;
+  max-width: calc(100vw - 32px);
+  background: #181818;              /* the toolbar's surface, not a new one */
+  border: 1px solid #2a2a2a;
+  border-radius: 7px;
+  padding: 16px 16px 13px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.55);
+}
+
+/* Motion answers the action rather than decorating it: the card arrives from
+   the toolbar's direction, so the dialog reads as belonging to the button that
+   opened it. */
+@keyframes save-card-in {
+  from { opacity: 0; transform: translateY(-7px); }
+  to   { opacity: 1; transform: none; }
+}
+.save-dialog.open .save-card { animation: save-card-in 0.12s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .save-dialog.open .save-card { animation: none; }
+}
+
+.save-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e8e8e8;
+  margin-bottom: 5px;
+}
+.save-sub {
+  font-size: 11px;
+  line-height: 1.5;
+  color: #6f6f6f;
+  margin-bottom: 13px;
+}
+
+/* Deliberately the same construction as .export-name: a bordered strip holding
+   a borderless input beside static extension text. Two places name a file, and
+   they should not look like two different mechanisms. This one is larger,
+   because here the field is the point of the screen rather than one control in
+   a row of them. */
+.save-field {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 9px;
+  background: #121212;
+  border: 1px solid #282828;
+  border-radius: 5px;
+  transition: border-color 0.12s;
+}
+.save-field:focus-within { border-color: #2a5aaa; }
+
+/* Overrides the global input[type=text] rule, which paints a border and a
+   background this field already provides. */
+.save-field input[type=text] {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-radius: 0;
+  padding: 0;
+  color: #d8d8d8;
+  font-size: 12px;
+}
+.save-field input[type=text]:focus { outline: none; border: none; }
+
+/* Shown, never editable — the format decides it, and the loader refuses
+   anything else, so a typed extension could only be a name the tool then
+   declines to open. */
+.save-ext {
+  color: #4a4a4a;
+  font-size: 12px;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* Reserves its line whether or not it has text, so the buttons do not jump
+   down as soon as a name needs sanitising. */
+.save-hint {
+  min-height: 15px;
+  margin-top: 6px;
+  font-size: 10px;
+  color: #7d6a3a;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+.save-hint.show { opacity: 1; }
+
+.save-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+/* Same treatment as Run Query. Both are the confirming action of the surface
+   they sit on, and Save is the reason this dialog is open. */
+.save-go {
+  background: #051830;
+  border: 1px solid #1e7fff;
+  border-radius: 4px;
+  color: #3db8ff;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 16px;
+  cursor: pointer;
+}
+.save-go:hover { background: #0a2e5a; }
+
+/* The dialog is reachable by keyboard, so its focus must be visible — the
+   global `input:focus { outline: none }` is safe only where a border stands in
+   for the ring, which is true of the field and not of the buttons. */
+.save-card button:focus-visible {
+  outline: 2px solid #2a5aaa;
+  outline-offset: 1px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   HELP
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* No auto margin here: help packs left with Clear, and the gap that pushes the
+   bar apart is opened by Run Query instead. */
+.help-btn {
+  width: 24px; height: 24px;
+  border-radius: 50%;
+  background: transparent;
+  border: 1px solid #2a2a2a;
+  color: #8a8a8a;
+  font-family: inherit;
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.help-btn:hover { border-color: #3d3d3d; color: #d0d0d0; background: #1a1a1a; }
+
+/* Same backdrop treatment as the save dialog, one layer below it: help can be
+   open when nothing else is, and should never sit over a dialog awaiting an
+   answer. */
+.help-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 290;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(0, 0, 0, 0.66);
+}
+.help-dialog.open { display: flex; }
+
+/* Bounded by the viewport rather than by its contents: the body scrolls, the
+   frame does not, so the heading and section list stay put while reading. */
+.help-card {
+  width: 860px;
+  max-width: 100%;
+  height: 100%;
+  max-height: 720px;
+  display: flex;
+  flex-direction: column;
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  border-radius: 8px;
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.6);
+  overflow: hidden;
+}
+
+@keyframes help-card-in {
+  from { opacity: 0; transform: translateY(-8px); }
+  to   { opacity: 1; transform: none; }
+}
+.help-dialog.open .help-card { animation: help-card-in 0.14s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .help-dialog.open .help-card { animation: none; }
+}
+
+.help-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 16px;
+  border-bottom: 1px solid #232323;
+  flex-shrink: 0;
+}
+.help-title { font-size: 13px; font-weight: 600; color: #e8e8e8; }
+.help-close {
+  width: 26px; height: 26px;
+  background: transparent;
+  border: 1px solid #2a2a2a;
+  border-radius: 5px;
+  color: #8a8a8a;
+  font-family: inherit;
+  font-size: 15px;
+  line-height: 1;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+.help-close:hover { border-color: #3d3d3d; color: #d0d0d0; background: #1a1a1a; }
+
+.help-main { display: flex; flex: 1; min-height: 0; }
+
+/* A reference is read out of order — someone arrives wanting one node, not the
+   whole document — so the section list is always visible rather than something
+   to scroll back to. */
+.help-nav {
+  width: 172px;
+  flex-shrink: 0;
+  border-right: 1px solid #202020;
+  padding: 10px 8px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.help-navitem {
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 5px;
+  padding: 6px 9px;
+  color: #7d7d7d;
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.help-navitem:hover { background: #1b1b1b; color: #c0c0c0; }
+.help-navitem.current { background: #101d2e; color: #6fb2ee; }
+
+.help-body {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 18px 26px 40px;
+  scroll-behavior: smooth;
+}
+@media (prefers-reduced-motion: reduce) {
+  .help-body { scroll-behavior: auto; }
+}
+
+/* scroll-margin-top, not padding: sections are scrolled to by script, and this
+   is what stops a heading landing flush against the top edge. */
+.help-body section { scroll-margin-top: 18px; padding-bottom: 26px; }
+.help-body section + section { border-top: 1px solid #1c1c1c; padding-top: 22px; }
+
+.help-body h3 {
+  font-size: 13px;
+  color: #e8e8e8;
+  margin-bottom: 9px;
+}
+.help-body h4 { font-size: 11px; margin: 18px 0 5px; }
+.help-body p {
+  font-size: 12px;
+  line-height: 1.62;
+  color: #a8a8a8;
+  margin-bottom: 10px;
+}
+.help-body b { color: #d4d4d4; font-weight: 600; }
+.help-body em { color: #c0c0c0; font-style: italic; }
+.help-body i { color: #b0b0b0; font-style: italic; }
+.help-body code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 11px;
+  color: #9dd0ff;
+  background: #101820;
+  border-radius: 3px;
+  padding: 1px 4px;
+}
+
+.help-steps { margin: 0 0 12px 18px; }
+.help-steps li {
+  font-size: 12px;
+  line-height: 1.6;
+  color: #a8a8a8;
+  margin-bottom: 5px;
+}
+
+/* The figure and its key are one unit, so they share a surface: it reads as an
+   illustration with a caption rather than a picture followed by a stray list. */
+.help-fig {
+  margin: 14px 0 16px;
+  background: #101010;
+  border: 1px solid #1e1e1e;
+  border-radius: 7px;
+  padding: 14px 16px 8px;
+}
+.help-fig svg { display: block; width: 100%; height: auto; }
+.help-fig-narrow svg { max-width: 330px; margin: 0 auto; }
+
+/* Numbered to match the badges drawn on the figure, so the eye can go from a
+   number on the picture to the same number in the text. */
+.help-key {
+  margin: 14px 0 6px 20px;
+  border-top: 1px solid #1c1c1c;
+  padding-top: 12px;
+}
+.help-key li {
+  font-size: 11.5px;
+  line-height: 1.58;
+  color: #9c9c9c;
+  margin-bottom: 7px;
+  padding-left: 3px;
+}
+
+/* Category headings carry their category's colour, which is the same mapping
+   the canvas and the processing menu use. Learning it once should be enough. */
+.help-cat { letter-spacing: 0.04em; }
+.help-cat-source    { color: #5ec87a; }
+.help-cat-filter    { color: #f0944a; }
+.help-cat-reshape   { color: #b48ce0; }
+.help-cat-summarise { color: #5ac8c8; }
+.help-cat-branches  { color: #e089ae; }
+.help-cat-output    { color: #3db8ff; }
+
+.help-node-desc { margin-bottom: 4px; }
+.help-note {
+  font-size: 11px !important;
+  color: #6f6f6f !important;
+  margin-bottom: 8px !important;
+}
+
+.help-defs { margin: 4px 0 6px; }
+.help-defs dt {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: #d4d4d4;
+  margin-top: 9px;
+}
+.help-defs dd {
+  font-size: 11.5px;
+  line-height: 1.58;
+  color: #9c9c9c;
+  margin: 2px 0 0 14px;
+}
+
+.help-tip {
+  background: #0d1620;
+  border: 1px solid #1c2c3d;
+  border-radius: 6px;
+  padding: 10px 12px;
+  font-size: 11.5px;
+  line-height: 1.6;
+  color: #9fbcd6;
+  margin: 12px 0 4px;
+}
+.help-tip b { color: #cfe4f5; }
+
+.help-keys { width: 100%; border-collapse: collapse; }
+.help-keys td {
+  font-size: 11.5px;
+  color: #9c9c9c;
+  padding: 6px 0;
+  border-bottom: 1px solid #1a1a1a;
+  vertical-align: top;
+}
+.help-keys td:first-child { width: 46%; padding-right: 16px; color: #c4c4c4; }
+.help-keys kbd {
+  font-family: inherit;
+  font-size: 10px;
+  background: #1c1c1c;
+  border: 1px solid #2e2e2e;
+  border-radius: 3px;
+  padding: 1px 5px;
+  color: #d0d0d0;
+}
+
+/* On a narrow window the sidebar costs more than it gives, so it becomes a row
+   of chips above the text and the reading column keeps the full width. */
+@media (max-width: 720px) {
+  .help-dialog { padding: 10px; }
+  .help-main { flex-direction: column; }
+  .help-nav {
+    width: auto;
+    flex-direction: row;
+    overflow-x: auto;
+    border-right: none;
+    border-bottom: 1px solid #202020;
+    padding: 8px;
+    gap: 4px;
+  }
+  .help-navitem { white-space: nowrap; flex-shrink: 0; }
+  .help-body { padding: 14px 16px 30px; }
+}

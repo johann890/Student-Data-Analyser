@@ -66,68 +66,101 @@ module.exports = ({ describe, test }) => {
     });
   });
 
-  describe('merging multiple inputs', () => {
-    test('two branches union without duplicating shared rows', () => {
+  /* This block used to test the IMPLICIT union: two wires into one node were
+     quietly merged inside evaluateGraph. That merge was invisible on the canvas
+     and could discard rows without saying so, and it is gone (app.js:615).
+     Merging is now something the user asks for, by wiring a Combine — so the
+     tests ask about the refusal and about Combine instead. */
+  describe('a single input takes one wire', () => {
+    test('an ordinary node refuses a second wire rather than merging quietly', () => {
       const h = boot();
-      h.w.addNode('source'); const s = h.app.nodes[0];
-      h.w.addNode('filter');  const f1 = h.app.nodes[1];
-      h.w.addNode('filter');  const f2 = h.app.nodes[2];
-      h.w.addNode('output');  const o = h.app.nodes[3];
+      const [s, o] = h.build('source', 'output');
+      h.w.addNode('source'); const s2 = h.app.nodes[h.app.nodes.length - 1];
+      assert.notOk(h.app.portAccepts(o, 'in'), 'the port is already occupied');
+      assert.deepEqual(h.app.freePortsOn(o).map(p => p.key), [],
+        'an Output with one wire has nothing left to offer');
+    });
+
+    test('Combine is the node that does accept several', () => {
+      const h = boot();
+      h.w.addNode('combine'); const c = h.app.nodes[h.app.nodes.length - 1];
+      assert.ok(h.app.portAccepts(c, 'in'));
+      assert.ok(h.app.portDef('combine', 'in').multi, 'taking several tables is its job');
+      assert.notOk(h.app.portDef('output', 'in').multi);
+    });
+
+    test('two branches merge through a Combine, and it is announced in the log', () => {
+      const h = boot();
+      const s = h.add('source'), f1 = h.add('filter'), f2 = h.add('filter'),
+            c = h.add('combine'), o = h.add('output');
       h.app.connect(s.id, f1.id); h.app.connect(s.id, f2.id);
-      h.app.connect(f1.id, o.id); h.app.connect(f2.id, o.id);
+      h.app.connect(f1.id, c.id); h.app.connect(f2.id, c.id);
+      h.app.connect(c.id, o.id);
       h.w.render();
       h.set(o.id, 'show', 'count');
       h.set(f1.id, 'crit.0.op:gradeAvg', 'gte'); h.set(f1.id, 'crit.0.value:gradeAvg', '80');
       h.set(f2.id, 'crit.0.op:gradeAvg', 'gte'); h.set(f2.id, 'crit.0.value:gradeAvg', '70');
+      h.w.render();
+      h.set(c.id, 'dedupe', true);
       h.w.runQuery();
-      // Everyone >= 80 is also >= 70, so the union is exactly the wider set
+      // Everyone >= 80 is also >= 70, so a deduped union is exactly the wider set
       assert.equal(Number(h.bigNum()), h.app.STUDENTS.filter(x => x.gradeAvg >= 70).length);
+      assert.includes(h.text('.query-log').toUpperCase(), 'COMBINE');
     });
 
-    test('the merge is announced in the log', () => {
+    test('without dedupe the same rows stay twice — the node does not decide for you', () => {
       const h = boot();
-      h.w.addNode('source'); const s1 = h.app.nodes[0];
-      h.w.addNode('source'); const s2 = h.app.nodes[1];
-      h.w.addNode('output'); const o = h.app.nodes[2];
-      h.app.connect(s1.id, o.id); h.app.connect(s2.id, o.id);
-      h.w.render(); h.w.runQuery();
-      assert.includes(h.text('.query-log'), 'MERGE');
+      const s = h.add('source'), f1 = h.add('filter'), f2 = h.add('filter'),
+            c = h.add('combine'), o = h.add('output');
+      h.app.connect(s.id, f1.id); h.app.connect(s.id, f2.id);
+      h.app.connect(f1.id, c.id); h.app.connect(f2.id, c.id);
+      h.app.connect(c.id, o.id);
+      h.w.render();
+      h.set(o.id, 'show', 'count');
+      ['crit.0.op:gradeAvg', 'crit.0.value:gradeAvg'].forEach(() => {});
+      h.set(f1.id, 'crit.0.op:gradeAvg', 'gte'); h.set(f1.id, 'crit.0.value:gradeAvg', '80');
+      h.set(f2.id, 'crit.0.op:gradeAvg', 'gte'); h.set(f2.id, 'crit.0.value:gradeAvg', '80');
+      h.w.runQuery();
+      const n = h.app.STUDENTS.filter(x => x.gradeAvg >= 80).length;
+      assert.equal(Number(h.bigNum()), n * 2, 'merge stacks; dropping duplicates is opt-in');
     });
 
-    test('rowKey dedupes students by id and enrolments by student plus course', () => {
+    test('combining mismatched headers is refused with an explanation', () => {
+      const h = boot();
+      const s = h.add('source'), sel = h.add('select'),
+            c = h.add('combine'), o = h.add('output');
+      h.app.connect(s.id, c.id);        // full student header
+      h.app.connect(s.id, sel.id);
+      h.app.connect(sel.id, c.id);      // a narrowed one
+      h.app.connect(c.id, o.id);
+      h.w.render();
+      h.set(sel.id, 'column:gradeAvg', false);
+      h.w.runQuery();
+      const err = h.text('.error-box');
+      assert.ok(err, 'a ragged table would otherwise be produced silently');
+      assert.includes(err.toLowerCase(), 'same columns');
+    });
+
+    test('rowKey distinguishes two different students', () => {
       const { app } = boot();
       const st = app.studentsTable(app.STUDENTS.slice(0, 2));
       assert.ok(app.rowKey(st, st.rows[0]) !== app.rowKey(st, st.rows[1]));
-      const en = app.enrolmentsTable(app.STUDENTS.slice(0, 1));
-      const keys = en.rows.map(r => app.rowKey(en, r));
-      assert.equal(new Set(keys).size, keys.length, 'same student, different courses must differ');
+      assert.equal(app.rowKey(st, st.rows[0]), app.rowKey(st, st.rows[0]), 'and is stable');
     });
 
     test('merging identical tables yields one copy of each row', () => {
       const { app } = boot();
       const t = app.studentsTable(app.STUDENTS.slice(0, 10));
-      const merged = app.unionTables([t, t]);
-      assert.equal(merged.rows.length, 10);
+      assert.equal(app.unionTables([t, t]).rows.length, 10);
     });
 
-    test('merging mismatched granularities is refused with an explanation', () => {
-      const h = boot();
-      h.w.addNode('source'); const s1 = h.app.nodes[0];
-      h.w.addNode('source'); const s2 = h.app.nodes[1];
-      h.w.addNode('output'); const o = h.app.nodes[2];
-      h.app.connect(s1.id, o.id); h.app.connect(s2.id, o.id);
-      h.w.render();
-      h.set(s2.id, 'rows', 'enrolments');
-      h.w.runQuery();
-      const err = h.text('.error-box');
-      assert.ok(err, 'a ragged table would otherwise be produced silently');
-      assert.includes(err, 'different columns');
-    });
-
-    test('schemaKey distinguishes the two granularities', () => {
+    test('schemaKey distinguishes a narrowed header from the full one', () => {
       const { app } = boot();
-      assert.ok(app.schemaKey(app.studentsTable([])) !== app.schemaKey(app.enrolmentsTable([])));
-      assert.equal(app.schemaKey(app.studentsTable([])), app.schemaKey(app.studentsTable(app.STUDENTS)));
+      const full = app.studentsTable([]);
+      const narrowed = app.makeTable(full.columns.slice(0, 3), []);
+      assert.ok(app.schemaKey(full) !== app.schemaKey(narrowed));
+      assert.equal(app.schemaKey(full), app.schemaKey(app.studentsTable(app.STUDENTS)),
+        'the key is the header, never the rows');
     });
   });
 
@@ -153,18 +186,6 @@ module.exports = ({ describe, test }) => {
       });
     });
 
-    test('the year restriction also applies at enrolment granularity', () => {
-      const h = boot();
-      const [s, o] = h.build('source', 'output');
-      h.set(o.id, 'show', 'count');
-      h.set(s.id, 'rows', 'enrolments');
-      const y = h.app.YEARS[0];
-      h.set(s.id, 'pop', String(y));
-      h.w.runQuery();
-      let n = 0;
-      h.app.STUDENTS.filter(x => x.year === y).forEach(x => n += x.courses.length);
-      assert.equal(Number(h.bigNum()), n);
-    });
   });
 
   describe('guard rails before running', () => {

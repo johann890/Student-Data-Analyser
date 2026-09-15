@@ -85,37 +85,11 @@ module.exports = ({ describe, test }) => {
       assert.equal(r.app.serialiseTable(r.entry(r.o.id).table, ',', true).split('\n').length, 2);
     });
 
-    test('a breakdown exports one row per course', () => {
-      const r = rig('courses');
-      r.w.runQuery();
-      const t = r.entry(r.o.id).table;
-      const csv = r.app.serialiseTable(t, ',', true);
-      assert.equal(csv.split('\n').length, t.rows.length + 1);
-      assert.includes(csv.split('\n')[0], 'Course');
-    });
-
-    test('the enrolments export is long format, one row per student-course pair', () => {
-      const r = rig('rows');
-      r.w.runQuery();
-      r.w.saveEnrolments(r.o.id, r.doc.createElement('button'));
-      const file = r.saved[r.saved.length - 1];
-      const expected = r.app.STUDENTS.reduce((a, s) => a + s.courses.length, 0);
-      assert.equal(file.content.split('\n').length - 1, expected);
-      assert.includes(file.content.split('\n')[0], 'Mark');
-      assert.includes(file.name, 'enrolments');
-    });
-
-    test('enrolment rows carry the individual marks the student row cannot', () => {
-      const r = rig('rows');
-      r.w.runQuery();
-      r.w.saveEnrolments(r.o.id, r.doc.createElement('button'));
-      const lines = r.saved[r.saved.length - 1].content.split('\n');
-      const head = lines[0].split(',');
-      const markCol = head.indexOf('Mark');
-      assert.ok(markCol >= 0);
-      const first = lines[1].split(',');
-      assert.ok(/^\d+$/.test(first[markCol]), 'mark should be a bare number');
-    });
+    /* Three tests — the per-course breakdown export, and the separate
+       long-format enrolments export (saveEnrolments) — went with those features
+       in 52d5e6a. The shapes they checked, one row per group and one row per
+       student-course pair, become reachable again through the unfold node
+       app.js:238 specifies. Restore them with it. */
   });
 
   describe('file naming', () => {
@@ -169,15 +143,6 @@ module.exports = ({ describe, test }) => {
       assert.includes(r.saved[r.saved.length - 1].name, 'kept');
     });
 
-    test('the enrolments export uses the same name with a suffix', () => {
-      const r = rig('rows');
-      r.w.runQuery();
-      r.setExportName(r.o.id, 'cohort');
-      r.w.saveEnrolments(r.o.id, r.doc.createElement('button'));
-      const n = r.saved[r.saved.length - 1].name;
-      assert.includes(n, 'cohort');
-      assert.includes(n, 'enrolments');
-    });
 
     test('each Output has its own name field', () => {
       const h = boot();
@@ -209,13 +174,33 @@ module.exports = ({ describe, test }) => {
       assert.equal(app.safeName('///'), 'output');
     });
 
-    test('saved files end in .csv and carry a timestamp', () => {
+    test('saved files end in .csv and carry NO timestamp', () => {
+      /* Reversed deliberately. The appended timestamp meant the name field
+         never actually decided the filename: two saves of "grades" produced
+         two differently-named files, and a user who had just named the file
+         could not predict what they would get. The name written is now the
+         name typed — which is what queryFileName() already did for saved
+         queries, so the two export paths finally agree. */
       const r = rig('count');
       r.w.runQuery();
       r.w.saveOutput(r.o.id, r.doc.createElement('button'));
       const name = r.saved[r.saved.length - 1].name;
       assert.ok(/\.csv$/.test(name), name);
-      assert.ok(/\d{4}-\d{2}-\d{2}/.test(name), name);
+      assert.ok(!/\d{4}-\d{2}-\d{2}/.test(name), 'a date should not be appended: ' + name);
+    });
+
+    test('a second Save writes the same name again', () => {
+      // The reviewer's actual request: having named the file once, saving
+      // again should not produce a different one.
+      const r = rig('count');
+      r.w.runQuery();
+      r.setExportName(r.o.id, 'cohort-2022');
+      const btn = r.doc.createElement('button');
+      r.w.saveOutput(r.o.id, btn);
+      const first = r.saved[r.saved.length - 1].name;
+      assert.equal(first, 'cohort-2022.csv');
+      r.w.saveOutput(r.o.id, btn);
+      assert.equal(r.saved[r.saved.length - 1].name, first);
     });
   });
 

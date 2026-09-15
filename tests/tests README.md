@@ -43,35 +43,80 @@ If nothing is found it fails with a message rather than testing nothing.
 has to run from a `file://` URL with no build step — but it means nothing inside
 is reachable from a test.
 
-Rather than adding exports to production code, the harness injects one line onto
-an **in-memory copy** just before the closing `})();`, publishing the internals
-as `window.__app`. The shipped file is never modified.
+`app.js` solves this itself. Setting `window.__QB_TEST__ = true` **before** it
+loads makes it publish its internals on `window.__qb`. In normal use the flag is
+undefined, nothing is exported, and the cost is one branch at start-up.
 
-If that injection point ever moves, the harness throws instead of carrying on.
-That check matters: without it, a failed injection would leave the tests quietly
-exercising something other than the real code.
+```js
+w.__QB_TEST__ = true;
+w.eval(fs.readFileSync(APP_JS, 'utf8'));   // the shipped file, verbatim
+```
 
-Tests drive the interface the way a user does — set a control's value, dispatch
-the event the app listens for — instead of calling internal setters. A test that
-bypassed the DOM would not notice a control rendered with the wrong `data-key`,
-which is exactly the kind of bug worth catching.
+### Why not source injection
+
+This harness used to rewrite the source instead, splicing an export block in
+before the closing `})();`. `app.js` warns against exactly that, and was right:
+
+> The alternative — having the tests reach in by rewriting the source text — is
+> silently broken by any edit near the end of this file, and a test suite that
+> fails for reasons unrelated to the code under test is worse than none.
+
+That is what happened. The injected block named six functions
+(`enrolmentsTable`, `toEnrolments`, `breakdownTable`, `explodesHere`,
+`canExplode`, `ENROLMENT_COLUMNS`) that a later refactor deleted, so **every**
+test died at boot with `enrolmentsTable is not defined` — none of them reached
+anything they were meant to be testing.
+
+The flag cannot rot that way. If a symbol goes, the suite that uses it fails on
+its own line and names it.
+
+### Adding to the hook
+
+If a test needs something `__qb` does not expose, add it to the export block at
+the bottom of `app.js` rather than reaching around it. The block is grouped by
+subject; put the new entry with its neighbours.
+
+Live state (`nodes`, `connections`, `exportData`, `selection`, `view`) is
+exported as *functions*, because those bindings are reassigned wholesale by
+`clearAll()` and `applyGraph()` and a captured value would go stale. The harness
+bridges them back to getters so tests can write `app.nodes`, in one place —
+`shim()` in `lib/harness.js`.
 
 ## The suites
 
 | Suite | Covers |
 |---|---|
 | `01-dataset` | Generated data invariants: eight courses each, `gradeAvg` equals the mean of the marks, letter grades agree with numbers, catalogue fully exercised, generation is deterministic |
-| `02-table-model` | The `{columns, rows, meta}` primitive: access by key, the unfold to enrolments, per-course aggregation, type-driven cell formatting |
-| `03-filter` | Every field type and operator, cross-checked against the raw dataset; multi-criterion AND; both granularities; orphaned criteria |
-| `04-schema` | Schema propagation, and that Filter and Output panels follow the incoming table rather than assuming student records |
-| `05-output` | Every output is a table; count is 1×1; course-breakdown scope; show-type normalisation; multiple outputs |
-| `06-export` | CSV quoting and escaping, field-count integrity, long-format enrolments, filenames, the staleness guard |
-| `07-saveload` | Round trip, rejection of non-query files, repair of salvageable ones, forward compatibility |
-| `08-graph` | Wiring rules, topological order, cycle detection, merging, guard rails |
+| `02-table-model` | The `{columns, rows, meta}` primitive: access by key, finding the nested column by type rather than name, type-driven cell formatting |
+| `03-filter` | Every field type and operator, cross-checked against the raw dataset; multi-criterion AND; criteria orphaned by a narrowed header |
+| `04-schema` | Schema propagation, and that the Filter and Aggregate panels follow the incoming table rather than assuming student records |
+| `05-output` | Every output is a table; count is 1×1; scalar vs table display; show-type normalisation; multiple outputs |
+| `06-export` | CSV quoting and escaping, field-count integrity, file naming, the staleness guard |
+| `07-saveload` | Round trip, rejection of non-query files, repair of salvageable ones, forward compatibility, the save dialog |
+| `08-graph` | Wiring rules, topological order, cycle detection, single-input arity, Combine, guard rails |
 | `09-ui-state` | Config lives in the model; dragging does not rebuild the DOM; typing does not destroy the field; escaping |
+| `10-aggregation` | Aggregate and AggregateColumns: the operation set, every measure cross-checked against the dataset, empty input, the registry invariant, persistence |
+| `11-edge-preview` | The hover preview: the column cap and the stylesheet width held together, what is shown and which columns, real edges |
 
-Compare is exercised only incidentally — it is superseded by the planned
-SelectFor node and is not the subject of dedicated tests.
+### What was removed, and why
+
+Roughly thirty tests were deleted rather than repaired, because the features
+they covered no longer exist:
+
+| Gone | Where it went |
+|---|---|
+| `toEnrolments` / the unfold (6) | Source enrolment granularity removed in `52d5e6a`. `app.js:238` records that unfolding should return as a **node** on the canvas, where the change in row identity is visible. Restore these with it — `git show 52d5e6a` has the implementation and the original tests. |
+| `breakdownTable` (5) | The Output's course-breakdown shortcut, removed in the same commit. Built on the canvas now: filter, group, aggregate. |
+| Enrolment-granularity filter and schema tests (8) | Same removal. A row is always a student, so "filters rows, not students" no longer names two different things. |
+| The Output's Average shortcut (4) | Averaging is an Aggregate wired in front. The claims moved to `10-aggregation`. |
+| The implicit union (6) | Two wires into one node no longer merge quietly (`app.js:615`). `08-graph` now tests the refusal, and Combine. |
+
+Several assertions were **reversed** rather than deleted, where behaviour
+changed deliberately. Each says so at the point of the change:
+
+- Year *is* filterable now (`03-filter`, `04-schema`) — `app.js:1149` explains why.
+- Saved CSVs carry **no** timestamp (`06-export`) — the name typed is the name written.
+- `saveGraph` opens a naming dialog rather than writing immediately (`07-saveload`).
 
 ## Conventions
 
@@ -116,6 +161,7 @@ Helpers returned by `boot()`:
 |---|---|
 | `w`, `doc` | jsdom window and document |
 | `app` | application internals (`nodes`, `STUDENTS`, `evaluateGraph`, ...) |
+| `add(type)` | create one node, unwired — for graphs that fork |
 | `build(...types)` | create nodes and wire them in sequence |
 | `set(nodeId, key, value)` | drive a config control and fire its event |
 | `control(nodeId, key)` | the control element itself |

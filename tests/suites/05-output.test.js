@@ -1,7 +1,11 @@
 /* Output nodes.
    The governing requirement is that every Output emits a table — a count is a
-   1x1 table, an average a 1x2 — so one renderer and one exporter serve all of
-   them. */
+   1x1 table — so one renderer and one exporter serve all of them.
+
+   The Output's own Average and Course-breakdown shortcuts were removed: both
+   made the same operation exist in two places, and the breakdown hid two of the
+   three steps it actually performed (app.js:1790). Averaging is now an Aggregate
+   wired in front, so the tests that covered the shortcuts test the node. */
 
 const { boot } = require('../lib/harness');
 const { assert } = require('../lib/assert');
@@ -41,15 +45,20 @@ module.exports = ({ describe, test }) => {
       assert.ok(/^\d+$/.test(lines[1]), 'second line should be the bare number');
     });
 
-    test('average is a table carrying both the mean and the row count', () => {
-      const r = rig('average');
-      r.w.runQuery();
-      const t = r.entry(r.o.id).table;
-      assert.equal(t.columns.length, 2);
-      assert.equal(t.columns[1].key, 'n');
-      const want = r.app.STUDENTS.filter(x => x.gradeAvg > 70);
-      assert.close(t.rows[0][0], want.reduce((a, x) => a + x.gradeAvg, 0) / want.length, 1e-9);
-      assert.equal(t.rows[0][1], want.length);
+    test('an Aggregate average is a 1x1 table that says what it measured', () => {
+      const h = boot();
+      const [s, f, a, o] = h.build('source', 'filter', 'aggregate', 'output');
+      h.set(a.id, 'op', 'average');
+      h.set(a.id, 'col', 'gradeAvg');
+      h.w.runQuery();
+      const t = h.entry(o.id).table;
+      assert.equal(t.columns.length, 1);
+      assert.equal(t.rows.length, 1);
+      const want = h.app.STUDENTS.filter(x => x.gradeAvg > 70);
+      assert.close(t.rows[0][0], want.reduce((a2, x) => a2 + x.gradeAvg, 0) / want.length, 1e-9);
+      // point 11: a count and an average must not look alike
+      assert.includes(t.columns[0].label, 'Average');
+      assert.includes(t.columns[0].label, 'Avg', 'and must name the column it reduced');
     });
 
     test('rows passes the incoming table through unchanged', () => {
@@ -74,18 +83,19 @@ module.exports = ({ describe, test }) => {
       assert.ok(/^\d+$/.test(lines[1]));
     });
 
-    test('Copy on an average carries its label and the row count', () => {
-      const r = rig('average');
-      r.w.runQuery();
-      r.w.copyOutput(r.o.id, r.doc.createElement('button'));
-      const lines = r.copied[r.copied.length - 1].split('\t').join('|').split('\n');
+    test('Copy on an Aggregate average carries its label', () => {
+      const h = boot();
+      const [s, f, a, o] = h.build('source', 'filter', 'aggregate', 'output');
+      h.set(a.id, 'op', 'average');
+      h.w.runQuery();
+      h.w.copyOutput(o.id, h.doc.createElement('button'));
+      const lines = h.copied[h.copied.length - 1].split('\n');
       assert.equal(lines.length, 2);
       assert.includes(lines[0], 'Average');
-      assert.includes(lines[0], 'Rows');
     });
 
     test('Save on every show type writes a CSV with a header row', () => {
-      ['count', 'average', 'rows', 'courses'].forEach(show => {
+      ['count', 'rows'].forEach(show => {
         const r = rig(show);
         r.w.runQuery();
         r.w.saveOutput(r.o.id, r.doc.createElement('button'));
@@ -115,18 +125,42 @@ module.exports = ({ describe, test }) => {
     });
   });
 
-  describe('count and average display', () => {
+  describe('scalar display', () => {
     test('a scalar still renders as a headline number', () => {
       const r = rig('count');
       r.w.runQuery();
       assert.ok(r.q('.big-num'), 'expected the large display');
     });
 
+    test('an Aggregate result gets the headline too, not a one-cell table', () => {
+      /* The rule is the shape of the result, not which control produced it.
+         Removing the Output shortcuts told people to move the calculation onto
+         the canvas; rendering the answer smaller for having done so would have
+         punished them for it. */
+      const h = boot();
+      const [s, a, o] = h.build('source', 'aggregate', 'output');
+      h.set(a.id, 'op', 'average');
+      h.w.runQuery();
+      assert.ok(h.q('.big-num'), 'a 1x1 table should render as a headline number');
+      assert.includes(h.text('.result-head'), 'Average', 'and must say what it is');
+    });
+
+    test('a 2-row result is a table, not a headline', () => {
+      const h = boot();
+      const [s, t, o] = h.build('source', 'take', 'output');
+      h.set(t.id, 'n', '2');
+      h.w.runQuery();
+      assert.equal(h.q('.big-num'), null, 'two rows is not a scalar');
+      assert.ok(h.q('.rtable'), 'it should render as a table');
+    });
+
     test('the mean of zero rows shows a dash, not zero', () => {
-      const r = rig('average');
-      r.set(r.f.id, 'crit.0.value:gradeAvg', '500');
-      r.w.runQuery();
-      assert.equal(r.bigNum(), '\u2014', 'showing 0 would assert something false about the data');
+      const h = boot();
+      const [s, f, a, o] = h.build('source', 'filter', 'aggregate', 'output');
+      h.set(f.id, 'crit.0.value:gradeAvg', '500');   // matches nobody
+      h.set(a.id, 'op', 'average');
+      h.w.runQuery();
+      assert.equal(h.bigNum(), '\u2014', 'showing 0 would assert something false about the data');
     });
 
     test('count of zero rows really is zero', () => {
@@ -136,74 +170,21 @@ module.exports = ({ describe, test }) => {
       assert.equal(r.bigNum(), '0');
     });
 
-    test('the average column is configurable, not hardwired', () => {
-      const r = rig();
-      r.set(r.s.id, 'rows', 'enrolments');
-      r.set(r.o.id, 'show', 'average');
-      r.set(r.o.id, 'avgCol', 'points');
-      r.w.runQuery();
-      assert.close(r.entry(r.o.id).table.rows[0][0], 15, 1e-9, 'every course is 15 points');
+    test('the measured column is configurable, not hardwired', () => {
+      const h = boot();
+      const [s, a, o] = h.build('source', 'aggregate', 'output');
+      h.set(a.id, 'op', 'max');
+      h.set(a.id, 'col', 'gradeAvg');
+      h.w.runQuery();
+      const want = Math.max(...h.app.STUDENTS.map(x => x.gradeAvg));
+      assert.equal(h.entry(o.id).table.rows[0][0], want);
     });
   });
 
-  describe('course breakdown', () => {
-    test('fed students, it counts every course they took', () => {
-      const r = rig('courses');
-      r.set(r.f.id, 'crit.0.field', 'courses.subject');
-      r.set(r.f.id, 'crit.0.value:courses.subject', SUBJ);
-      r.w.runQuery();
-      const t = r.entry(r.o.id).table;
-      const matched = r.app.STUDENTS.filter(x => x.courses.some(c => c.subject === SUBJ));
-      const total = matched.reduce((a, x) => a + x.courses.length, 0);
-      assert.equal(t.rows.reduce((a, row) => a + row[3], 0), total,
-        'the aggregation must conserve enrolments');
-      const subjects = [...new Set(t.rows.map(row => row[2]))];
-      assert.ok(subjects.length > 1,
-        'a student-level filter keeps whole students, so other subjects appear');
-    });
-
-    test('the panel explains that scope rather than leaving it to be inferred', () => {
-      const r = rig('courses');
-      r.set(r.f.id, 'crit.0.field', 'courses.subject');
-      r.set(r.f.id, 'crit.0.value:courses.subject', SUBJ);
-      r.w.runQuery();
-      const p = r.panel();
-      assert.includes(p, 'Every course taken by these');
-      assert.includes(p, 'One per enrolment');
-    });
-
-    test('fed enrolments filtered by subject, only that subject appears', () => {
-      const r = rig();
-      r.set(r.s.id, 'rows', 'enrolments');
-      r.set(r.f.id, 'crit.0.field', 'subject');
-      r.set(r.f.id, 'crit.0.value:subject', SUBJ);
-      r.set(r.o.id, 'show', 'courses');
-      r.w.runQuery();
-      const t = r.entry(r.o.id).table;
-      assert.deepEqual([...new Set(t.rows.map(row => row[2]))], [SUBJ]);
-      const want = new Set();
-      r.app.STUDENTS.forEach(x => x.courses.forEach(c => { if (c.subject === SUBJ) want.add(c.code); }));
-      assert.equal(t.rows.length, want.size);
-    });
-
-    test('the note switches wording with the granularity', () => {
-      const r = rig();
-      r.set(r.s.id, 'rows', 'enrolments');
-      r.set(r.o.id, 'show', 'courses');
-      r.w.runQuery();
-      const p = r.panel();
-      assert.includes(p, 'enrolments');
-      assert.excludes(p, 'Every course taken by these');
-    });
-
-    test('breakdown of an empty result is empty, not an error', () => {
-      const r = rig('courses');
-      r.set(r.f.id, 'crit.0.value:gradeAvg', '500');
-      r.w.runQuery();
-      assert.equal(r.entry(r.o.id).table.rows.length, 0);
-      assert.notOk(r.q('.error-box'));
-    });
-  });
+  /* 'course breakdown' (5 tests) went with the Output's breakdown shortcut in
+     52d5e6a. The same answer is now built on the canvas — filter, then group,
+     then aggregate — where each step appears in the query log. The per-course
+     aggregation itself is covered in 02-table-model's note. */
 
   describe('show-type normalisation', () => {
     test('an unknown stored value falls back rather than breaking', () => {
@@ -220,11 +201,12 @@ module.exports = ({ describe, test }) => {
       assert.equal(h.app.normaliseShow(o), 'rows');
     });
 
-    test('"courses" is valid on both sides and survives rewiring', () => {
+    test('the retired "courses" value falls back rather than breaking a saved query', () => {
+      // Files written before 52d5e6a can still name it.
       const h = boot();
       const [s, o] = h.build('source', 'output');
-      h.set(o.id, 'show', 'courses');
-      assert.equal(h.app.normaliseShow(o), 'courses');
+      h.app.setCfg(o.id, 'show', 'courses');
+      assert.includes(['count', 'rows'], h.app.normaliseShow(o));
     });
   });
 
@@ -237,11 +219,12 @@ module.exports = ({ describe, test }) => {
       h.app.connect(f.id, o1.id); h.app.connect(f.id, o2.id);
       h.w.render();
       h.set(o1.id, 'show', 'count');
-      h.set(o2.id, 'show', 'average');
+      h.set(o2.id, 'show', 'rows');
       h.w.runQuery();
       assert.equal(h.qa('.result-block').length, 2);
       assert.equal(h.entry(o1.id).table.columns[0].label, 'Count');
-      assert.equal(h.entry(o2.id).table.columns[0].key, 'average');
+      assert.equal(h.entry(o1.id).table.rows.length, 1);
+      assert.ok(h.entry(o2.id).table.rows.length > 1, 'the other still shows rows');
     });
 
     test('an Output with no path to a Source says so and offers no exports', () => {

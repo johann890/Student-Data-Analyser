@@ -8,10 +8,9 @@ const { assert } = require('../lib/assert');
 module.exports = ({ describe, test }) => {
 
   // Builds source -> filter -> output(count) and returns a runner
-  function rig(sourceRows) {
+  function rig() {
     const h = boot();
     const [s, f, o] = h.build('source', 'filter', 'output');
-    if (sourceRows) h.set(s.id, 'rows', sourceRows);
     h.set(o.id, 'show', 'count');
     return { ...h, s, f, o,
       count: () => { h.w.runQuery(); return Number(h.bigNum()); },
@@ -96,16 +95,30 @@ module.exports = ({ describe, test }) => {
       assert.equal(r.count(), S.filter(x => x.gender === 'F').length);
     });
 
-    test('year is not offered as a filter — the Source scopes it', () => {
-      /* Deliberate: the Source already restricts the population by year, and
-         offering it in both places allowed a graph that said 2022 upstream and
-         2023 downstream. The column still exists and is displayed, exported and
-         grouped on — it just cannot be filtered here. */
+    test('year IS offered as a filter, and the Source still scopes it too', () => {
+      /* This assertion used to be the opposite. Year was withheld because the
+         Source already restricts the population by year, and offering it twice
+         allowed a graph saying 2022 upstream and 2023 downstream.
+
+         app.js:1149 records why that reasoning was dropped: grouping by a
+         column means filtering on it once per label, so a column that cannot be
+         filtered cannot be grouped on either — and Year is the column four of
+         the supervisor's use cases group by. The contradiction worry is
+         answered by precedence instead: the Source scopes, the Filter narrows,
+         and a graph that says both yields nothing, visibly, in the log.
+
+         The filter:false opt-out itself survives; nothing declares it today. */
       const r = rig();
-      assert.excludes(r.qa('.ft-sel option').map(o => o.value), 'year');
-      const enrol = rig('enrolments');
-      assert.excludes(enrol.qa('.ft-sel option').map(o => o.value), 'year',
-        'the exclusion should hold at both granularities');
+      assert.includes(r.qa('.ft-sel option').map(o => o.value), 'year');
+
+      // and the two still compose rather than one overriding the other
+      r.set(r.s.id, 'pop', '2022');
+      r.set(r.f.id, 'crit.0.field', 'year');
+      r.set(r.f.id, 'crit.0.value:year', '2022');
+      assert.equal(r.count(), S.filter(x => x.year === 2022).length, 'agreeing');
+
+      r.set(r.f.id, 'crit.0.value:year', '2023');
+      assert.equal(r.count(), 0, 'contradicting yields nothing, not a silent win');
     });
 
     test('a filterable enum compares by string, so "2022" would match 2022', () => {
@@ -179,43 +192,10 @@ module.exports = ({ describe, test }) => {
     });
   });
 
-  describe('filtering at enrolment granularity', () => {
-    test('subject filters rows, not students', () => {
-      const r = rig('enrolments');
-      r.set(r.f.id, 'crit.0.field', 'subject');
-      r.set(r.f.id, 'crit.0.value:subject', SUBJ);
-      let n = 0;
-      S.forEach(x => x.courses.forEach(c => { if (c.subject === SUBJ) n++; }));
-      assert.equal(r.count(), n);
-    });
-
-    test('mark filters individual enrolments', () => {
-      const r = rig('enrolments');
-      r.set(r.f.id, 'crit.0.field', 'mark');
-      r.set(r.f.id, 'crit.0.op:mark', 'gte');
-      r.set(r.f.id, 'crit.0.value:mark', '90');
-      let n = 0;
-      S.forEach(x => x.courses.forEach(c => { if (c.mark >= 90) n++; }));
-      assert.equal(r.count(), n);
-    });
-
-    test('the two granularities give different, individually correct answers', () => {
-      const students = rig();
-      students.set(students.f.id, 'crit.0.field', 'courses.subject');
-      students.set(students.f.id, 'crit.0.value:courses.subject', SUBJ);
-      const byStudent = students.count();
-
-      const enrol = rig('enrolments');
-      enrol.set(enrol.f.id, 'crit.0.field', 'subject');
-      enrol.set(enrol.f.id, 'crit.0.value:subject', SUBJ);
-      const byEnrolment = enrol.count();
-
-      assert.equal(byStudent, S.filter(x => x.courses.some(c => c.subject === SUBJ)).length);
-      let n = 0; S.forEach(x => x.courses.forEach(c => { if (c.subject === SUBJ) n++; }));
-      assert.equal(byEnrolment, n);
-      assert.ok(byStudent !== byEnrolment, 'the distinction should be observable');
-    });
-  });
+  /* 'filtering at enrolment granularity' (3 tests) went with the Source's
+     enrolment mode in 52d5e6a. A row is now always a student, so "filters rows,
+     not students" no longer names two different things. The course predicates
+     those tests shared are still covered under 'course predicates' above. */
 
   describe('multiple criteria', () => {
     test('criteria compose as AND', () => {
@@ -291,13 +271,21 @@ module.exports = ({ describe, test }) => {
 
   describe('orphaned criteria', () => {
     test('a criterion whose column vanished is skipped, and the query still runs', () => {
-      const r = rig();
-      r.set(r.f.id, 'crit.0.value:gradeAvg', '80');
-      r.set(r.s.id, 'rows', 'enrolments');   // gradeAvg no longer exists upstream
-      const got = r.count();
-      let total = 0; S.forEach(x => total += x.courses.length);
-      assert.equal(got, total, 'the skipped criterion should filter nothing');
-      assert.includes(r.log(), 'SKIP');
+      /* A criterion outliving its column used to be reached by rewiring the
+         Source's granularity. Select does it now, and more directly: untick the
+         column the criterion names and the Filter is left pointing at a header
+         that no longer has it. */
+      const h = boot();
+      const [s, sel, f, o] = h.build('source', 'select', 'filter', 'output');
+      h.set(o.id, 'show', 'count');
+      h.set(f.id, 'crit.0.field', 'gradeAvg');
+      h.set(f.id, 'crit.0.value:gradeAvg', '80');
+      h.set(sel.id, 'column:gradeAvg', false);   // gradeAvg no longer arrives
+
+      h.w.runQuery();
+      assert.equal(Number(h.bigNum()), S.length, 'the skipped criterion should filter nothing');
+      assert.includes(h.text('.query-log'), 'SKIP');
+      assert.includes(h.text('.query-log'), 'gradeAvg', 'the log should name what it ignored');
     });
   });
 };

@@ -1,14 +1,21 @@
 /* Test harness.
    Boots the application inside jsdom and exposes its internals to the tests.
 
-   The application is a single IIFE with no module system, which is deliberate —
-   it must run from a file:// URL with no build step. That means nothing inside
-   it is reachable from outside by default. Rather than change the production
-   code to suit the tests, the harness injects one line before the closing
-   `})();` that publishes the internals onto `window.__app`. The shipped file is
-   never modified: the injection happens on the in-memory copy only. If the
-   injection point ever moves, the harness throws instead of silently testing a
-   different thing. */
+   The application is a single IIFE with no module system — deliberate, since it
+   must run from a file:// URL with no build step — so nothing inside it is
+   reachable from outside by default. app.js answers that itself: setting
+   `window.__QB_TEST__ = true` BEFORE it loads makes it publish its internals on
+   `window.__qb`. In normal use the flag is undefined and nothing is exported.
+
+   This harness used to reach in by rewriting the source text instead, injecting
+   an export block before the closing `})();`. app.js warns against exactly that
+   ("silently broken by any edit near the end of this file"), and it was: the
+   injected block named functions that a later refactor deleted, so every test
+   died at boot rather than failing on anything it was testing. The sanctioned
+   flag cannot rot that way — if a symbol goes, the suite that uses it fails on
+   its own line and says which one.
+
+   The shipped file is never modified, in either scheme. */
 
 const fs = require('fs');
 const path = require('path');
@@ -45,53 +52,24 @@ const APP_DIR = findAppDir();
 const APP_JS = path.join(APP_DIR, 'app.js');
 const APP_HTML = findHtml(APP_DIR);
 
-/* Everything the tests need to reach. `nodes` and `connections` are reassigned
-   by clearAll() and removeNode(), so they are exposed as getters rather than
-   captured by value. */
-const HOOK = `
-window.__app = {
-  get nodes(){ return nodes; },
-  get connections(){ return connections; },
-  get exportData(){ return exportData; },
-  get resultsFresh(){ return resultsFresh; },
-  findNode: findNode, inputsOf: inputsOf, topoSort: topoSort,
-  evaluateGraph: evaluateGraph, computeSchemas: computeSchemas, inputSchema: inputSchema,
-  makeTable: makeTable, colIndex: colIndex, colByKey: colByKey, hasCol: hasCol,
-  cellAt: cellAt, coursesColIndex: coursesColIndex, numericCols: numericCols,
-  studentsTable: studentsTable, enrolmentsTable: enrolmentsTable,
-  toEnrolments: toEnrolments, breakdownTable: breakdownTable,
-  explodesHere: explodesHere, canExplode: canExplode,
-  fmtCell: fmtCell, exportCell: exportCell, cellTitle: cellTitle,
-  unionTables: unionTables, schemaKey: schemaKey, rowKey: rowKey,
-  filterFields: filterFields, fieldByKey: fieldByKey, applyFilter: applyFilter,
-  outputTable: outputTable, normaliseShow: normaliseShow,
-  defaultAvgCol: defaultAvgCol, meanOf: meanOf,
-  serialiseTable: serialiseTable, exportTableFor: exportTableFor, safeName: safeName,
-  serialiseGraph: serialiseGraph, deserialiseGraph: deserialiseGraph,
-  applyGraph: applyGraph, loadGraphFromText: loadGraphFromText,
-  setCfg: setCfg, defaultCfg: defaultCfg, newCriterion: newCriterion,
-  render: render, markStale: markStale,
-  STUDENTS: STUDENTS, COURSES: COURSES, SUBJECTS: SUBJECTS, SPECS: SPECS, YEARS: YEARS,
-  COURSE_BY_CODE: COURSE_BY_CODE, CORE_COURSES: CORE_COURSES,
-  SPEC_SUBJECTS: SPEC_SUBJECTS, SUBJECT_WEIGHTS: SUBJECT_WEIGHTS, subjectWeight: subjectWeight,
-  COURSES_PER_YEAR: COURSES_PER_YEAR, DEFAULT_COURSE: DEFAULT_COURSE,
-  STUDENT_COLUMNS: STUDENT_COLUMNS, ENROLMENT_COLUMNS: ENROLMENT_COLUMNS,
-  COLTYPE: COLTYPE, MEASURES: MEASURES, CONNECT_RULES: CONNECT_RULES,
-  connect: function(from, to, color) {
-    connections.push({ from: from, to: to, color: color || '#ffffff' });
-  }
-};`;
-
-function instrument(src) {
-  const marker = /\n\s*render\(\);\s*\n\s*\}\)\(\);\s*$/;
-  if (!marker.test(src)) {
-    throw new Error(
-      'Harness could not find the injection point in app.js. It expects the file ' +
-      'to end with `render();` followed by `})();`. If that changed, update ' +
-      'lib/harness.js — do not skip the check, or the tests will silently run ' +
-      'against something other than the shipped file.');
-  }
-  return src.replace(marker, '\n' + HOOK + '\nrender();\n})();\n');
+/* __qb hands back live state through functions, because `nodes` and
+   `connections` are reassigned wholesale by clearAll() and applyGraph() and a
+   captured value would go stale. The suites were written against getters, so
+   the two are bridged here rather than by editing several hundred assertions —
+   and by keeping the bridge in one place, a later change to either side is one
+   edit. Everything else passes through untouched. */
+function shim(qb) {
+  const app = Object.create(null);
+  for (const k of Object.keys(qb)) app[k] = qb[k];
+  Object.defineProperties(app, {
+    nodes:        { get: () => qb.nodes() },
+    connections:  { get: () => qb.connections() },
+    exportData:   { get: () => qb.exportData() },
+    resultsFresh: { get: () => qb.isFresh() },
+    selection:    { get: () => qb.selection() },
+    view:         { get: () => qb.view() }
+  });
+  return app;
 }
 
 /* A fresh application instance per test file. State is module-global inside the
@@ -124,10 +102,18 @@ function boot() {
   const copied = [];
   w.navigator.clipboard = { writeText: (t) => { copied.push(t); return Promise.resolve(); } };
 
-  w.eval(instrument(fs.readFileSync(APP_JS, 'utf8')));
+  // The flag must be set before app.js runs: the export block is guarded by it.
+  w.__QB_TEST__ = true;
+  w.eval(fs.readFileSync(APP_JS, 'utf8'));
 
-  const app = w.__app;
-  if (!app) throw new Error('Harness injection ran but window.__app is missing.');
+  const qb = w.__qb;
+  if (!qb) {
+    throw new Error(
+      'window.__QB_TEST__ was set but window.__qb is missing. app.js should end ' +
+      'with a block guarded by that flag which publishes its internals. If that ' +
+      'block was removed, restore it rather than going back to source injection.');
+  }
+  const app = shim(qb);
 
   // render() is internal to the IIFE — only the toolbar entry points are on
   // window. Tests legitimately need to force a redraw, so alias it here rather
@@ -159,10 +145,19 @@ function helpers(w, doc, app) {
     return el;
   }
 
+  /* One node, unwired. build() covers a straight chain, but every multi-input
+     node — Combine, Compare — needs a graph that forks, and those have to be
+     wired deliberately rather than in sequence. */
+  function add(type) {
+    w.addNode(type);
+    const ns = app.nodes;
+    return ns[ns.length - 1];
+  }
+
   // Build a wired graph in one call: build('source','filter','output') connects
   // them in sequence and returns the node objects.
   function build(...types) {
-    const made = types.map(t => { w.addNode(t); return app.nodes[app.nodes.length - 1]; });
+    const made = types.map(add);
     for (let i = 0; i < made.length - 1; i++) app.connect(made[i].id, made[i + 1].id);
     w.render();
     return made;
@@ -193,7 +188,7 @@ function helpers(w, doc, app) {
     qa('[data-node="' + nodeId + '"][data-key="' + key + '"] option').map(o => o.value);
   const entry = (nodeId) => app.exportData[nodeId];
 
-  return { control, set, build, exportNameField, setExportName,
+  return { control, set, add, build, exportNameField, setExportName,
            q, qa, text, panel, bigNum, optionsOf, entry };
 }
 
