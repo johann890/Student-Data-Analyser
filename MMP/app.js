@@ -830,11 +830,57 @@ function critValue(c, field, col) {
   if (c.values && c.values[field] !== undefined) return c.values[field];
   if (col && col.def !== undefined) return col.def;
   if (col && col.values && col.values.length) return String(col.values[0]);
+  /* A column can declare an order without declaring a value set — letterGrade
+     carries GRADE_ORDER and nothing else — and that order is just as good a
+     source of a default. Without this the control renders with nothing
+     selected, the browser shows option one, and the model still says "", which
+     is precisely the disagreement between panel and model that the sort keys
+     go out of their way to avoid. */
+  if (col && col.order && col.order.length) return String(col.order[0]);
   return '';
 }
 function critOp(c, field, fallback) {
   if (c.ops && c.ops[field] !== undefined) return c.ops[field];
   return fallback;
+}
+
+/* THE SECOND BOUND
+   A range needs two values where every other comparison needs one. It is stored
+   under a derived key in the same per-field map — "gradeAvg" holds the low bound
+   and "gradeAvg:max" the high one — which means no change to the criterion
+   shape, no change to the save format, and no change to setCfg: a control named
+   `crit.0.value:gradeAvg:max` already routes to values['gradeAvg:max'] through
+   the parser that was there.
+
+   Keeping the low bound under the plain key is what makes switching operators
+   feel continuous. "At least 70" then "between" carries the 70 in as the floor,
+   rather than resetting to a default the user has to retype. */
+function rangeKey(field) { return field + ':max'; }
+
+/* The high bound defaults to the top of a declared order, and to the low bound
+   where there is no top to reach for. Both are shown in the panel and stated in
+   the hint, so neither default is a surprise the user discovers from an empty
+   result. */
+function critHigh(c, field, col) {
+  if (c.values && c.values[rangeKey(field)] !== undefined) return c.values[rangeKey(field)];
+  if (col && col.order && col.order.length) return String(col.order[col.order.length - 1]);
+  if (col && col.values && col.values.length) return String(col.values[col.values.length - 1]);
+  return critValue(c, field, col);
+}
+
+/* The pair, ranked and put the right way round. A user who types the bounds in
+   the other order means the band between them: refusing, or returning nothing,
+   would be a technicality rather than an answer. The log prints what was
+   actually applied, so the swap is visible rather than silent. */
+function critRange(c, field, col) {
+  var rankOf = rankerFor(col);
+  var loRaw = critValue(c, field, col);
+  var hiRaw = critHigh(c, field, col);
+  var lo = rankOf(loRaw), hi = rankOf(hiRaw);
+  var swapped = lo !== null && hi !== null && lo > hi;
+  return swapped
+    ? { lo: hi, hi: lo, loRaw: hiRaw, hiRaw: loRaw, swapped: true }
+    : { lo: lo, hi: hi, loRaw: loRaw, hiRaw: hiRaw, swapped: false };
 }
 
 /* CONFIG WRITES
@@ -1054,9 +1100,100 @@ var OP_FNS = {
   eq:  function(a,b){ return a == b; },   // deliberate ==: '2022' from a <select> must match 2022
   ne:  function(a,b){ return a != b; }
 };
-var OP_SYM = { gt:'>', gte:'>=', lt:'<', lte:'<=', eq:'=', ne:'!=' };
-var NUM_OPS  = ['gt','gte','lt','lte','eq','ne'];
+/* `between` takes three operands where every other comparison takes two. Rather
+   than give it a different calling convention, every call site passes three and
+   the binary functions ignore the one they do not want — JavaScript drops extra
+   arguments, so `OP_FNS.gt(a, lo, hi)` is still `a > lo`. One call shape for
+   every operator is what keeps applyCriterion free of a special case.
+
+   The bounds are inclusive at both ends. "Between 70 and 80" asks a question
+   about a band of marks, and a band that silently excluded 80 would be wrong in
+   the way that is hardest to notice — the count is nearly right. */
+OP_FNS.between = function(a, lo, hi) { return a >= lo && a <= hi; };
+
+var OP_SYM = { gt:'>', gte:'>=', lt:'<', lte:'<=', eq:'=', ne:'!=', between:'in' };
+
+/* What the operator dropdown says, where that differs from what the log says.
+   A log line wants the terse form — "gradeAvg in [70 .. 80]" reads well — but a
+   control has to be findable, and "in" sitting last among six comparator
+   symbols was not: it looks like a seventh comparator, and gives no hint that
+   it is the one operator needing two values. The dropdown says so in words. */
+var OP_LABEL = { between: 'in range' };
+function opLabel(o) { return OP_LABEL[o] || OP_SYM[o] || o; }
+
+/* The comparators are one idea and the range is another, so the dropdown says
+   that too. A group heading is the cheapest way to make an option findable by
+   someone who does not already know it is there — and the field selector above
+   already groups its own options the same way, so the pattern is not new. */
+function opGroups(ops) {
+  var cmp = ops.filter(function(o){ return o !== 'between'; });
+  var rng = ops.filter(function(o){ return o === 'between'; });
+  return [{ label:'Compare', ops:cmp }, { label:'Range', ops:rng }]
+    .filter(function(g){ return g.ops.length; });
+}
+var NUM_OPS  = ['gt','gte','lt','lte','eq','ne','between'];
 var ENUM_OPS = ['eq','ne'];
+/* An ordered category — a year, a letter grade — compares the same way a number
+   does once its values are ranked, so it gets the range operator too. It does
+   not get < and >, which would read as arithmetic on something that is not a
+   number. */
+var ORDERED_OPS = ['eq','ne','between'];
+
+/* WHICH COLUMNS CAN CARRY A RANGE
+   A range needs a meaningful order, and "has a declared list of values" is not
+   the same thing as "is ordered". Sort treats any ENUM's declared values as an
+   order, which is defensible there — some order beats lexical order, and the
+   user can see the result. A range is a claim: "between Cybersecurity and Data
+   Science" would look like a question and mean nothing, because the order it
+   ranges over is the order somebody happened to type the list in.
+
+   So a range is offered where the order is real:
+     - a number, which is ordered by being a number;
+     - a column with an explicit `order`, which is a deliberate statement about
+       ranking (letterGrade declares GRADE_ORDER, best to worst);
+     - an ENUM whose values are all numeric, which is how Year arrives — the
+       supervisor's use cases group by year ranges, and Year is an ENUM because
+       its values are a small fixed set, not because they are unordered.
+
+   Gender and Specialisation therefore have no range, and gain one the day
+   somebody declares what their order means. */
+function numericValues(vals) {
+  return !!(vals && vals.length) && vals.every(function(v) {
+    return v !== '' && v !== null && isFinite(Number(v));
+  });
+}
+
+function isRangeable(col) {
+  if (!col) return false;
+  if (col.type === COLTYPE.NUMBER) return true;
+  if (col.order && col.order.length) return true;
+  return col.type === COLTYPE.ENUM && numericValues(col.values);
+}
+
+/* A cell to a position on that order, so one comparison serves all three cases.
+   Numbers rank as themselves; a declared order ranks by index. A value absent
+   from a declared order has no position, so it cannot be inside any band — the
+   same reading comparatorFor() takes, where an undeclared value sorts last. */
+function rankerFor(col) {
+  if (col && col.order && col.order.length) {
+    var rank = {};
+    col.order.forEach(function(v, i){ rank[String(v)] = i; });
+    return function(v) {
+      var r = rank[String(v)];
+      return r === undefined ? null : r;
+    };
+  }
+  return function(v) {
+    /* Blank first, because Number('') is 0. Without this an upper bound the
+       user had cleared ranked as zero rather than as missing, the bounds were
+       then put "the right way round", and "between 70 and (nothing)" quietly
+       became "between 0 and 70" — a different question, answered confidently,
+       with a log line reading "[ .. 70]" as the only clue. */
+    if (isBlank(v)) return null;
+    var n = Number(v);
+    return isFinite(n) ? n : null;
+  };
+}
 
 function topoSort() {
   var inDeg = {}, adj = {};
@@ -1218,9 +1355,11 @@ function fieldByKey(schema, key) {
   return null;
 }
 
-function opsFor(kind) {
+function opsFor(kind, col) {
   if (kind === COLTYPE.NUMBER || kind === 'courseMark') return NUM_OPS;
-  if (kind === COLTYPE.TEXT) return ENUM_OPS;
+  // Passed the column where there is one, because whether a category can carry
+  // a range is a property of that column rather than of its type.
+  if (isRangeable(col)) return ORDERED_OPS;
   return ENUM_OPS;
 }
 function defaultOpFor(kind) {
@@ -1280,16 +1419,28 @@ function applyCriterion(t, c, f, log) {
     if (isNaN(num)) return { error: 'Course mark must be a number.' };
     var op = critOp(c, f.key, 'gte');
     var fn = OP_FNS[op] || OP_FNS.gte;
+    /* The mark field offers the numeric operators, and `between` is now one of
+       them, so the upper bound has to be read here too. Without it the range
+       would compare against an undefined ceiling and quietly match nobody —
+       the worst way for an unsupported combination to fail, because it looks
+       like an answer. */
+    var hi = num;
+    if (op === 'between') {
+      hi = parseFloat(critHigh(c, f.key, { def:'70' }));
+      if (isNaN(hi)) return { error: 'Course mark range needs two numbers.' };
+      if (hi < num) { var tmp = num; num = hi; hi = tmp; }
+    }
     var mrows = t.rows.filter(function(r) {
       var list = r[coursesIdx] || [];
       for (var i = 0; i < list.length; i++) {
-        if (list[i].code === code) return fn(list[i].mark, num);
+        if (list[i].code === code) return fn(list[i].mark, num, hi);
       }
       return false;
     });
     log.push(logEntry('FILTER', [
       {s:'student'}, {c:'op', s:'took'}, {s: code + '.mark'},
-      {c:'op', s:(OP_SYM[op] || '>=')}, {c:'val', s:num}
+      {c:'op', s:(OP_SYM[op] || '>=')},
+      {c:'val', s:(op === 'between' ? '[' + num + ' .. ' + hi + ']' : num)}
     ]));
     return { table: makeTable(t.columns, mrows) };
   }
@@ -1299,6 +1450,33 @@ function applyCriterion(t, c, f, log) {
   var opk = critOp(c, f.key, defaultOpFor(f.kind));
   var fnc = OP_FNS[opk] || OP_FNS.eq;
   var raw = critValue(c, f.key, col);
+
+  /* One branch for both kinds of range. rankerFor() turns a cell into a
+     position — itself for a number, its index for a declared order — so
+     "between 70 and 80" and "between A+ and B" are the same comparison on
+     different rankings, rather than two implementations that could disagree
+     about whether the ends are included. */
+  if (opk === 'between') {
+    var rng = critRange(c, f.key, col);
+    if (rng.lo === null || rng.hi === null) {
+      return { error: col.type === COLTYPE.NUMBER
+        ? col.label + ' range needs two numbers.'
+        : col.label + ' range needs two values from the column.' };
+    }
+    var rankOf = rankerFor(col);
+    var brows = t.rows.filter(function(r) {
+      // A value with no position cannot be inside any band. For a declared
+      // order that means a value nobody declared, which is the same reading
+      // comparatorFor() takes when it sorts such a value last.
+      var v = rankOf(r[idx]);
+      return v !== null && fnc(v, rng.lo, rng.hi);
+    });
+    log.push(logEntry('FILTER', [
+      {s:col.key}, {c:'op', s:'in'},
+      {c:'val', s:'[' + rng.loRaw + ' .. ' + rng.hiRaw + ']'}
+    ]));
+    return { table: makeTable(t.columns, brows) };
+  }
 
   if (col.type === COLTYPE.NUMBER) {
     var n = parseFloat(raw);
@@ -2799,13 +2977,69 @@ function courseSelect(nodeId, key, cur) {
 }
 
 function opSelect(nodeId, key, ops, cur) {
-  return '<select' + ctl(nodeId, key) + '>' +
-    ops.map(function(o){ return opt(o, cur, OP_SYM[o]); }).join('') +
-  '</select>';
+  var groups = opGroups(ops);
+  // Only worth grouping when there is something to separate. A field with no
+  // range on offer gets a plain list, as before.
+  var body = groups.length < 2
+    ? ops.map(function(o){ return opt(o, cur, opLabel(o)); }).join('')
+    : groups.map(function(g) {
+        return '<optgroup label="' + esc(g.label) + '">' +
+          g.ops.map(function(o){ return opt(o, cur, opLabel(o)); }).join('') +
+        '</optgroup>';
+      }).join('');
+  /* Marked when the range is chosen so the row can give the control room for
+     its longer label. "in range" will not fit the 38px column the comparator
+     symbols live in, and the value box it would have shared that row with has
+     moved into the band below anyway. */
+  var wide = cur === 'between' ? ' class="op-wide"' : '';
+  return '<select' + wide + ctl(nodeId, key) + '>' + body + '</select>';
 }
 
 /* One criterion row. Its shape follows the field's type, and the field list
    follows the incoming table — so this function knows nothing about students. */
+/* THE RANGE BAND
+   A range is the one criterion that needs a second value, and squeezing it into
+   the same row as the first would leave three controls and two numbers fighting
+   over 220px. It gets its own strip below the row instead, banded down the left
+   the way a criterion is banded, so it reads as part of that criterion rather
+   than as a new one — and coloured, so a filter carrying a band is visibly
+   doing something different from one that is not.
+
+   It exists only while `between` is the operator. Choosing it adds the band and
+   choosing anything else takes it away, which is the whole of the "add it or
+   not": there is no separate switch to get out of step with the operator.
+
+   The colour is the one this interface already uses for a state worth noticing
+   — the amber of the stale-results notice — rather than a new hue invented for
+   one control. */
+function rangeBandHTML(nid, ci, cur, c, renderBound) {
+  var rng = critRange(c, cur.key, cur.column);
+  var hiKey = 'crit.' + ci + '.value:' + rangeKey(cur.key);
+  return '<div class="crit-range">' +
+    '<span class="crit-range-tag">range</span>' +
+    '<div class="crit-range-pair">' +
+      renderBound('crit.' + ci + '.value:' + cur.key, rng.loRaw) +
+      '<span class="crit-range-to">to</span>' +
+      renderBound(hiKey, rng.hiRaw) +
+    '</div>' +
+    '<div class="crit-range-note">' +
+      (rng.lo === null || rng.hi === null
+        ? (cur.column && cur.column.type === COLTYPE.NUMBER
+            ? 'Both ends have to be numbers. The query will not run until they are.'
+            : 'Both ends have to be values this column holds.')
+        : rng.lo === rng.hi
+        /* The two bounds start equal on a plain number column, which has no
+           declared span to open the band across. Saying so, and saying what to
+           do, beats leaving the user to work out why a range behaves like an
+           equals. */
+        ? 'Both ends are ' + esc(String(rng.loRaw)) + ', so this keeps only ' +
+          'rows equal to it. Change one end to widen the band.'
+        : 'Keeps rows from ' + esc(String(rng.loRaw)) + ' to ' + esc(String(rng.hiRaw)) +
+          ', both included.' + (rng.swapped ? ' (Bounds read the other way round.)' : '')) +
+    '</div>' +
+  '</div>';
+}
+
 function criterionHTML(node, ci, c, schema) {
   var fields = filterFields(schema);
   if (!fields.length) {
@@ -2839,34 +3073,64 @@ function criterionHTML(node, ci, c, schema) {
       courseSelect(nid, vKey, critValue(c, cur.key, null) || DEFAULT_COURSE) + '</div>';
 
   } else if (cur.kind === 'courseMark') {
+    var mOp = critOp(c, cur.key, 'gte');
+    var markBox = function(key, val) {
+      return '<input type="number" min="0" max="100" value="' + esc(val) + '"' + ctl(nid, key) + '>';
+    };
     body = '<div class="criterion-controls stack">' + fieldSel +
       courseSelect(nid, 'crit.' + ci + '.course', c.course) +
-      '<div class="cc-pair">' +
-        opSelect(nid, oKey, NUM_OPS, critOp(c, cur.key, 'gte')) +
-        '<input type="number" min="0" max="100" value="' + esc(critValue(c, cur.key, { def:'70' })) + '"' +
-          ctl(nid, vKey) + '></div></div>';
+      (mOp === 'between'
+        ? opSelect(nid, oKey, NUM_OPS, mOp)
+        : '<div class="cc-pair">' + opSelect(nid, oKey, NUM_OPS, mOp) +
+            markBox(vKey, critValue(c, cur.key, { def:'70' })) + '</div>') +
+      '</div>' +
+      (mOp === 'between'
+        ? rangeBandHTML(nid, ci, { key: cur.key, column: { def:'70' } }, c, markBox)
+        : '');
 
   } else if (cur.kind === COLTYPE.NUMBER) {
-    body = '<div class="criterion-controls">' + fieldSel +
-      opSelect(nid, oKey, NUM_OPS, critOp(c, cur.key, 'gt')) +
-      '<input type="number" value="' + esc(critValue(c, cur.key, cur.column)) + '"' + ctl(nid, vKey) + '>' +
-    '</div>';
+    var nOp = critOp(c, cur.key, 'gt');
+    var numBox = function(key, val) {
+      return '<input type="number" value="' + esc(val) + '"' + ctl(nid, key) + '>';
+    };
+    // The single box gives way to the band rather than sitting beside it — two
+    // places to type a lower bound would be one too many — so with the range on
+    // the row has only two cells and the operator can have the spare width.
+    body = (nOp === 'between'
+      ? '<div class="criterion-controls two-col">' + fieldSel +
+          opSelect(nid, oKey, NUM_OPS, nOp) + '</div>' +
+        rangeBandHTML(nid, ci, cur, c, numBox)
+      : '<div class="criterion-controls">' + fieldSel +
+          opSelect(nid, oKey, NUM_OPS, nOp) +
+          numBox(vKey, critValue(c, cur.key, cur.column)) +
+        '</div>');
 
-  } else if (cur.kind === COLTYPE.ENUM) {
-    var vals = (cur.column && cur.column.values) || [];
+  } else if (cur.kind === COLTYPE.ENUM || isRangeable(cur.column)) {
+    var vals = (cur.column && cur.column.values) || (cur.column && cur.column.order) || [];
     // Enum criteria carry an operator too. Without one, "specialisation is NOT
     // Data Science" is unaskable — the engine has always supported it, but
     // there was no control to reach it with.
-    var enumOp = opSelect(nid, oKey, ENUM_OPS, critOp(c, cur.key, 'eq'));
-    var valSel = '<select' + ctl(nid, vKey) + '>' +
-      vals.map(function(v){ return opt(v, critValue(c, cur.key, cur.column)); }).join('') + '</select>';
+    var eOps = opsFor(cur.kind, cur.column);
+    var eOp = critOp(c, cur.key, 'eq');
+    if (eOps.indexOf(eOp) === -1) eOp = eOps[0];
+    var enumOp = opSelect(nid, oKey, eOps, eOp);
+    var pick = function(key, val) {
+      return '<select' + ctl(nid, key) + '>' +
+        vals.map(function(v){ return opt(v, String(val)); }).join('') + '</select>';
+    };
+    var valSel = pick(vKey, critValue(c, cur.key, cur.column));
     // Long option text (specialisations, course names) will not survive the
     // 80px field column, so those wrap onto their own row.
     var wide = vals.some(function(v){ return String(v).length > 8; });
-    body = wide
+    body = (eOp === 'between'
+      // Both bounds live in the band, so the row is field and operator only —
+      // and the operator gets the width its label needs, wide values or not.
+      ? '<div class="criterion-controls two-col">' + fieldSel + enumOp + '</div>' +
+        rangeBandHTML(nid, ci, cur, c, pick)
+      : wide
       ? '<div class="criterion-controls stack">' + fieldSel +
           '<div class="cc-pair">' + enumOp + valSel + '</div></div>'
-      : '<div class="criterion-controls">' + fieldSel + enumOp + valSel + '</div>';
+      : '<div class="criterion-controls">' + fieldSel + enumOp + valSel + '</div>');
 
   } else {
     body = '<div class="criterion-controls">' + fieldSel +
@@ -5422,6 +5686,11 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     NODE_SPEC: NODE_SPEC, specFor: specFor, SHAPE: SHAPE, passthroughSchema: passthroughSchema,
     inputSchema: inputSchema, unionTables: unionTables, filterFields: filterFields,
     fieldByKey: fieldByKey, applyFilter: applyFilter, applyCriterion: applyCriterion,
+    opsFor: opsFor, defaultOpFor: defaultOpFor, OP_FNS: OP_FNS, OP_SYM: OP_SYM,
+    NUM_OPS: NUM_OPS, ENUM_OPS: ENUM_OPS, ORDERED_OPS: ORDERED_OPS,
+    isRangeable: isRangeable, numericValues: numericValues, rankerFor: rankerFor,
+    critValue: critValue, critOp: critOp, critHigh: critHigh, critRange: critRange,
+    rangeKey: rangeKey, isBlank: isBlank,
     newCriterion: newCriterion, defaultCfg: defaultCfg,
     normaliseShow: normaliseShow, outputTable: outputTable, defaultAvgCol: defaultAvgCol,
     meanOf: meanOf, MEASURES: MEASURES,

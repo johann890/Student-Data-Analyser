@@ -101,6 +101,8 @@ bridges them back to getters so tests can write `app.nodes`, in one place —
 | `13-reverse` | The Reverse node: registration in all six tables, row order, the Sort/Reverse/Take pairing, and the in-place-mutation guard |
 | `14-aggregate-rows` | AggregateRows: the mirror of AggregateColumns, values cross-checked against the dataset, which cells feed the measure, and composition with Select |
 | `15-output-columns` | Choosing columns on an Output: the control, that it changes the view and never the answer, where the picker does and does not appear, and both empty-selection guards |
+| `16-range` | The `between` operator: that it can be found at all, which columns may carry a range and which may not, the amber band's appearance, bounds cross-checked against the dataset on numbers, years and grade letters, reversed and incomplete bounds |
+| `17-shape-styling` | The model's `SHAPE` geometry against the stylesheet's, and that every processing node is named in its family's colour rule and its menu group |
 
 ### What was removed, and why
 
@@ -145,7 +147,29 @@ confirming the suite caught it:
   and it could not fail. Remove each guard in turn and exactly one test should
   go red.
 
+- **`16-range` › a cleared bound stops the run instead of ranking as zero.**
+  Remove the `isBlank(v)` line from `rankerFor` and two tests fail. `Number('')`
+  is `0`, so without it a cleared upper bound ranked as zero, the bounds were
+  put "the right way round", and "between 70 and nothing" became "between 0 and
+  70" — a different question, answered confidently, with a log line reading
+  `[ .. 70]` as the only clue.
+
 If any of these is ever rewritten, re-check it the same way.
+
+## Why `17-shape-styling` exists
+
+It checks the stylesheet from the test suite, which is unusual, and it is worth
+saying why. `SHAPE` is what the graph measures — snap-to-connect compares shape
+edges, `nodeBox` feeds `zoomToFit`, `shapeEntry`/`shapeExit` place arrowheads —
+while the stylesheet is what is actually drawn. Nothing made the two agree, and
+nothing goes loudly wrong when they disagree: arrows land slightly off, Fit
+leaves a margin nobody asked for.
+
+AggregateRows shipped with no width rule at all while the model said 112x72, and
+with its class missing from the Summarise colour rule, so it rendered violet
+among the teal ones. Both were found by a person looking at the screen, which is
+the most expensive way to find them. Remove `.shape-aggrows` from either rule and
+this suite says so.
 
 ## Conventions
 

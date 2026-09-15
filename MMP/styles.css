@@ -283,6 +283,69 @@ select option {
   background: #141414;
   color: #c8c8c8;
 }
+/* ── RANGE BAND ──────────────────────────────────────────── */
+/* Appears under a criterion whose operator is "in range", and only then. It is
+   banded down the left exactly as .criterion-row is, so it reads as belonging
+   to that criterion rather than as a criterion of its own — but in amber rather
+   than the panel's grey, so a filter carrying a range announces itself without
+   the panel having to be read.
+
+   The amber is the one already used by .stale-note for a state worth noticing,
+   rather than a hue invented for one control. */
+.crit-range {
+  margin-top: 4px;
+  padding: 5px 7px;
+  border-left: 2px solid #c9a227;
+  border-radius: 0 4px 4px 0;
+  background: #191305;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.crit-range-tag {
+  font-size: 8px;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: #c9a227;
+  opacity: 0.85;
+}
+/* low | "to" | high — fixed centre column so the two bounds stay equal width
+   however long their contents, which matters because one is often a dropdown
+   of full specialisation names and the other the same. */
+.crit-range-pair {
+  display: grid;
+  grid-template-columns: 1fr 16px 1fr;
+  gap: 3px;
+  align-items: center;
+}
+.crit-range-to {
+  font-size: 9px;
+  color: #8a7a4a;
+  text-align: center;
+}
+.crit-range-note {
+  font-size: 9px;
+  line-height: 1.35;
+  color: #8a7a4a;
+}
+/* The single-value box is replaced by the band, not joined by it, so its grid
+   cell is held open to stop the operator select stretching across the gap. */
+/* The operator select wears the band's colour once the range is chosen, so the
+   control that opened the band and the band itself read as one thing. */
+.op-wide {
+  border-color: #4a3a10 !important;
+  color: #c9a227;
+}
+/* The band's own controls take the amber treatment rather than the panel's
+   grey, so the grouping survives even when the band wraps. */
+.crit-range input,
+.crit-range select {
+  border-color: #4a3a10;
+  background: #120d04;
+}
+.crit-range input:focus,
+.crit-range select:focus { border-color: #c9a227; }
+
 .criterion-value-sel { /* full-width, sits in its grid cell */ }
 .add-criterion-btn {
   background: transparent;
@@ -1119,20 +1182,10 @@ th.cmp-num { color: #383838 !important; }
 /* ── SHAPES ──────────────────────────────────────────────── */
 /* Processing-family colour, shared with Sort, Take and Compare. The glyphs are
    what separate them: ascending bars (Sort), bars with a cut (Take), a funnel
-   to one dot (Aggregate), three funnels side by side (Aggregate Columns). */
+   to one dot (Aggregate), three funnels side by side (Aggregate Columns), the
+   same three turned on their side (Aggregate Rows). */
 .shape-aggregate,
-.shape-aggcols {
-  border-radius: 3px;
-  border: 2.5px solid #5a3a7a;
-  background: #120a1a;
-  color: #b48ce0;
-  display: flex; align-items: center; justify-content: center;
-  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
-  cursor: grab; position: relative; flex-shrink: 0;
-  flex-direction: column; gap: 5px;
-}
-
-/* ── AGGREGATE ROWS SHAPE ────────────────────────────────── */
+.shape-aggcols,
 .shape-aggrows {
   border-radius: 3px;
   border: 2.5px solid #5a3a7a;
@@ -1153,8 +1206,10 @@ th.cmp-num { color: #383838 !important; }
 .aggr-row b { display: block; width: 3px; height: 3px; border-radius: 50%; margin-left: 2px; opacity: 0.9; }
 .shape-aggregate { width: 106px; height: 72px; }
 .shape-aggcols   { width: 112px; height: 72px; }
+.shape-aggrows   { width: 112px; height: 72px; }
 .shape-aggregate:active,
-.shape-aggcols:active { cursor: grabbing; }
+.shape-aggcols:active,
+.shape-aggrows:active { cursor: grabbing; }
 
 /* Three bars narrowing to a single dot: many values in, one out. */
 .agg-glyph { display: flex; flex-direction: column; gap: 2px; align-items: center; }
@@ -1393,7 +1448,8 @@ th.cmp-num { color: #383838 !important; }
 
 /* ── SUMMARISE ── teal ──────────────────────────────────── */
 .shape-aggregate,
-.shape-aggcols {
+.shape-aggcols,
+.shape-aggrows {
   border-color: #1f6a6a;
   background: #041416;
   color: #5ac8c8;
