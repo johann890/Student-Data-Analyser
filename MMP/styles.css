@@ -531,10 +531,14 @@ body.panel-resizing * { cursor: col-resize !important; }
   position: absolute;
   z-index: 50;
   pointer-events: none; /* never steals hover from the line beneath it */
-  width: 230px;
-  max-width: 230px;
-  /* The table inside sizes to its content by default, so a wide row pushed
-     straight through this border instead of being clipped by it. */
+  /* Widened from 230px once fixed table layout made overflow impossible. The
+     original width was chosen while a wide row could still push through the
+     border; the fix for that was `table-layout: fixed` plus per-cell ellipsis
+     below, not the narrow box, so the box no longer has to pay for it. Sized to
+     hold PREVIEW_COLS columns at the same density the four-column version had —
+     change the two together or columns start to crowd. */
+  width: 340px;
+  max-width: 340px;
   overflow: hidden;
   background: #0b0b0c;
   border: 1px solid #2a2a2e;

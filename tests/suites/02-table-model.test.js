@@ -37,9 +37,8 @@ module.exports = ({ describe, test }) => {
 
     test('every column declares a known type', () => {
       const types = Object.keys(T).map(k => T[k]);
-      [app.studentsTable([]), app.enrolmentsTable([])].forEach(t => {
-        t.columns.forEach(c => assert.includes(types, c.type, c.key + ' has type ' + c.type));
-      });
+      app.studentsTable([]).columns.forEach(c =>
+        assert.includes(types, c.type, c.key + ' has type ' + c.type));
     });
   });
 
@@ -59,8 +58,11 @@ module.exports = ({ describe, test }) => {
         { key: 'courses', label: 'Courses', type: T.NUMBER }
       ], [['A', 27], ['B', 29]]);
       assert.equal(app.coursesColIndex(decoy), -1, 'matched on name instead of type');
-      assert.equal(app.toEnrolments(decoy), null);
-      assert.equal(app.breakdownTable(decoy).rows.length, 0);
+      // The nested-cell renderers must not take the integer for a course list
+      // either: fmtCell would print its length, cellTitle would join it.
+      const numCol = decoy.columns[1];
+      assert.equal(app.fmtCell(numCol, 27), '27');
+      assert.equal(app.cellTitle(numCol, 27), '');
     });
 
     test('numericCols returns only numeric columns', () => {
@@ -70,92 +72,17 @@ module.exports = ({ describe, test }) => {
     });
   });
 
-  describe('toEnrolments (the unfold)', () => {
-    test('a student table unfolds to one row per student-course pair', () => {
-      const some = app.STUDENTS.slice(0, 5);
-      const en = app.toEnrolments(app.studentsTable(some));
-      const expected = some.reduce((a, s) => a + s.courses.length, 0);
-      assert.equal(en.rows.length, expected);
-    });
+  /* The unfold (toEnrolments) and the per-course breakdown (breakdownTable)
+     were removed in 52d5e6a along with the Source's enrolment granularity, so
+     the twelve tests that covered them are gone rather than skipped.
 
-    test('the unfold carries student context onto every enrolment row', () => {
-      const s = app.STUDENTS[0];
-      const en = app.toEnrolments(app.studentsTable([s]));
-      en.rows.forEach(r => {
-        assert.equal(app.cellAt(en, r, 'studentId'), s.id);
-        assert.equal(app.cellAt(en, r, 'specialisation'), s.specialisation);
-        assert.equal(app.cellAt(en, r, 'year'), s.year);
-      });
-    });
-
-    test('marks survive the unfold intact', () => {
-      const s = app.STUDENTS[0];
-      const en = app.toEnrolments(app.studentsTable([s]));
-      const got = en.rows.map(r => app.cellAt(en, r, 'code') + ':' + app.cellAt(en, r, 'mark')).sort();
-      const want = s.courses.map(c => c.code + ':' + c.mark).sort();
-      assert.deepEqual(got, want);
-    });
-
-    test('an enrolment table passes through unchanged', () => {
-      const t = app.enrolmentsTable(app.STUDENTS.slice(0, 3));
-      assert.equal(app.toEnrolments(t), t, 'should be the same object, not a copy');
-    });
-
-    test('a table with no course information returns null rather than guessing', () => {
-      const t = app.makeTable([{ key: 'x', label: 'X', type: T.NUMBER }], [[1]]);
-      assert.equal(app.toEnrolments(t), null);
-    });
-
-    test('unfolding an empty student table gives an empty enrolment table', () => {
-      const en = app.toEnrolments(app.studentsTable([]));
-      assert.equal(en.rows.length, 0);
-      assert.ok(en.columns.length > 0, 'columns should still be declared');
-    });
-  });
-
-  describe('breakdownTable', () => {
-    test('counts and averages agree with the raw data', () => {
-      const some = app.STUDENTS.slice(0, 20);
-      const bt = app.breakdownTable(app.studentsTable(some));
-      const tally = {};
-      some.forEach(s => s.courses.forEach(c => {
-        (tally[c.code] = tally[c.code] || []).push(c.mark);
-      }));
-      assert.equal(bt.rows.length, Object.keys(tally).length);
-      bt.rows.forEach(r => {
-        const marks = tally[r[0]];
-        assert.equal(r[3], marks.length, r[0] + ' count');
-        assert.close(r[4], marks.reduce((a, m) => a + m, 0) / marks.length, 1e-9, r[0] + ' mean');
-      });
-    });
-
-    test('total enrolments are conserved by the aggregation', () => {
-      const some = app.STUDENTS.slice(0, 30);
-      const bt = app.breakdownTable(app.studentsTable(some));
-      const total = some.reduce((a, s) => a + s.courses.length, 0);
-      assert.equal(bt.rows.reduce((a, r) => a + r[3], 0), total);
-    });
-
-    test('rows are ordered by popularity, ties broken by code', () => {
-      const bt = app.breakdownTable(app.studentsTable(app.STUDENTS));
-      for (let i = 1; i < bt.rows.length; i++) {
-        const prev = bt.rows[i - 1], cur = bt.rows[i];
-        assert.ok(prev[3] > cur[3] || (prev[3] === cur[3] && prev[0] < cur[0]),
-          'order broken at ' + prev[0] + '/' + cur[0]);
-      }
-    });
-
-    test('the same result whether fed students or enrolments', () => {
-      const some = app.STUDENTS.slice(0, 12);
-      const a = app.breakdownTable(app.studentsTable(some));
-      const b = app.breakdownTable(app.enrolmentsTable(some));
-      assert.deepEqual(a.rows, b.rows);
-    });
-
-    test('an empty input gives an empty breakdown, not an error', () => {
-      assert.equal(app.breakdownTable(app.studentsTable([])).rows.length, 0);
-    });
-  });
+     Their subject is not gone: app.js:238 records that unfolding nested
+     enrolments should return as a NODE on the canvas, where the change in row
+     identity is visible, rather than as a hidden Source mode. When that node is
+     built these are the assertions to restore — one row per student-course
+     pair, student context carried onto every row, marks intact, an empty input
+     giving an empty table rather than an error. `git show 52d5e6a` has both the
+     implementation and the original tests. */
 
   describe('cell formatting', () => {
     test('a nested course cell shows a count on screen', () => {

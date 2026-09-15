@@ -1866,6 +1866,10 @@ var AGG_OPS = [
   { key:'count',   label:'Count',   verb:'Count of',   needsCol:false },
   { key:'sum',     label:'Sum',     verb:'Sum of',     needsCol:true  },
   { key:'average', label:'Average', verb:'Average',    needsCol:true  },
+  // Next to Average because it answers the same question about the same
+  // column, and differs exactly where that matters: a handful of very low
+  // marks drags an average down and leaves a median where it was.
+  { key:'median',  label:'Median',  verb:'Median',     needsCol:true  },
   { key:'min',     label:'Minimum', verb:'Minimum',    needsCol:true  },
   { key:'max',     label:'Maximum', verb:'Maximum',    needsCol:true  }
 ];
@@ -1906,6 +1910,16 @@ function reduceValues(opKey, values) {
   if (!nums.length) return null;              // see decision 1 above
   if (opKey === 'sum')     return nums.reduce(function(a, b){ return a + b; }, 0);
   if (opKey === 'average') return nums.reduce(function(a, b){ return a + b; }, 0) / nums.length;
+  if (opKey === 'median') {
+    /* Sorted numerically — the default sort is lexical, which puts 100 before
+       30 and would pick the wrong middle. An even count averages the two
+       middle values rather than picking one, so the median of [1,2,3,4] is
+       2.5: taking either alone would claim a value the data does not contain
+       is more central than its neighbour. */
+    var sorted = nums.slice().sort(function(a, b){ return a - b; });
+    var mid = sorted.length >> 1;
+    return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
+  }
   if (opKey === 'min')     return Math.min.apply(null, nums);
   if (opKey === 'max')     return Math.max.apply(null, nums);
   return null;
@@ -3443,9 +3457,12 @@ function edgeData(conn) {
   return { table: r.table };
 }
 
-// Preview columns are capped, not chosen: an enrolment table is ten columns
-// wide and would overflow the floating panel.
-var PREVIEW_COLS = 4;
+// Preview columns are capped, not chosen: a join result carries both inputs'
+// headers and runs to a dozen columns, which no floating panel can hold.
+// Paired with the .edge-preview width in the stylesheet — six columns at the
+// density four had. Raising this without widening that crowds the cells until
+// every one of them ellipsises away to nothing.
+var PREVIEW_COLS = 6;
 var PREVIEW_ROWS = 5;
 
 /* Which columns to show is a choice, not just a slice. Long free-text columns —
@@ -3672,9 +3689,15 @@ function card(title, body, badge) {
 // only the presentation differs, and the export path never sees this.
 function scalarHTML(t) {
   var c = t.columns[0], r = t.rows[0] || [];
-  // The mean of nothing is undefined, not zero. Printing "0" asserts something
-  // false about the data; an em dash says there was nothing to average.
-  var blank = c.key === 'average' && t.columns.length > 1 && Number(r[1]) === 0;
+  /* The mean of nothing is undefined, not zero. Printing "0" asserts something
+     false about the data; an em dash says there was nothing to average.
+
+     reduceValues() returns null for exactly that case, and now that any 1x1
+     table reaches this renderer an aggregate over no rows arrives here rather
+     than as a blank table cell. An empty headline is as uninformative as a
+     wrong one, so the same em dash covers it. */
+  var blank = r[0] === null || r[0] === undefined ||
+              (c.key === 'average' && t.columns.length > 1 && Number(r[1]) === 0);
   var extra = t.columns.length > 1
     ? '<span class="big-sub">' + esc(t.columns[1].label + ': ' + fmtCell(t.columns[1], r[1])) + '</span>'
     : '';
@@ -3704,6 +3727,18 @@ function resultHTML(node, r) {
       return html;
     }
   }
+
+  /* A single value is a single value however it was produced. Until now only
+     the Output's own Count setting reached the headline display, so moving the
+     same calculation onto the canvas — an Aggregate wired in front, which is
+     exactly what removing the Output shortcuts told people to do — demoted the
+     answer to a one-cell table. The rule is the shape of the result, not which
+     control happened to produce it.
+
+     Placed after the Compare branch above so a one-branch, one-measure summary
+     still renders as the comparison it is. */
+  if (t.columns.length === 1 && t.rows.length === 1) return scalarHTML(t);
+
   return tableHTML(t, 'Rows', String(t.rows.length));
 }
 
@@ -3961,10 +3996,21 @@ function copyOutput(id, btn) {
   if (e) writeClipboard(serialiseTable(exportTableFor(e), '\t', false), btn);
 }
 
+/* The name written is the name typed, with nothing appended. A timestamp used
+   to be added for uniqueness, which meant the field never actually decided the
+   filename — two saves of "grades" produced two differently-named files, and
+   the user who had just named the file could not predict what they would get.
+   Re-saving now overwrites, or is de-duplicated by the browser, which is what
+   every other download on the machine does.
+
+   This also makes the two export paths agree: queryFileName() already writes a
+   typed name verbatim and reserves the timestamp for the *default* name, where
+   it is a convenience rather than an override. defaultExportName() plays that
+   role here — different Outputs still get distinct names without one. */
 function saveOutput(id, btn) {
   var e = exportEntry(id, btn);
   if (!e) return;
-  var name = safeName(e.name) + '-' + timeStamp(true) + '.csv';
+  var name = safeName(e.name) + '.csv';
   flashBtn(btn, downloadFile(name, serialiseTable(exportTableFor(e), ',', true), 'text/csv')
     ? 'Saved ✓' : 'Save failed');
 }
@@ -5085,18 +5131,21 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     // data layer
     STUDENTS: STUDENTS, COURSES: COURSES, SUBJECTS: SUBJECTS, SPECS: SPECS, YEARS: YEARS,
     COURSE_BY_CODE: COURSE_BY_CODE, CORE_COURSES: CORE_COURSES, COURSES_PER_YEAR: COURSES_PER_YEAR,
+    SPEC_SUBJECTS: SPEC_SUBJECTS, SUBJECT_WEIGHTS: SUBJECT_WEIGHTS, subjectWeight: subjectWeight,
 
     // table primitives
     COLTYPE: COLTYPE, makeTable: makeTable, colIndex: colIndex, colByKey: colByKey,
     hasCol: hasCol, cellAt: cellAt, headerOnly: headerOnly, numericCols: numericCols,
     coursesColIndex: coursesColIndex, studentsTable: studentsTable,
-    fmtCell: fmtCell, exportCell: exportCell, schemaKey: schemaKey,
+    fmtCell: fmtCell, exportCell: exportCell, cellTitle: cellTitle,
+    schemaKey: schemaKey, rowKey: rowKey,
 
     // engine
     topoSort: topoSort, evaluateGraph: evaluateGraph, computeSchemas: computeSchemas,
     NODE_SPEC: NODE_SPEC, specFor: specFor, SHAPE: SHAPE, passthroughSchema: passthroughSchema,
     inputSchema: inputSchema, unionTables: unionTables, filterFields: filterFields,
-    fieldByKey: fieldByKey, newCriterion: newCriterion, defaultCfg: defaultCfg,
+    fieldByKey: fieldByKey, applyFilter: applyFilter, applyCriterion: applyCriterion,
+    newCriterion: newCriterion, defaultCfg: defaultCfg,
     normaliseShow: normaliseShow, outputTable: outputTable, defaultAvgCol: defaultAvgCol,
     meanOf: meanOf, MEASURES: MEASURES,
 
@@ -5131,6 +5180,12 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     TAKE_DEFAULT: TAKE_DEFAULT, TAKE_MIN: TAKE_MIN,
     canConnect: canConnect, CONNECT_RULES: CONNECT_RULES,
 
+    // edge preview. The column cap is paired with a width in the stylesheet,
+    // so it is exported to be asserted on rather than trusted to stay in step.
+    PREVIEW_COLS: PREVIEW_COLS, PREVIEW_ROWS: PREVIEW_ROWS,
+    previewColumns: previewColumns, previewTableHTML: previewTableHTML,
+    edgeData: edgeData,
+
     // view: zoom, pan and world coordinates
     view: function(){ return view; },
     setZoom: setZoom, zoomToFit: zoomToFit, centreView: centreView, clampPan: clampPan, applyView: applyView,
@@ -5147,6 +5202,8 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
 
     // export + persistence
     serialiseTable: serialiseTable, exportTableFor: exportTableFor, safeName: safeName,
+    exportNameOf: exportNameOf, defaultExportName: defaultExportName, markStale: markStale,
+    timeStamp: timeStamp, resultHTML: resultHTML, scalarHTML: scalarHTML, tableHTML: tableHTML,
     serialiseGraph: serialiseGraph, deserialiseGraph: deserialiseGraph,
     applyGraph: applyGraph, loadGraphFromText: loadGraphFromText,
     FILE_KIND: FILE_KIND, FILE_VERSION: FILE_VERSION,
