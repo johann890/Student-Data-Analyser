@@ -114,7 +114,7 @@ module.exports = ({ describe, test }) => {
       // Which is why the schema walk can answer without looking upstream
       const wide = rig('sum');
       const narrow = rig('sum', ['select']);
-      narrow.set(narrow.mid[0].id, 'column:gradeAvg', false);
+      narrow.set(narrow.mid[0].id, 'column:gpa', false);
       assert.deepEqual(
         wide.app.computeSchemas()[wide.n.id].columns.map(c => c.key),
         narrow.app.computeSchemas()[narrow.n.id].columns.map(c => c.key));
@@ -122,14 +122,14 @@ module.exports = ({ describe, test }) => {
   });
 
   describe('the values, against the raw data', () => {
-    test('sum across a student row is their gradeAvg alone', () => {
-      /* Of the seven student columns only gradeAvg is a measure: id is an
+    test('sum across a student row is their gpa alone', () => {
+      /* Of the seven student columns only gpa is a measure: id is an
          identifier, gender/year/specialisation/letterGrade are not numbers, and
          courses is nested. So the row total is that one figure — which is the
          warning the panel gives by naming how many columns contribute. */
       const r = rig('sum');
       r.w.runQuery();
-      assert.deepEqual(values(r.entry(r.o.id).table), A.STUDENTS.map(s => s.gradeAvg));
+      assert.deepEqual(values(r.entry(r.o.id).table), A.STUDENTS.map(s => s.gpa));
     });
 
     test('count counts every column, because any column can answer it', () => {
@@ -143,7 +143,7 @@ module.exports = ({ describe, test }) => {
       ['min', 'max', 'average', 'median'].forEach(op => {
         const r = rig(op);
         r.w.runQuery();
-        assert.deepEqual(values(r.entry(r.o.id).table), A.STUDENTS.map(s => s.gradeAvg), op);
+        assert.deepEqual(values(r.entry(r.o.id).table), A.STUDENTS.map(s => s.gpa), op);
       });
     });
 
@@ -157,8 +157,8 @@ module.exports = ({ describe, test }) => {
       h.app.connect(s1.id, f1.id); h.app.connect(s2.id, f2.id);
       h.app.connect(f1.id, c.id);  h.app.connect(f2.id, c.id);
       h.app.connect(c.id, ar.id);  h.app.connect(ar.id, o.id);
-      h.set(f1.id, 'crit.0.value:gradeAvg', '60');
-      h.set(f2.id, 'crit.0.value:gradeAvg', '80');
+      h.set(f1.id, 'crit.0.value:gpa', '60');
+      h.set(f2.id, 'crit.0.value:gpa', '80');
       h.w.render();
       h.set(ar.id, 'op', 'sum');
       h.w.runQuery();
@@ -170,7 +170,7 @@ module.exports = ({ describe, test }) => {
 
     test('a row with nothing measurable gives null, not zero', () => {
       const r = rig('sum', ['select']);
-      ['id', 'gender', 'year', 'specialisation', 'gradeAvg', 'courses']
+      ['id', 'gender', 'year', 'specialisation', 'gpa', 'courses']
         .forEach(k => r.set(r.mid[0].id, 'column:' + k, false));   // letterGrade only
       r.w.runQuery();
       assert.notOk(r.q('.error-box'), r.text('.error-box'));
@@ -182,7 +182,7 @@ module.exports = ({ describe, test }) => {
     test('an empty table gives an empty result, not an error', () => {
       const h = boot();
       const [s, f, ar, o] = h.build('source', 'filter', 'aggregateRows', 'output');
-      h.set(f.id, 'crit.0.value:gradeAvg', '500');
+      h.set(f.id, 'crit.0.value:gpa', '500');
       h.w.runQuery();
       assert.notOk(h.q('.error-box'));
       assert.equal(h.entry(o.id).table.rows.length, 0);
@@ -195,7 +195,7 @@ module.exports = ({ describe, test }) => {
       // The answer to "specify which columns are aggregated", by composition
       const r = rig('count', ['select']);
       ['gender', 'year', 'specialisation', 'letterGrade', 'courses']
-        .forEach(k => r.set(r.mid[0].id, 'column:' + k, false));   // id + gradeAvg
+        .forEach(k => r.set(r.mid[0].id, 'column:' + k, false));   // id + gpa
       r.w.runQuery();
       assert.deepEqual(values(r.entry(r.o.id).table), A.STUDENTS.map(() => 2));
     });
@@ -203,9 +203,9 @@ module.exports = ({ describe, test }) => {
     test('an identifier is still excluded from the arithmetic', () => {
       const r = rig('sum', ['select']);
       ['gender', 'year', 'specialisation', 'letterGrade', 'courses']
-        .forEach(k => r.set(r.mid[0].id, 'column:' + k, false));   // id + gradeAvg
+        .forEach(k => r.set(r.mid[0].id, 'column:' + k, false));   // id + gpa
       r.w.runQuery();
-      assert.deepEqual(values(r.entry(r.o.id).table), A.STUDENTS.map(s => s.gradeAvg),
+      assert.deepEqual(values(r.entry(r.o.id).table), A.STUDENTS.map(s => s.gpa),
         'the id must not be added in');
     });
 
@@ -215,7 +215,7 @@ module.exports = ({ describe, test }) => {
       h.set(ar.id, 'op', 'sum');
       h.set(agg.id, 'op', 'average');
       h.w.runQuery();
-      const want = A.STUDENTS.reduce((a, s2) => a + s2.gradeAvg, 0) / A.STUDENTS.length;
+      const want = A.STUDENTS.reduce((a, s2) => a + s2.gpa, 0) / A.STUDENTS.length;
       assert.close(h.entry(o.id).table.rows[0][0], want, 1e-9);
     });
 

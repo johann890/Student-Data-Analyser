@@ -96,7 +96,7 @@ module.exports = ({ describe, test }) => {
     test('an empty table reverses to an empty table, not an error', () => {
       const h = boot();
       const [s, f, rev, o] = h.build('source', 'filter', 'reverse', 'output');
-      h.set(f.id, 'crit.0.value:gradeAvg', '500');   // matches nobody
+      h.set(f.id, 'crit.0.value:gpa', '500');   // matches nobody
       h.w.runQuery();
       assert.notOk(h.q('.error-box'), h.text('.error-box'));
       assert.equal(h.entry(o.id).table.rows.length, 0);
@@ -143,26 +143,26 @@ module.exports = ({ describe, test }) => {
     test('Sort, Reverse, Take gives the bottom N', () => {
       const h = boot();
       const [s, sort, rev, take, o] = h.build('source', 'sort', 'reverse', 'take', 'output');
-      h.set(sort.id, 'sort.0.col', 'gradeAvg');
+      h.set(sort.id, 'sort.0.col', 'gpa');
       h.set(sort.id, 'sort.0.dir', 'asc');
       h.set(take.id, 'n', '5');
       h.w.runQuery();
 
-      const got = h.entry(o.id).table.rows.map(r => A.cellAt(h.entry(o.id).table, r, 'gradeAvg'));
-      const want = A.STUDENTS.map(x => x.gradeAvg).sort((a, b) => a - b).slice(-5).reverse();
+      const got = h.entry(o.id).table.rows.map(r => A.cellAt(h.entry(o.id).table, r, 'gpa'));
+      const want = A.STUDENTS.map(x => x.gpa).sort((a, b) => a - b).slice(-5).reverse();
       assert.deepEqual(got, want, 'the five highest, highest first');
     });
 
     test('without the Reverse the same graph gives the top N', () => {
       const h = boot();
       const [s, sort, take, o] = h.build('source', 'sort', 'take', 'output');
-      h.set(sort.id, 'sort.0.col', 'gradeAvg');
+      h.set(sort.id, 'sort.0.col', 'gpa');
       h.set(sort.id, 'sort.0.dir', 'asc');
       h.set(take.id, 'n', '5');
       h.w.runQuery();
       const t = h.entry(o.id).table;
-      const got = t.rows.map(r => A.cellAt(t, r, 'gradeAvg'));
-      assert.deepEqual(got, A.STUDENTS.map(x => x.gradeAvg).sort((a, b) => a - b).slice(0, 5));
+      const got = t.rows.map(r => A.cellAt(t, r, 'gpa'));
+      assert.deepEqual(got, A.STUDENTS.map(x => x.gpa).sort((a, b) => a - b).slice(0, 5));
     });
 
     test('it reverses an order no Sort produced', () => {
@@ -176,8 +176,8 @@ module.exports = ({ describe, test }) => {
       h.app.connect(s1.id, f1.id); h.app.connect(s2.id, f2.id);
       h.app.connect(f1.id, c.id);  h.app.connect(f2.id, c.id);
       h.app.connect(c.id, rev.id); h.app.connect(rev.id, o.id);
-      h.set(f1.id, 'crit.0.value:gradeAvg', '60');
-      h.set(f2.id, 'crit.0.value:gradeAvg', '80');
+      h.set(f1.id, 'crit.0.value:gpa', '60');
+      h.set(f2.id, 'crit.0.value:gpa', '80');
       h.w.render(); h.w.runQuery();
 
       const ev = h.app.evaluateGraph();

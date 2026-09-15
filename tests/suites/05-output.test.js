@@ -32,7 +32,7 @@ module.exports = ({ describe, test }) => {
       assert.equal(t.columns.length, 1);
       assert.equal(t.rows.length, 1);
       assert.equal(t.columns[0].label, 'Count');
-      assert.equal(t.rows[0][0], r.app.STUDENTS.filter(x => x.gradeAvg > 70).length);
+      assert.equal(t.rows[0][0], r.app.STUDENTS.filter(x => x.gpa > 5).length);
     });
 
     test('count exports exactly as the two-line CSV that was asked for', () => {
@@ -49,23 +49,23 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, f, a, o] = h.build('source', 'filter', 'aggregate', 'output');
       h.set(a.id, 'op', 'average');
-      h.set(a.id, 'col', 'gradeAvg');
+      h.set(a.id, 'col', 'gpa');
       h.w.runQuery();
       const t = h.entry(o.id).table;
       assert.equal(t.columns.length, 1);
       assert.equal(t.rows.length, 1);
-      const want = h.app.STUDENTS.filter(x => x.gradeAvg > 70);
-      assert.close(t.rows[0][0], want.reduce((a2, x) => a2 + x.gradeAvg, 0) / want.length, 1e-9);
+      const want = h.app.STUDENTS.filter(x => x.gpa > 70);
+      assert.close(t.rows[0][0], want.reduce((a2, x) => a2 + x.gpa, 0) / want.length, 1e-9);
       // point 11: a count and an average must not look alike
       assert.includes(t.columns[0].label, 'Average');
-      assert.includes(t.columns[0].label, 'Avg', 'and must name the column it reduced');
+      assert.includes(t.columns[0].label, 'GPA', 'and must name the column it reduced');
     });
 
     test('rows passes the incoming table through unchanged', () => {
       const r = rig('rows');
       r.w.runQuery();
       const t = r.entry(r.o.id).table;
-      assert.equal(t.rows.length, r.app.STUDENTS.filter(x => x.gradeAvg > 70).length);
+      assert.equal(t.rows.length, r.app.STUDENTS.filter(x => x.gpa > 5).length);
       assert.ok(r.app.hasCol(t, 'specialisation'));
     });
   });
@@ -157,7 +157,7 @@ module.exports = ({ describe, test }) => {
     test('the mean of zero rows shows a dash, not zero', () => {
       const h = boot();
       const [s, f, a, o] = h.build('source', 'filter', 'aggregate', 'output');
-      h.set(f.id, 'crit.0.value:gradeAvg', '500');   // matches nobody
+      h.set(f.id, 'crit.0.value:gpa', '500');   // matches nobody
       h.set(a.id, 'op', 'average');
       h.w.runQuery();
       assert.equal(h.bigNum(), '\u2014', 'showing 0 would assert something false about the data');
@@ -165,7 +165,7 @@ module.exports = ({ describe, test }) => {
 
     test('count of zero rows really is zero', () => {
       const r = rig('count');
-      r.set(r.f.id, 'crit.0.value:gradeAvg', '500');
+      r.set(r.f.id, 'crit.0.value:gpa', '500');
       r.w.runQuery();
       assert.equal(r.bigNum(), '0');
     });
@@ -174,9 +174,9 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, a, o] = h.build('source', 'aggregate', 'output');
       h.set(a.id, 'op', 'max');
-      h.set(a.id, 'col', 'gradeAvg');
+      h.set(a.id, 'col', 'gpa');
       h.w.runQuery();
-      const want = Math.max(...h.app.STUDENTS.map(x => x.gradeAvg));
+      const want = Math.max(...h.app.STUDENTS.map(x => x.gpa));
       assert.equal(h.entry(o.id).table.rows[0][0], want);
     });
   });
@@ -242,7 +242,7 @@ module.exports = ({ describe, test }) => {
   describe('display limits', () => {
     test('a long table truncates on screen but records every row for export', () => {
       const r = rig('rows');
-      r.set(r.f.id, 'crit.0.value:gradeAvg', '0');
+      r.set(r.f.id, 'crit.0.value:gpa', '0');
       r.w.runQuery();
       const t = r.entry(r.o.id).table;
       assert.equal(t.rows.length, r.app.STUDENTS.length, 'export keeps everything');

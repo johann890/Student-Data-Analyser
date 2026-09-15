@@ -33,9 +33,9 @@ module.exports = ({ describe, test }) => {
   describe('numeric fields', () => {
     test('greater-than matches the dataset', () => {
       const r = rig();
-      r.set(r.f.id, 'crit.0.op:gradeAvg', 'gt');
-      r.set(r.f.id, 'crit.0.value:gradeAvg', '80');
-      assert.equal(r.count(), S.filter(x => x.gradeAvg > 80).length);
+      r.set(r.f.id, 'crit.0.op:gpa', 'gt');
+      r.set(r.f.id, 'crit.0.value:gpa', '80');
+      assert.equal(r.count(), S.filter(x => x.gpa > 80).length);
     });
 
     test('all six operators behave correctly', () => {
@@ -43,21 +43,21 @@ module.exports = ({ describe, test }) => {
       const cases = { gt: (a,b)=>a>b, gte: (a,b)=>a>=b, lt: (a,b)=>a<b,
                       lte: (a,b)=>a<=b, eq: (a,b)=>a===b, ne: (a,b)=>a!==b };
       Object.keys(cases).forEach(op => {
-        r.set(r.f.id, 'crit.0.op:gradeAvg', op);
-        r.set(r.f.id, 'crit.0.value:gradeAvg', '75');
-        assert.equal(r.count(), S.filter(x => cases[op](x.gradeAvg, 75)).length, 'operator ' + op);
+        r.set(r.f.id, 'crit.0.op:gpa', op);
+        r.set(r.f.id, 'crit.0.value:gpa', '75');
+        assert.equal(r.count(), S.filter(x => cases[op](x.gpa, 75)).length, 'operator ' + op);
       });
     });
 
     test('a threshold nothing can meet gives zero, not an error', () => {
       const r = rig();
-      r.set(r.f.id, 'crit.0.value:gradeAvg', '500');
+      r.set(r.f.id, 'crit.0.value:gpa', '500');
       assert.equal(r.count(), 0);
     });
 
     test('a blank number reports a clear error instead of matching everything', () => {
       const r = rig();
-      r.set(r.f.id, 'crit.0.value:gradeAvg', '');
+      r.set(r.f.id, 'crit.0.value:gpa', '');
       r.w.runQuery();
       const err = r.text('.error-box');
       assert.ok(err, 'expected an error box');
@@ -66,7 +66,7 @@ module.exports = ({ describe, test }) => {
 
     test('a non-numeric string is rejected', () => {
       const r = rig();
-      r.app.setCfg(r.f.id, 'crit.0.value:gradeAvg', 'abc');
+      r.app.setCfg(r.f.id, 'crit.0.value:gpa', 'abc');
       r.w.runQuery();
       assert.ok(r.text('.error-box'));
     });
@@ -159,27 +159,27 @@ module.exports = ({ describe, test }) => {
       assert.equal(r.count(), S.filter(x => x.courses.some(c => c.code === CODE)).length);
     });
 
-    test('"mark in course" tests enrolment AND threshold together', () => {
+    test('"grade in course" tests enrolment AND threshold together', () => {
       const r = rig();
-      r.set(r.f.id, 'crit.0.field', 'courses.mark');
+      r.set(r.f.id, 'crit.0.field', 'courses.gradePoints');
       r.set(r.f.id, 'crit.0.course', CODE);
-      r.set(r.f.id, 'crit.0.op:courses.mark', 'gte');
-      r.set(r.f.id, 'crit.0.value:courses.mark', '75');
-      const want = S.filter(x => { const c = x.courses.find(c => c.code === CODE); return c && c.mark >= 75; });
+      r.set(r.f.id, 'crit.0.op:courses.gradePoints', 'gte');
+      r.set(r.f.id, 'crit.0.value:courses.gradePoints', '7');
+      const want = S.filter(x => { const c = x.courses.find(c => c.code === CODE); return c && c.gradePoints >= 7; });
       assert.equal(r.count(), want.length);
     });
 
     test('a student who never took the course is excluded from a "less than" test', () => {
       // The trap: treating a missing enrolment as 0 would pass every < test.
       const r = rig();
-      r.set(r.f.id, 'crit.0.field', 'courses.mark');
+      r.set(r.f.id, 'crit.0.field', 'courses.gradePoints');
       r.set(r.f.id, 'crit.0.course', CODE);
-      r.set(r.f.id, 'crit.0.op:courses.mark', 'lt');
-      r.set(r.f.id, 'crit.0.value:courses.mark', '50');
+      r.set(r.f.id, 'crit.0.op:courses.gradePoints', 'lt');
+      r.set(r.f.id, 'crit.0.value:courses.gradePoints', '4');
       const got = r.count();
-      const want = S.filter(x => { const c = x.courses.find(c => c.code === CODE); return c && c.mark < 50; });
+      const want = S.filter(x => { const c = x.courses.find(c => c.code === CODE); return c && c.gradePoints < 4; });
       assert.equal(got, want.length);
-      assert.ok(got < S.length, 'non-takers leaked in as zero-mark students');
+      assert.ok(got < S.length, 'non-takers leaked in as zero-grade students');
     });
 
     test('the log says these filters select students, not courses', () => {
@@ -201,13 +201,13 @@ module.exports = ({ describe, test }) => {
     test('criteria compose as AND', () => {
       const r = rig();
       r.w.addCriterion(r.f.id); r.w.addCriterion(r.f.id); r.w.render();
-      r.set(r.f.id, 'crit.0.op:gradeAvg', 'gte');
-      r.set(r.f.id, 'crit.0.value:gradeAvg', '75');
+      r.set(r.f.id, 'crit.0.op:gpa', 'gte');
+      r.set(r.f.id, 'crit.0.value:gpa', '75');
       r.set(r.f.id, 'crit.1.field', 'gender');
       r.set(r.f.id, 'crit.1.value:gender', 'F');
       r.set(r.f.id, 'crit.2.field', 'courses.subject');
       r.set(r.f.id, 'crit.2.value:courses.subject', 'AIML');
-      const want = S.filter(x => x.gradeAvg >= 75 && x.gender === 'F' &&
+      const want = S.filter(x => x.gpa >= 75 && x.gender === 'F' &&
                                  x.courses.some(c => c.subject === 'AIML'));
       assert.equal(r.count(), want.length);
     });
@@ -230,15 +230,15 @@ module.exports = ({ describe, test }) => {
     test('removing a criterion widens the result', () => {
       const r = rig();
       r.w.addCriterion(r.f.id); r.w.render();
-      r.set(r.f.id, 'crit.0.op:gradeAvg', 'gte');
-      r.set(r.f.id, 'crit.0.value:gradeAvg', '70');
+      r.set(r.f.id, 'crit.0.op:gpa', 'gte');
+      r.set(r.f.id, 'crit.0.value:gpa', '5');
       r.set(r.f.id, 'crit.1.field', 'gender');
       r.set(r.f.id, 'crit.1.value:gender', 'F');
       const narrow = r.count();
       r.w.removeCriterion(r.f.id, 1);
       const wide = r.count();
       assert.ok(wide > narrow, wide + ' should exceed ' + narrow);
-      assert.equal(wide, S.filter(x => x.gradeAvg >= 70).length);
+      assert.equal(wide, S.filter(x => x.gpa >= 5).length);
     });
 
     test('the first criterion cannot be removed', () => {
@@ -259,12 +259,12 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, f1, f2, o] = h.build('source', 'filter', 'filter', 'output');
       h.set(o.id, 'show', 'count');
-      h.set(f1.id, 'crit.0.op:gradeAvg', 'gte');
-      h.set(f1.id, 'crit.0.value:gradeAvg', '70');
+      h.set(f1.id, 'crit.0.op:gpa', 'gte');
+      h.set(f1.id, 'crit.0.value:gpa', '70');
       h.set(f2.id, 'crit.0.field', 'specialisation');
       h.set(f2.id, 'crit.0.value:specialisation', 'Computer Science');
       h.w.runQuery();
-      const want = h.app.STUDENTS.filter(x => x.gradeAvg >= 70 && x.specialisation === 'Computer Science');
+      const want = h.app.STUDENTS.filter(x => x.gpa >= 70 && x.specialisation === 'Computer Science');
       assert.equal(Number(h.bigNum()), want.length);
     });
   });
@@ -278,14 +278,14 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, sel, f, o] = h.build('source', 'select', 'filter', 'output');
       h.set(o.id, 'show', 'count');
-      h.set(f.id, 'crit.0.field', 'gradeAvg');
-      h.set(f.id, 'crit.0.value:gradeAvg', '80');
-      h.set(sel.id, 'column:gradeAvg', false);   // gradeAvg no longer arrives
+      h.set(f.id, 'crit.0.field', 'gpa');
+      h.set(f.id, 'crit.0.value:gpa', '80');
+      h.set(sel.id, 'column:gpa', false);   // gpa no longer arrives
 
       h.w.runQuery();
       assert.equal(Number(h.bigNum()), S.length, 'the skipped criterion should filter nothing');
       assert.includes(h.text('.query-log'), 'SKIP');
-      assert.includes(h.text('.query-log'), 'gradeAvg', 'the log should name what it ignored');
+      assert.includes(h.text('.query-log'), 'gpa', 'the log should name what it ignored');
     });
   });
 };

@@ -18,7 +18,7 @@ module.exports = ({ describe, test }) => {
 
     test('colIndex finds a column and reports -1 when absent', () => {
       const t = app.studentsTable(app.STUDENTS.slice(0, 1));
-      assert.ok(app.colIndex(t, 'gradeAvg') >= 0);
+      assert.ok(app.colIndex(t, 'gpa') >= 0);
       assert.equal(app.colIndex(t, 'nonexistent'), -1);
     });
 
@@ -26,7 +26,7 @@ module.exports = ({ describe, test }) => {
       const s = app.STUDENTS[0];
       const t = app.studentsTable([s]);
       assert.equal(app.cellAt(t, t.rows[0], 'id'), s.id);
-      assert.equal(app.cellAt(t, t.rows[0], 'gradeAvg'), s.gradeAvg);
+      assert.equal(app.cellAt(t, t.rows[0], 'gpa'), s.gpa);
       assert.equal(app.cellAt(t, t.rows[0], 'specialisation'), s.specialisation);
     });
 
@@ -97,10 +97,16 @@ module.exports = ({ describe, test }) => {
       assert.excludes(out, ',', 'a comma would collide with the CSV separator');
     });
 
-    test('whole numbers stay whole, fractions get one decimal', () => {
+    test('whole numbers stay whole, fractions keep two places without padding', () => {
+      /* Two places because a GPA is quoted to two, and rounding to one would
+         move 6.25 into a different grade band. No padding, and no floating
+         point noise: averaging grade points is what produces the noise. */
       const col = { key: 'n', type: T.NUMBER };
       assert.equal(app.fmtCell(col, 12), '12');
-      assert.equal(app.fmtCell(col, 12.25), '12.3');
+      assert.equal(app.fmtCell(col, 12.25), '12.25');
+      assert.equal(app.fmtCell(col, 12.5), '12.5', 'no trailing zero');
+      assert.equal(app.fmtCell(col, 6.233749999999999), '6.23', 'no float noise');
+      assert.equal(app.exportCell(col, 6.233749999999999), '6.23', 'and the same in the CSV');
     });
 
     test('null and undefined render as empty, never as "null"', () => {

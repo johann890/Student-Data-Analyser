@@ -37,7 +37,7 @@ module.exports = ({ describe, test }) => {
       const h = built();
       h.w.runQuery();
       const json = JSON.stringify(h.app.serialiseGraph());
-      assert.excludes(json, 'gradeAvg":78', 'no student data should be in the file');
+      assert.excludes(json, 'gpa":78', 'no student data should be in the file');
       assert.excludes(json, '"rows":[[');
       assert.includes(json, 'Data Science');
     });
@@ -249,11 +249,11 @@ module.exports = ({ describe, test }) => {
     test('junk inside a criterion does not survive into the model', () => {
       const r = boot().app.deserialiseGraph(file({
         nodes: [{ id: 1, type: 'filter', x: 0, y: 0,
-                  cfg: { criteria: [{ field: 'gradeAvg', values: { gradeAvg: '80' }, evil: 1 }] } }]
+                  cfg: { criteria: [{ field: 'gpa', values: { gpa: '80' }, evil: 1 }] } }]
       }));
       const c = r.nodes[0].cfg.criteria[0];
-      assert.equal(c.field, 'gradeAvg');
-      assert.equal(c.values.gradeAvg, '80');
+      assert.equal(c.field, 'gpa');
+      assert.equal(c.values.gpa, '80');
       assert.equal(c.evil, undefined, 'unknown keys should not be copied through');
     });
 

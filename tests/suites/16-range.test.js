@@ -79,7 +79,7 @@ module.exports = ({ describe, test }) => {
     test('on a number, alongside the other comparisons', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      assert.includes(h.optionsOf(f.id, 'crit.0.op:gradeAvg'), 'between');
+      assert.includes(h.optionsOf(f.id, 'crit.0.op:gpa'), 'between');
     });
 
     test('on Year and on Grade, without < and >', () => {
@@ -105,8 +105,8 @@ module.exports = ({ describe, test }) => {
     test('on a course mark, which is the other numeric field', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.field', 'courses.mark');
-      assert.includes(h.optionsOf(f.id, 'crit.0.op:courses.mark'), 'between');
+      h.set(f.id, 'crit.0.field', 'courses.gradePoints');
+      assert.includes(h.optionsOf(f.id, 'crit.0.op:courses.gradePoints'), 'between');
     });
   });
 
@@ -118,7 +118,7 @@ module.exports = ({ describe, test }) => {
          unnoticed by the person who asked for it. */
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      const labels = h.qa('[data-node="' + f.id + '"][data-key="crit.0.op:gradeAvg"] option')
+      const labels = h.qa('[data-node="' + f.id + '"][data-key="crit.0.op:gpa"] option')
         .map(o2 => o2.textContent);
       assert.includes(labels, 'in range');
       assert.excludes(labels, 'in', 'the bare symbol belongs in the log, not the control');
@@ -127,7 +127,7 @@ module.exports = ({ describe, test }) => {
     test('and groups it apart from the comparisons', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      const groups = h.qa('[data-node="' + f.id + '"][data-key="crit.0.op:gradeAvg"] optgroup')
+      const groups = h.qa('[data-node="' + f.id + '"][data-key="crit.0.op:gpa"] optgroup')
         .map(g => g.getAttribute('label'));
       assert.deepEqual(groups, ['Compare', 'Range']);
     });
@@ -141,7 +141,7 @@ module.exports = ({ describe, test }) => {
     });
 
     test('the log keeps the terse form, which is what reads well there', () => {
-      const r = band('gradeAvg', '70', '80');
+      const r = band('gpa', '70', '80');
       assert.includes(r.text('.query-log'), 'in [70 .. 80]');
     });
 
@@ -149,23 +149,23 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
       assert.equal(h.q('.criterion-controls').className, 'criterion-controls');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
       assert.includes(h.q('.criterion-controls').className, 'two-col',
         '"in range" will not fit the 38px column the symbols live in');
-      assert.includes(h.control(f.id, 'crit.0.op:gradeAvg').className, 'op-wide');
+      assert.includes(h.control(f.id, 'crit.0.op:gpa').className, 'op-wide');
     });
 
     test('and takes the room back when it is turned off', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'gte');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
+      h.set(f.id, 'crit.0.op:gpa', 'gte');
       assert.equal(h.q('.criterion-controls').className, 'criterion-controls');
-      assert.ok(h.control(f.id, 'crit.0.value:gradeAvg'), 'the single value box is back');
+      assert.ok(h.control(f.id, 'crit.0.value:gpa'), 'the single value box is back');
     });
 
     test('every field that offers a range labels it the same way', () => {
-      ['year', 'letterGrade', 'courses.mark'].forEach(k => {
+      ['year', 'letterGrade', 'courses.gradePoints'].forEach(k => {
         const h = boot();
         const [s, f, o] = h.build('source', 'filter', 'output');
         h.set(f.id, 'crit.0.field', k);
@@ -181,24 +181,24 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
       assert.equal(h.q('.crit-range'), null, 'not there to begin with');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
       assert.ok(h.q('.crit-range'), 'the band should open');
-      assert.ok(h.control(f.id, 'crit.0.value:gradeAvg:max'), 'with a second bound');
+      assert.ok(h.control(f.id, 'crit.0.value:gpa:max'), 'with a second bound');
     });
 
     test('picking anything else closes it', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'gte');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
+      h.set(f.id, 'crit.0.op:gpa', 'gte');
       assert.equal(h.q('.crit-range'), null);
-      assert.equal(h.control(f.id, 'crit.0.value:gradeAvg:max'), null);
+      assert.equal(h.control(f.id, 'crit.0.value:gpa:max'), null);
     });
 
     test('one band per criterion, not one per filter', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
       h.w.addCriterion(f.id);
       h.set(f.id, 'crit.1.field', 'year');
       h.set(f.id, 'crit.1.op:year', 'between');
@@ -208,16 +208,16 @@ module.exports = ({ describe, test }) => {
     test('the single-value box gives way rather than sitting beside it', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
-      const inRow = h.qa('.criterion-controls [data-key="crit.0.value:gradeAvg"]');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
+      const inRow = h.qa('.criterion-controls [data-key="crit.0.value:gpa"]');
       assert.equal(inRow.length, 0, 'two places to type a lower bound is one too many');
-      assert.ok(h.q('.crit-range [data-key="crit.0.value:gradeAvg"]'), 'it moved into the band');
+      assert.ok(h.q('.crit-range [data-key="crit.0.value:gpa"]'), 'it moved into the band');
     });
 
     test('the band is styled as a band, not as another criterion', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
       const el = h.q('.crit-range');
       assert.ok(el.closest('.criterion-row'), 'it belongs to its criterion');
       assert.equal(h.qa('.criterion-row').length, 1, 'and does not read as a second condition');
@@ -249,7 +249,7 @@ module.exports = ({ describe, test }) => {
     test('a plain number has no span to open across, and says so', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
       const note = h.text('.crit-range-note');
       assert.includes(note, 'Both ends are');
       assert.includes(note, 'widen', 'it should say what to do about it');
@@ -258,38 +258,38 @@ module.exports = ({ describe, test }) => {
     test('switching to the range carries the value already typed in as the floor', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.value:gradeAvg', '85');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
-      assert.equal(h.control(f.id, 'crit.0.value:gradeAvg').value, '85',
+      h.set(f.id, 'crit.0.value:gpa', '85');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
+      assert.equal(h.control(f.id, 'crit.0.value:gpa').value, '85',
         'switching operators should feel continuous, not reset');
     });
 
     test('switching away and back remembers both ends', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
-      h.set(f.id, 'crit.0.value:gradeAvg', '60');
-      h.set(f.id, 'crit.0.value:gradeAvg:max', '90');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'lt');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
-      assert.equal(h.control(f.id, 'crit.0.value:gradeAvg').value, '60');
-      assert.equal(h.control(f.id, 'crit.0.value:gradeAvg:max').value, '90');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
+      h.set(f.id, 'crit.0.value:gpa', '60');
+      h.set(f.id, 'crit.0.value:gpa:max', '90');
+      h.set(f.id, 'crit.0.op:gpa', 'lt');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
+      assert.equal(h.control(f.id, 'crit.0.value:gpa').value, '60');
+      assert.equal(h.control(f.id, 'crit.0.value:gpa:max').value, '90');
     });
   });
 
   describe('what it keeps, cross-checked against the dataset', () => {
     test('a number range, inclusive at both ends', () => {
-      assert.equal(band('gradeAvg', '70', '80').count(),
-                   S.filter(x => x.gradeAvg >= 70 && x.gradeAvg <= 80).length);
+      assert.equal(band('gpa', '70', '80').count(),
+                   S.filter(x => x.gpa >= 70 && x.gpa <= 80).length);
     });
 
     test('the ends really are included', () => {
-      const lo = Math.min(...S.map(x => x.gradeAvg));
-      assert.equal(band('gradeAvg', String(lo), String(lo)).count(),
-                   S.filter(x => x.gradeAvg === lo).length,
+      const lo = Math.min(...S.map(x => x.gpa));
+      assert.equal(band('gpa', String(lo), String(lo)).count(),
+                   S.filter(x => x.gpa === lo).length,
                    'a band of one value keeps the rows equal to it');
-      const hi = Math.max(...S.map(x => x.gradeAvg));
-      assert.equal(band('gradeAvg', String(lo), String(hi)).count(), S.length,
+      const hi = Math.max(...S.map(x => x.gpa));
+      assert.equal(band('gpa', String(lo), String(hi)).count(), S.length,
                    'a band of the whole span keeps everyone');
     });
 
@@ -318,11 +318,11 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
       h.set(o.id, 'show', 'count');
-      h.set(f.id, 'crit.0.field', 'courses.mark');
-      h.set(f.id, 'crit.0.op:courses.mark', 'between');
+      h.set(f.id, 'crit.0.field', 'courses.gradePoints');
+      h.set(f.id, 'crit.0.op:courses.gradePoints', 'between');
       const code = h.control(f.id, 'crit.0.course').value;
-      h.set(f.id, 'crit.0.value:courses.mark', '70');
-      h.set(f.id, 'crit.0.value:courses.mark:max', '80');
+      h.set(f.id, 'crit.0.value:courses.gradePoints', '70');
+      h.set(f.id, 'crit.0.value:courses.gradePoints:max', '80');
       h.w.runQuery();
       const want = S.filter(x => {
         const e = x.courses.filter(c => c.code === code)[0];
@@ -332,7 +332,7 @@ module.exports = ({ describe, test }) => {
     });
 
     test('a band nothing falls inside keeps nothing, without erroring', () => {
-      const r = band('gradeAvg', '200', '300');
+      const r = band('gpa', '200', '300');
       assert.equal(r.count(), 0);
       assert.equal(r.q('.error-box'), null);
     });
@@ -340,12 +340,12 @@ module.exports = ({ describe, test }) => {
 
   describe('bounds entered the wrong way round', () => {
     test('mean the same band rather than nothing', () => {
-      assert.equal(band('gradeAvg', '80', '70').count(), band('gradeAvg', '70', '80').count());
+      assert.equal(band('gpa', '80', '70').count(), band('gpa', '70', '80').count());
       assert.equal(band('letterGrade', 'B', 'A+').count(), gradeBand('A+', 'B'));
     });
 
     test('and the log prints the band that was applied', () => {
-      const r = band('gradeAvg', '80', '70');
+      const r = band('gpa', '80', '70');
       assert.includes(r.text('.query-log'), '[70 .. 80]',
         'the swap must be visible, not silent');
     });
@@ -353,9 +353,9 @@ module.exports = ({ describe, test }) => {
     test('the panel says it read them the other way round', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
-      h.set(f.id, 'crit.0.value:gradeAvg', '80');
-      h.set(f.id, 'crit.0.value:gradeAvg:max', '70');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
+      h.set(f.id, 'crit.0.value:gpa', '80');
+      h.set(f.id, 'crit.0.value:gpa:max', '70');
       // Typing into a number box does not rebuild the panel — that would
       // destroy the field being typed into — so the note is read after a redraw
       h.w.render();
@@ -372,9 +372,9 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
       h.set(o.id, 'show', 'count');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
-      h.set(f.id, 'crit.0.value:gradeAvg', '70');
-      h.app.setCfg(f.id, 'crit.0.value:gradeAvg:max', '');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
+      h.set(f.id, 'crit.0.value:gpa', '70');
+      h.app.setCfg(f.id, 'crit.0.value:gpa:max', '');
       h.w.runQuery();
       assert.ok(h.text('.error-box'), 'it must not silently answer a different question');
       assert.includes(h.text('.error-box'), 'number');
@@ -400,9 +400,9 @@ module.exports = ({ describe, test }) => {
     test('a course-mark band with one end cleared is refused too', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.field', 'courses.mark');
-      h.set(f.id, 'crit.0.op:courses.mark', 'between');
-      h.app.setCfg(f.id, 'crit.0.value:courses.mark:max', '');
+      h.set(f.id, 'crit.0.field', 'courses.gradePoints');
+      h.set(f.id, 'crit.0.op:courses.gradePoints', 'between');
+      h.app.setCfg(f.id, 'crit.0.value:courses.gradePoints:max', '');
       h.w.runQuery();
       assert.ok(h.text('.error-box'));
     });
@@ -413,24 +413,24 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
       h.set(o.id, 'show', 'count');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
-      h.set(f.id, 'crit.0.value:gradeAvg', '70');
-      h.set(f.id, 'crit.0.value:gradeAvg:max', '80');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
+      h.set(f.id, 'crit.0.value:gpa', '70');
+      h.set(f.id, 'crit.0.value:gpa:max', '80');
       h.w.addCriterion(f.id);
       h.set(f.id, 'crit.1.field', 'gender');
       h.set(f.id, 'crit.1.value:gender', 'F');
       h.w.runQuery();
       assert.equal(Number(h.bigNum()),
-        S.filter(x => x.gradeAvg >= 70 && x.gradeAvg <= 80 && x.gender === 'F').length);
+        S.filter(x => x.gpa >= 70 && x.gpa <= 80 && x.gender === 'F').length);
     });
 
     test('two ranges AND with each other', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
       h.set(o.id, 'show', 'count');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
-      h.set(f.id, 'crit.0.value:gradeAvg', '60');
-      h.set(f.id, 'crit.0.value:gradeAvg:max', '90');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
+      h.set(f.id, 'crit.0.value:gpa', '60');
+      h.set(f.id, 'crit.0.value:gpa:max', '90');
       h.w.addCriterion(f.id);
       h.set(f.id, 'crit.1.field', 'year');
       h.set(f.id, 'crit.1.op:year', 'between');
@@ -439,22 +439,22 @@ module.exports = ({ describe, test }) => {
       h.set(f.id, 'crit.1.value:year:max', String(y));
       h.w.runQuery();
       assert.equal(Number(h.bigNum()),
-        S.filter(x => x.gradeAvg >= 60 && x.gradeAvg <= 90 && x.year === y).length);
+        S.filter(x => x.gpa >= 60 && x.gpa <= 90 && x.year === y).length);
     });
 
     test('a range survives being pushed through the rest of a graph', () => {
       const h = boot();
       const [s, f, sort, take, o] = h.build('source', 'filter', 'sort', 'take', 'output');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'between');
-      h.set(f.id, 'crit.0.value:gradeAvg', '70');
-      h.set(f.id, 'crit.0.value:gradeAvg:max', '80');
+      h.set(f.id, 'crit.0.op:gpa', 'between');
+      h.set(f.id, 'crit.0.value:gpa', '5');
+      h.set(f.id, 'crit.0.value:gpa:max', '7');
       h.set(take.id, 'n', '3');
       h.w.runQuery();
       const t = h.entry(o.id).table;
       assert.equal(t.rows.length, 3);
       t.rows.forEach(r => {
-        const v = A.cellAt(t, r, 'gradeAvg');
-        assert.ok(v >= 70 && v <= 80, 'every surviving row is inside the band: ' + v);
+        const v = A.cellAt(t, r, 'gpa');
+        assert.ok(v >= 5 && v <= 7, 'every surviving row is inside the band: ' + v);
       });
     });
   });
@@ -473,23 +473,23 @@ module.exports = ({ describe, test }) => {
     });
 
     test('the second bound rides in the existing values map, so the format did not change', () => {
-      const r = band('gradeAvg', '70', '80');
+      const r = band('gpa', '70', '80');
       const crit = r.app.serialiseGraph().nodes.find(n => n.type === 'filter').cfg.criteria[0];
-      assert.equal(crit.values['gradeAvg'], '70');
-      assert.equal(crit.values[A.rangeKey('gradeAvg')], '80');
-      assert.equal(crit.ops['gradeAvg'], 'between');
+      assert.equal(crit.values['gpa'], '70');
+      assert.equal(crit.values[A.rangeKey('gpa')], '80');
+      assert.equal(crit.ops['gpa'], 'between');
     });
 
     test('a file saved before the operator existed still loads', () => {
       const raw = JSON.stringify({
         kind: 'student-data-analyser-query', version: 1,
         nodes: [{ id: 1, type: 'filter', x: 0, y: 0,
-                  cfg: { criteria: [{ field: 'gradeAvg', values: { gradeAvg: '70' }, ops: { gradeAvg: 'gt' } }] } }],
+                  cfg: { criteria: [{ field: 'gpa', values: { gpa: '70' }, ops: { gpa: 'gt' } }] } }],
         connections: []
       });
       const r = boot().app.deserialiseGraph(raw);
       assert.notOk(r.error);
-      assert.equal(r.nodes[0].cfg.criteria[0].ops.gradeAvg, 'gt');
+      assert.equal(r.nodes[0].cfg.criteria[0].ops.gpa, 'gt');
     });
 
     test('a file naming the range on a column that cannot carry one falls back', () => {

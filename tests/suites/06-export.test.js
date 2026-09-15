@@ -10,7 +10,7 @@ module.exports = ({ describe, test }) => {
   function rig(show) {
     const h = boot();
     const [s, f, o] = h.build('source', 'filter', 'output');
-    h.set(f.id, 'crit.0.value:gradeAvg', '0');   // keep everyone
+    h.set(f.id, 'crit.0.value:gpa', '0');   // keep everyone
     if (show) h.set(o.id, 'show', show);
     return { ...h, s, f, o };
   }
@@ -215,7 +215,7 @@ module.exports = ({ describe, test }) => {
     test('editing any config invalidates them', () => {
       const r = rig('count');
       r.w.runQuery();
-      r.set(r.f.id, 'crit.0.value:gradeAvg', '50');
+      r.set(r.f.id, 'crit.0.value:gpa', '50');
       assert.notOk(r.app.resultsFresh);
       assert.ok(r.doc.getElementById('panelBody').classList.contains('stale'));
     });
@@ -240,7 +240,7 @@ module.exports = ({ describe, test }) => {
     test('copy and save are blocked while stale', () => {
       const r = rig('count');
       r.w.runQuery();
-      r.set(r.f.id, 'crit.0.value:gradeAvg', '50');
+      r.set(r.f.id, 'crit.0.value:gpa', '50');
       const b1 = r.doc.createElement('button'); r.w.copyOutput(r.o.id, b1);
       const b2 = r.doc.createElement('button'); r.w.saveOutput(r.o.id, b2);
       assert.equal(b1.textContent, 'Re-run first');
@@ -251,7 +251,7 @@ module.exports = ({ describe, test }) => {
     test('re-running clears the block', () => {
       const r = rig('count');
       r.w.runQuery();
-      r.set(r.f.id, 'crit.0.value:gradeAvg', '50');
+      r.set(r.f.id, 'crit.0.value:gpa', '50');
       r.w.runQuery();
       const b = r.doc.createElement('button'); r.w.copyOutput(r.o.id, b);
       assert.equal(r.copied.length, 1);

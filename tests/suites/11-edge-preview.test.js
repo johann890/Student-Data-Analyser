@@ -104,7 +104,7 @@ module.exports = ({ describe, test }) => {
       const keys = A.previewColumns(A.studentsTable(A.STUDENTS)).map(c => c.key);
       assert.excludes(keys, 'letterGrade', 'the TEXT column should be the one dropped');
       assert.includes(keys, 'id');
-      assert.includes(keys, 'gradeAvg');
+      assert.includes(keys, 'gpa');
     });
 
     test('the table\'s own order is kept, not the order they were picked in', () => {

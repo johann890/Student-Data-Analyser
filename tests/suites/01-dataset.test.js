@@ -9,6 +9,63 @@ module.exports = ({ describe, test }) => {
   const { app } = boot();
   const S = app.STUDENTS;
 
+  /* THE GRADE MODEL
+     Tested directly rather than through the generated data, because the
+     generator never produces an ungraded enrolment and the archive is full of
+     them: every dropped course carries a blank Grade. These are the assertions
+     the file parser will rely on, so they are pinned before it exists. */
+  describe('the grade model', () => {
+    const e = (g, pts) => ({ letterGrade: g, points: pts === undefined ? 15 : pts });
+
+    test('the scale is the university\'s nine points, fails all worth zero', () => {
+      assert.equal(app.gradePoint('A+'), 9);
+      assert.equal(app.gradePoint('C-'), 1);
+      ['D', 'E', 'K'].forEach(g => assert.equal(app.gradePoint(g), 0, g));
+    });
+
+    test('anything not on the scale has no grade point — null, not zero', () => {
+      // A blank Grade is the archive's ungraded marker and appears on every
+      // dropped course. Zero would be a claim about attainment; null is not.
+      ['', ' ', undefined, null, '?', 'WD'].forEach(g =>
+        assert.equal(app.gradePoint(g), null, JSON.stringify(g)));
+    });
+
+    test('surrounding whitespace does not hide a grade', () => {
+      assert.equal(app.gradePoint(' A- '), 7, 'tab-separated fields arrive padded');
+    });
+
+    test('the GPA is weighted by course points, not a plain mean', () => {
+      // The university's own worked example: A+ over 15 points and B+ over 30
+      // is 315/45 = 7.0. A plain mean would say 7.5.
+      assert.equal(app.gpaOf([e('A+', 15), e('B+', 30)]), 7);
+      assert.ok(app.gpaOf([e('A+', 15), e('B+', 30)]) !== 7.5, '7.5 is the unweighted answer');
+    });
+
+    test('ungraded enrolments are left out rather than counted as zero', () => {
+      // Two As and a course still in progress is an A average, not a B.
+      assert.equal(app.gpaOf([e('A'), e('A'), e('')]), 8);
+      assert.equal(app.gpaOf([e('A'), e('A'), e('D')]), 5.33, 'a real D does count');
+    });
+
+    test('a zero-point course cannot drag the average anywhere', () => {
+      // Dropped courses carry Pts=0 in the archive, so the weighting already
+      // neutralises them even before the blank grade does.
+      assert.equal(app.gpaOf([e('A', 15), e('D', 0)]), 8);
+    });
+
+    test('nothing graded means no GPA at all', () => {
+      assert.equal(app.gpaOf([e(''), e('')]), null);
+      assert.equal(app.gpaOf([]), null);
+    });
+
+    test('a GPA reads back as the letter for its nearest whole point', () => {
+      assert.equal(app.gradeFromGpa(7), 'A-', 'a 7.0 average is an A-');
+      assert.equal(app.gradeFromGpa(6.75), 'A-');
+      assert.equal(app.gradeFromGpa(6.25), 'B+');
+      assert.equal(app.gradeFromGpa(null), '', 'no GPA is not a D');
+    });
+  });
+
   describe('catalogue', () => {
     test('every course has a code, name, subject and points', () => {
       app.COURSES.forEach(c => {
@@ -63,26 +120,38 @@ module.exports = ({ describe, test }) => {
       }));
     });
 
-    test('gradeAvg is the mean of the course marks, not a separate figure', () => {
+    test('gpa is the points-weighted mean of the course grades, not a separate figure', () => {
+      /* The university's own formula: sum(gradePoint x points) / sum(points).
+         Weighted, so a 30-point course counts twice a 15-point one — which is
+         the part a plain mean would get wrong. */
       S.forEach(s => {
-        const mean = s.courses.reduce((a, c) => a + c.mark, 0) / s.courses.length;
-        assert.equal(s.gradeAvg, Math.round(mean),
-          'student ' + s.id + ': stored ' + s.gradeAvg + ' vs computed ' + mean);
+        let pts = 0, weighted = 0;
+        s.courses.forEach(c => { pts += c.points; weighted += c.gradePoints * c.points; });
+        const want = Math.round((weighted / pts) * 100) / 100;
+        assert.equal(s.gpa, want,
+          'student ' + s.id + ': stored ' + s.gpa + ' vs computed ' + want);
       });
     });
 
-    test('marks stay within a plausible range', () => {
+    test('grade points stay on the nine-point scale', () => {
       S.forEach(s => s.courses.forEach(c => {
-        assert.ok(c.mark >= 0 && c.mark <= 100, 'mark out of range: ' + c.mark);
+        assert.ok(c.gradePoints >= 0 && c.gradePoints <= 9,
+          'grade point off the scale: ' + c.gradePoints);
       }));
     });
 
-    test('letter grades agree with the numeric marks', () => {
-      const band = m => m >= 90 ? 'A+' : m >= 85 ? 'A' : m >= 80 ? 'A-' : m >= 75 ? 'B+'
-                     : m >= 70 ? 'B' : m >= 65 ? 'B-' : m >= 60 ? 'C+' : m >= 55 ? 'C' : 'D';
+    test('every letter grade is one the scale knows, and its points agree', () => {
+      /* The letter and the number must never disagree: the number is what gets
+         averaged and the letter is what gets read, and a student whose B was
+         worth 7 would be a different student depending on which column you
+         looked at. */
       S.forEach(s => {
-        assert.equal(s.letterGrade, band(s.gradeAvg), 'student ' + s.id);
-        s.courses.forEach(c => assert.equal(c.letterGrade, band(c.mark), c.code));
+        s.courses.forEach(c => {
+          assert.ok(app.GRADE_ORDER.includes(c.letterGrade), 'unknown grade ' + c.letterGrade);
+          assert.equal(c.gradePoints, app.GRADE_POINTS[c.letterGrade], c.code);
+        });
+        // The student's own letter is their GPA read back, to the nearest point.
+        assert.equal(s.letterGrade, app.gradeFromGpa(s.gpa), 'student ' + s.id);
       });
     });
 
@@ -193,10 +262,10 @@ module.exports = ({ describe, test }) => {
     test('generation is deterministic across instances', () => {
       const second = boot().app.STUDENTS;
       assert.equal(second.length, S.length);
-      assert.deepEqual(second.map(s => s.id + ':' + s.gradeAvg),
-                       S.map(s => s.id + ':' + s.gradeAvg));
-      assert.deepEqual(second[0].courses.map(c => c.code + c.mark),
-                       S[0].courses.map(c => c.code + c.mark));
+      assert.deepEqual(second.map(s => s.id + ':' + s.gpa),
+                       S.map(s => s.id + ':' + s.gpa));
+      assert.deepEqual(second[0].courses.map(c => c.code + c.letterGrade),
+                       S[0].courses.map(c => c.code + c.letterGrade));
     });
 
     test('more than one year is present', () => {

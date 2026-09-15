@@ -41,10 +41,10 @@ module.exports = ({ describe, test }) => {
     test('the boxes follow the header that arrives, not the student schema', () => {
       const h = boot();
       const [s, sel, o] = h.build('source', 'select', 'output');
-      h.set(sel.id, 'column:gradeAvg', false);
+      h.set(sel.id, 'column:gpa', false);
       const keys = h.qa('[data-node="' + o.id + '"][data-key^="column:"]')
         .map(b => b.getAttribute('data-key').slice(7));
-      assert.excludes(keys, 'gradeAvg', 'a column that stopped arriving must stop being offered');
+      assert.excludes(keys, 'gpa', 'a column that stopped arriving must stop being offered');
       assert.equal(keys.length, ALL.length - 1);
     });
 
@@ -79,8 +79,8 @@ module.exports = ({ describe, test }) => {
         .forEach(k => r.set(r.o.id, 'column:' + k, false));
       r.w.runQuery();
       const t = r.entry(r.o.id).table;
-      assert.deepEqual(t.columns.map(c => c.key), ['id', 'gradeAvg']);
-      assert.deepEqual(t.rows[0], [A.STUDENTS[0].id, A.STUDENTS[0].gradeAvg]);
+      assert.deepEqual(t.columns.map(c => c.key), ['id', 'gpa']);
+      assert.deepEqual(t.rows[0], [A.STUDENTS[0].id, A.STUDENTS[0].gpa]);
     });
 
     test('columns keep the order they arrive in, not the order they were ticked', () => {
@@ -211,7 +211,7 @@ module.exports = ({ describe, test }) => {
       r.w.runQuery();
       r.w.saveOutput(r.o.id, r.doc.createElement('button'));
       const lines = r.saved[r.saved.length - 1].content.split('\n');
-      assert.equal(lines[0], 'ID,Year,Specialisation,Avg,Grade');
+      assert.equal(lines[0], 'ID,Year,Specialisation,GPA,Grade');
       assert.equal(lines.length - 1, A.STUDENTS.length, 'display truncates rows; export never does');
     });
 
@@ -221,7 +221,7 @@ module.exports = ({ describe, test }) => {
       r.w.runQuery();
       r.w.copyOutput(r.o.id, r.doc.createElement('button'));
       const head = r.copied[r.copied.length - 1].split('\n')[0].split('\t');
-      assert.deepEqual(head, ['ID', 'Year', 'Specialisation', 'Avg', 'Grade']);
+      assert.deepEqual(head, ['ID', 'Year', 'Specialisation', 'GPA', 'Grade']);
     });
   });
 
@@ -230,11 +230,11 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, sel, o] = h.build('source', 'select', 'output');
       h.set(o.id, 'column:gender', false);       // hidden at the Output
-      h.set(sel.id, 'column:gradeAvg', false);   // dropped upstream
+      h.set(sel.id, 'column:gpa', false);   // dropped upstream
       h.w.runQuery();
       const keys = h.entry(o.id).table.columns.map(c => c.key);
       assert.excludes(keys, 'gender');
-      assert.excludes(keys, 'gradeAvg');
+      assert.excludes(keys, 'gpa');
       assert.equal(keys.length, ALL.length - 2);
     });
 
@@ -242,7 +242,7 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, sel, o] = h.build('source', 'select', 'output');
       h.set(o.id, 'column:id', false);           // cols now names the other six
-      ['gender', 'year', 'specialisation', 'gradeAvg', 'letterGrade']
+      ['gender', 'year', 'specialisation', 'gpa', 'letterGrade']
         .forEach(k => h.set(sel.id, 'column:' + k, false));   // only id and courses arrive
       h.w.runQuery();
       const keys = h.entry(o.id).table.columns.map(c => c.key);

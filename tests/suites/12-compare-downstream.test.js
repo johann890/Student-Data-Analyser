@@ -31,8 +31,8 @@ module.exports = ({ describe, test }) => {
     if (n) { h.app.connect(c.id, n.id); h.app.connect(n.id, o.id); }
     else   { h.app.connect(c.id, o.id); }
 
-    h.set(f1.id, 'crit.0.value:gradeAvg', '60');
-    h.set(f2.id, 'crit.0.value:gradeAvg', '80');
+    h.set(f1.id, 'crit.0.value:gpa', '3');
+    h.set(f2.id, 'crit.0.value:gpa', '7');
     h.w.render();
     return { ...h, s1, f1, s2, f2, c, n, o };
   }

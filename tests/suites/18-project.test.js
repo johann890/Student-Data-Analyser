@@ -110,11 +110,11 @@ module.exports = ({ describe, test }) => {
       r.w.runQuery();
       const t = r.entry(r.o.id).table;
       const si = col(t, 'studentId'), ci = col(t, 'code'),
-            mi = col(t, 'mark'), gi = col(t, 'letterGrade');
+            mi = col(t, 'gradePoints'), gi = col(t, 'letterGrade');
       const got = t.rows.map(x => [x[si], x[ci], x[mi], x[gi]].join('|')).sort();
       const want = [];
       S.forEach(s => s.courses.forEach(c =>
-        want.push([s.id, c.code, c.mark, c.letterGrade].join('|'))));
+        want.push([s.id, c.code, c.gradePoints, c.letterGrade].join('|'))));
       assert.deepEqual(got, want.sort());
     });
 
@@ -203,13 +203,13 @@ module.exports = ({ describe, test }) => {
     test('the student letter grade gives way to the course one', () => {
       /* Both are called letterGrade. On a table of enrolments the course grade
          is what that name should mean; the student's average is still reachable
-         as gradeAvg. */
+         as gpa. */
       const r = rig();
       r.w.runQuery();
       const t = r.entry(r.o.id).table;
       assert.equal(t.columns.filter(c => c.key === 'letterGrade').length, 1,
         'a duplicated key would make colIndex ambiguous');
-      assert.ok(col(t, 'gradeAvg') >= 0, 'the student average survives under its own name');
+      assert.ok(col(t, 'gpa') >= 0, 'the student average survives under its own name');
     });
 
     test('the replacement is named in the log rather than happening quietly', () => {
@@ -222,7 +222,7 @@ module.exports = ({ describe, test }) => {
       const r = rig();
       r.w.runQuery();
       const t = r.entry(r.o.id).table;
-      ['gender', 'year', 'specialisation', 'gradeAvg'].forEach(k =>
+      ['gender', 'year', 'specialisation', 'gpa'].forEach(k =>
         assert.ok(col(t, k) >= 0, k + ' should have been carried'));
     });
 
@@ -257,15 +257,15 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, p, f, o] = h.build('source', 'project', 'filter', 'output');
       const opts = h.qa('.ft-sel option').map(x => x.value);
-      ['mark', 'code', 'subject', 'points'].forEach(k => assert.includes(opts, k, k));
-      assert.excludes(opts, 'courses.mark', 'the nested predicates make no sense once unfolded');
+      ['gradePoints', 'code', 'subject', 'points'].forEach(k => assert.includes(opts, k, k));
+      assert.excludes(opts, 'courses.gradePoints', 'the nested predicates make no sense once unfolded');
     });
 
     test('a downstream Aggregate offers Mark as a measure', () => {
       const h = boot();
       const [s, p, a, o] = h.build('source', 'project', 'aggregate', 'output');
       h.set(a.id, 'op', 'average');
-      assert.includes(h.optionsOf(a.id, 'col'), 'mark');
+      assert.includes(h.optionsOf(a.id, 'col'), 'gradePoints');
     });
   });
 
@@ -306,11 +306,11 @@ module.exports = ({ describe, test }) => {
     test('an empty table unfolds to an empty table with the right header', () => {
       const h = boot();
       const [s, f, p, o] = h.build('source', 'filter', 'project', 'output');
-      h.set(f.id, 'crit.0.value:gradeAvg', '500');   // matches nobody
+      h.set(f.id, 'crit.0.value:gpa', '500');   // matches nobody
       h.w.runQuery();
       const t = h.entry(o.id).table;
       assert.equal(t.rows.length, 0);
-      assert.ok(col(t, 'mark') >= 0, 'the columns are still declared');
+      assert.ok(col(t, 'gradePoints') >= 0, 'the columns are still declared');
     });
   });
 
@@ -358,21 +358,21 @@ module.exports = ({ describe, test }) => {
       assert.deepEqual(got, want.sort());
     });
 
-    test('a mark band within one course — Project and the range together', () => {
+    test('a grade band within one course — Project and the range together', () => {
       const h = boot();
       const [s, p, f, o] = h.build('source', 'project', 'filter', 'output');
       h.set(o.id, 'show', 'count');
       h.set(f.id, 'crit.0.field', 'code');
       h.set(f.id, 'crit.0.value:code', CODE);
       h.w.addCriterion(f.id);
-      h.set(f.id, 'crit.1.field', 'mark');
-      h.set(f.id, 'crit.1.op:mark', 'between');
-      h.set(f.id, 'crit.1.value:mark', '70');
-      h.set(f.id, 'crit.1.value:mark:max', '79');
+      h.set(f.id, 'crit.1.field', 'gradePoints');
+      h.set(f.id, 'crit.1.op:gradePoints', 'between');
+      h.set(f.id, 'crit.1.value:gradePoints', '5');
+      h.set(f.id, 'crit.1.value:gradePoints:max', '6');
       h.w.runQuery();
       let want = 0;
       S.forEach(x => x.courses.forEach(c => {
-        if (c.code === CODE && c.mark >= 70 && c.mark <= 79) want++;
+        if (c.code === CODE && c.gradePoints >= 5 && c.gradePoints <= 6) want++;
       }));
       assert.equal(Number(h.bigNum()), want);
     });
@@ -384,7 +384,7 @@ module.exports = ({ describe, test }) => {
       h.set(f.id, 'crit.0.value:code', CODE);
       h.w.render();
       h.set(a.id, 'op', 'average');
-      h.set(a.id, 'col', 'mark');
+      h.set(a.id, 'col', 'gradePoints');
       h.w.runQuery();
       const marks = [];
       S.forEach(x => x.courses.forEach(c => { if (c.code === CODE) marks.push(c.mark); }));
@@ -403,11 +403,11 @@ module.exports = ({ describe, test }) => {
 
     test('Select can narrow an unfolded table', () => {
       const r = rig('select');
-      ['gender', 'year', 'specialisation', 'gradeAvg', 'name', 'subject', 'points']
+      ['gender', 'year', 'specialisation', 'gpa', 'name', 'subject', 'points']
         .forEach(k => r.set(r.mid[0].id, 'column:' + k, false));
       r.w.runQuery();
       assert.deepEqual(r.entry(r.o.id).table.columns.map(c => c.key),
-        ['studentId', 'code', 'mark', 'letterGrade']);
+        ['studentId', 'code', 'gradePoints', 'letterGrade']);
     });
 
     test('Unique on studentId gets back one row per student', () => {
@@ -440,7 +440,7 @@ module.exports = ({ describe, test }) => {
       r.w.saveOutput(r.o.id, r.doc.createElement('button'));
       const lines = r.saved[r.saved.length - 1].content.split('\n');
       assert.equal(lines.length - 1, TOTAL);
-      assert.includes(lines[0], 'Mark');
+      assert.includes(lines[0], 'Grade points');
       assert.includes(lines[0], 'Student');
     });
   });

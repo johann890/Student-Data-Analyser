@@ -9,15 +9,76 @@ var SPECS = ["Software Engineering","Computer Science","Information Technology",
 var G22 = [78,82,91,65,88,72,95,55,83,70,61,79,86,73,90,68,77,84,62,92,75,80,58,87,71,94,66,85,76,89,63,74,81,93,69,78,85,72,60,88];
 var G23 = [82,85,78,70,91,76,88,60,86,74,65,83,89,77,92,71,80,87,66,95,78,84,62,90,75,97,70,88,80,93,67,78,84,96,73,82,88,76,63,91];
 
+/* THE GRADE MODEL
+   The archive records a letter Grade and the course's Pts. It does not record a
+   percentage mark, so there is no numeric column to average. Every numeric
+   question about attainment — "average grade", "better than", "in this range" —
+   therefore has to be answered in the grade points the university itself
+   assigns, not in marks the data does not contain.
+
+   Te Herenga Waka's scale is nine points, and its GPA is weighted by course
+   points: sum(gradePoint x points) / sum(points). Every failing grade is worth
+   zero, which is why D, E and K share a value: they are different reasons for
+   the same outcome. The letter travels alongside the number so the reason is
+   never lost — sorting still distinguishes a D from an E even though averaging
+   cannot. */
+var GRADE_POINTS = {
+  'A+':9, 'A':8, 'A-':7,
+  'B+':6, 'B':5, 'B-':4,
+  'C+':3, 'C':2, 'C-':1,
+  'D':0,  'E':0, 'K':0
+};
+
 /* Best to worst. Declared once and attached to every letterGrade column so a
    Sort can order grades the way a reader means them: as text, 'A+' falls
    between 'A' and 'A-' because '+' precedes '-' in ASCII. */
-var GRADE_ORDER = ['A+','A','A-','B+','B','B-','C+','C','D'];
+var GRADE_ORDER = ['A+','A','A-','B+','B','B-','C+','C','C-','D','E','K'];
 
-function letterGrade(g) {
+/* null, never 0, for anything ungraded. A blank Grade in the archive is a
+   course still in progress or withdrawn from, and scoring it zero would drag an
+   average down to report a result that does not exist yet. Ungraded enrolments
+   are left out of the GPA entirely — which is what the university does, and
+   what the supervisor confirmed. */
+function gradePoint(g) {
+  var p = GRADE_POINTS[String(g === undefined || g === null ? '' : g).trim()];
+  return p === undefined ? null : p;
+}
+
+/* Points-weighted, so a 30-point ENGR489 counts twice a 15-point course.
+   Rounded to two places because a GPA is a summary and the third decimal is
+   noise. A student with nothing graded has no GPA at all — null for the same
+   reason a blank grade is not a zero. */
+function gpaOf(enrolments) {
+  var pts = 0, weighted = 0;
+  (enrolments || []).forEach(function(e) {
+    var gp = gradePoint(e.letterGrade);
+    if (gp === null) return;
+    var w = Number(e.points) || 0;
+    pts += w;
+    weighted += gp * w;
+  });
+  return pts === 0 ? null : Math.round((weighted / pts) * 100) / 100;
+}
+
+/* A GPA read back as a letter, for the overall standing shown on a student row.
+   Indexed by grade point, so the array position IS the value — 7 is an A-, the
+   way the university describes a 7.0 GPA. Every failing grade is worth zero, so
+   zero can only come back as one of them; D is the least specific claim of the
+   three and therefore the honest one to make from a number alone. */
+var GRADE_BY_POINT = ['D','C-','C','C+','B-','B','B+','A-','A','A+'];
+function gradeFromGpa(g) {
+  if (g === null || g === undefined || isNaN(g)) return '';
+  return GRADE_BY_POINT[Math.max(0, Math.min(9, Math.round(g)))];
+}
+
+/* Generator-private. The real data has no marks, so nothing outside the
+   synthetic dataset may call this: it exists only to turn a latent ability
+   score into a plausible letter, and it dies with the built-in dataset. */
+function gradeFromMark(g) {
   if (g>=90) return 'A+'; if (g>=85) return 'A'; if (g>=80) return 'A-';
   if (g>=75) return 'B+'; if (g>=70) return 'B'; if (g>=65) return 'B-';
-  if (g>=60) return 'C+'; if (g>=55) return 'C'; return 'D';
+  if (g>=60) return 'C+'; if (g>=55) return 'C'; if (g>=50) return 'C-';
+  if (g>=45) return 'D';  return 'E';
 }
 
 /* COURSE CATALOGUE
@@ -133,9 +194,10 @@ function clampMark(m) { return Math.max(MARK_MIN, Math.min(MARK_MAX, m)); }
 function sumOf(a) { return a.reduce(function(x, y){ return x + y; }, 0); }
 
 /* Marks that scatter around the student's overall average and then sum back to
-   it exactly. Keeping the mean intact means gradeAvg stays the number it was
-   before courses existed, so every previously-recorded query result still
-   holds — the course detail is added underneath it, not instead of it. */
+   it exactly. The mark itself never reaches a table — it is the latent ability
+   score the letter grade is drawn from, the same way a real generator would
+   work — so keeping the mean intact is what makes the resulting GPA land near
+   the student's intended standing. */
 function marksAround(rand, target, n) {
   var m = [], i;
   for (i = 0; i < n; i++) {
@@ -163,8 +225,8 @@ function buildEnrolments(id, spec, year, target) {
       subject: c.subject,
       points: c.points,
       year: year,
-      mark: marks[i],
-      letterGrade: letterGrade(marks[i])
+      letterGrade: gradeFromMark(marks[i]),
+      gradePoints: gradePoint(gradeFromMark(marks[i]))
     };
   });
 }
@@ -179,15 +241,15 @@ var baseId = 1001;
     var enrolments = buildEnrolments(id, spec, year, g);
     // Derived from the enrolments, not stored alongside them, so the two can
     // never disagree.
-    var avg = Math.round(sumOf(enrolments.map(function(e){ return e.mark; })) / enrolments.length);
+    var avg = gpaOf(enrolments);
     STUDENTS.push({
       id: id,
       gender: i % 2 === 0 ? 'M' : 'F',
       year: year,
       specialisation: spec,
       courses: enrolments,
-      gradeAvg: avg,
-      letterGrade: letterGrade(avg)
+      gpa: avg,
+      letterGrade: gradeFromGpa(avg)
     });
   });
 });
@@ -285,7 +347,7 @@ var STUDENT_COLUMNS = [
   { key:'gender',         label:'Gender',         type:COLTYPE.ENUM,   values:['M','F'] },
   { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS },
   { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
-  { key:'gradeAvg',       label:'Avg',            type:COLTYPE.NUMBER, def:'70' },
+  { key:'gpa',            label:'GPA',            type:COLTYPE.NUMBER, def:'5' },
   { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT,   order:GRADE_ORDER },
   { key:'courses',        label:'Courses',        type:COLTYPE.COURSES }
 ];
@@ -295,7 +357,7 @@ var STUDENT_COLUMNS = [
    being flattened into rows of their own. */
 function studentsTable(list) {
   return makeTable(STUDENT_COLUMNS, list.map(function(s) {
-    return [s.id, s.gender, s.year, s.specialisation, s.gradeAvg, s.letterGrade, s.courses];
+    return [s.id, s.gender, s.year, s.specialisation, s.gpa, s.letterGrade, s.courses];
   }));
 }
 
@@ -306,17 +368,25 @@ function studentsTable(list) {
 function fmtCell(col, v) {
   if (v === undefined || v === null) return '';
   if (col.type === COLTYPE.COURSES) return String((v || []).length);
-  if (col.type === COLTYPE.NUMBER && typeof v === 'number' && !isNumInt(v)) return v.toFixed(1);
+  if (col.type === COLTYPE.NUMBER && typeof v === 'number' && !isNumInt(v)) return fmtNum(v);
   return String(v);
 }
 function isNumInt(v) { return Math.abs(v - Math.round(v)) < 1e-9; }
+
+/* Two decimal places, with trailing zeros dropped — not toFixed, which pads.
+   Two because a GPA is quoted to two ("a 6.25 average") and one place would
+   round it to a different grade band; dropping the padding because a count of
+   6.5 courses should not read as 6.50. Rounding at all is the point: averaging
+   grade points produces 6.233749999999999, and showing that says the tool
+   cannot do arithmetic. */
+function fmtNum(v) { return String(Math.round(v * 100) / 100); }
 
 function exportCell(col, v) {
   if (v === undefined || v === null) return '';
   if (col.type === COLTYPE.COURSES) {
     return (v || []).map(function(c){ return c.code; }).join(';');
   }
-  if (col.type === COLTYPE.NUMBER && typeof v === 'number' && !isNumInt(v)) return v.toFixed(1);
+  if (col.type === COLTYPE.NUMBER && typeof v === 'number' && !isNumInt(v)) return fmtNum(v);
   return String(v);
 }
 
@@ -830,7 +900,7 @@ function defaultCfg(type) {
    any table schema — including ones with columns that did not exist when it was
    created. */
 function newCriterion() {
-  return { field:'gradeAvg', values:{}, ops:{}, course:DEFAULT_COURSE };
+  return { field:'gpa', values:{}, ops:{}, course:DEFAULT_COURSE };
 }
 
 function critValue(c, field, col) {
@@ -853,10 +923,10 @@ function critOp(c, field, fallback) {
 
 /* THE SECOND BOUND
    A range needs two values where every other comparison needs one. It is stored
-   under a derived key in the same per-field map — "gradeAvg" holds the low bound
-   and "gradeAvg:max" the high one — which means no change to the criterion
+   under a derived key in the same per-field map — "gpa" holds the low bound
+   and "gpa:max" the high one — which means no change to the criterion
    shape, no change to the save format, and no change to setCfg: a control named
-   `crit.0.value:gradeAvg:max` already routes to values['gradeAvg:max'] through
+   `crit.0.value:gpa:max` already routes to values['gpa:max'] through
    the parser that was there.
 
    Keeping the low bound under the plain key is what makes switching operators
@@ -1121,7 +1191,7 @@ OP_FNS.between = function(a, lo, hi) { return a >= lo && a <= hi; };
 var OP_SYM = { gt:'>', gte:'>=', lt:'<', lte:'<=', eq:'=', ne:'!=', between:'in' };
 
 /* What the operator dropdown says, where that differs from what the log says.
-   A log line wants the terse form — "gradeAvg in [70 .. 80]" reads well — but a
+   A log line wants the terse form — "gpa in [5 .. 7]" reads well — but a
    control has to be findable, and "in" sitting last among six comparator
    symbols was not: it looks like a seventh comparator, and gives no hint that
    it is the one operator needing two values. The dropdown says so in words. */
@@ -1315,7 +1385,7 @@ function courseFields() {
     // which is what the same filter does at enrolment granularity.
     { key:'courses.subject', label:'Took subject',   kind:'courseSubject' },
     { key:'courses.code',    label:'Took course',    kind:'courseCode' },
-    { key:'courses.mark',    label:'Mark in course', kind:'courseMark' }
+    { key:'courses.gradePoints', label:'Grade in course', kind:'courseGrade' }
   ];
 }
 
@@ -1363,14 +1433,14 @@ function fieldByKey(schema, key) {
 }
 
 function opsFor(kind, col) {
-  if (kind === COLTYPE.NUMBER || kind === 'courseMark') return NUM_OPS;
+  if (kind === COLTYPE.NUMBER || kind === 'courseGrade') return NUM_OPS;
   // Passed the column where there is one, because whether a category can carry
   // a range is a property of that column rather than of its type.
   if (isRangeable(col)) return ORDERED_OPS;
   return ENUM_OPS;
 }
 function defaultOpFor(kind) {
-  if (kind === COLTYPE.NUMBER || kind === 'courseMark') return 'gt';
+  if (kind === COLTYPE.NUMBER || kind === 'courseGrade') return 'gt';
   return 'eq';
 }
 
@@ -1416,13 +1486,13 @@ function applyCriterion(t, c, f, log) {
     return { table: makeTable(t.columns, rows) };
   }
 
-  if (f.kind === 'courseMark') {
+  if (f.kind === 'courseGrade') {
     // Two conditions in one: enrolled in the course AND the mark passes. A
     // student who never took it is excluded rather than treated as zero, which
     // would silently satisfy every "less than" test.
     if (coursesIdx === -1) return { table: t };
     var code = c.course || DEFAULT_COURSE;
-    var num = parseFloat(critValue(c, f.key, { def:'70' }));
+    var num = parseFloat(critValue(c, f.key, { def:'5' }));
     if (isNaN(num)) return { error: 'Course mark must be a number.' };
     var op = critOp(c, f.key, 'gte');
     var fn = OP_FNS[op] || OP_FNS.gte;
@@ -1433,19 +1503,24 @@ function applyCriterion(t, c, f, log) {
        like an answer. */
     var hi = num;
     if (op === 'between') {
-      hi = parseFloat(critHigh(c, f.key, { def:'70' }));
-      if (isNaN(hi)) return { error: 'Course mark range needs two numbers.' };
+      hi = parseFloat(critHigh(c, f.key, { def:'5' }));
+      if (isNaN(hi)) return { error: 'Course grade range needs two grade points.' };
       if (hi < num) { var tmp = num; num = hi; hi = tmp; }
     }
     var mrows = t.rows.filter(function(r) {
       var list = r[coursesIdx] || [];
       for (var i = 0; i < list.length; i++) {
-        if (list[i].code === code) return fn(list[i].mark, num, hi);
+        // An ungraded enrolment answers no comparison — not "below", which is
+        // what a null coerced to 0 would silently claim.
+        if (list[i].code === code) {
+          var gp = gradePoint(list[i].letterGrade);
+          return gp === null ? false : fn(gp, num, hi);
+        }
       }
       return false;
     });
     log.push(logEntry('FILTER', [
-      {s:'student'}, {c:'op', s:'took'}, {s: code + '.mark'},
+      {s:'student'}, {c:'op', s:'took'}, {s: code + '.gradePoints'},
       {c:'op', s:(OP_SYM[op] || '>=')},
       {c:'val', s:(op === 'between' ? '[' + num + ' .. ' + hi + ']' : num)}
     ]));
@@ -1587,7 +1662,7 @@ function dirLabel(col, dir) {
 function newSortKey() { return { col:'', dir:'asc' }; }
 
 /* Resolve the configured keys against a table. A key naming a column that is
-   no longer there — rewire a Source from students to enrolments and 'gradeAvg'
+   no longer there — rewire a Source from students to enrolments and 'gpa'
    simply stops existing — is reported rather than silently dropped, because a
    sort that quietly stopped happening looks identical to one that ran. */
 function resolveSortKeys(node, t) {
@@ -1796,7 +1871,7 @@ function uniqueCol(node, t) {
    column. */
 function uniqueCellKey(col, v) {
   if (col && col.type === COLTYPE.COURSES) {
-    return (v || []).map(function(e){ return e.code + ':' + e.mark; }).join(',');
+    return (v || []).map(function(e){ return e.code + ':' + e.letterGrade; }).join(',');
   }
   return String(v);
 }
@@ -1925,11 +2000,11 @@ function measuresOf(node) {
 }
 
 /* Which column "average" refers to, chosen from the table rather than assumed.
-   gradeAvg on a student table, mark on an enrolment table, otherwise the first
-   numeric column that is not an identifier. */
+   gpa on a student table, gradePoints on an enrolment table, otherwise the
+   first numeric column that is not an identifier. */
 function defaultAvgCol(t) {
-  if (hasCol(t, 'gradeAvg')) return 'gradeAvg';
-  if (hasCol(t, 'mark')) return 'mark';
+  if (hasCol(t, 'gpa')) return 'gpa';
+  if (hasCol(t, 'gradePoints')) return 'gradePoints';
   var nums = numericCols(t).filter(function(c) {
     return c.key !== 'id' && c.key !== 'studentId' && c.key !== 'points';
   });
@@ -2152,7 +2227,7 @@ function enrolmentColumns() {
     { key:'name',        label:'Course name', type:COLTYPE.TEXT },
     { key:'subject',     label:'Subject',     type:COLTYPE.ENUM,   values:SUBJECTS },
     { key:'points',      label:'Points',      type:COLTYPE.NUMBER, def:'15' },
-    { key:'mark',        label:'Mark',        type:COLTYPE.NUMBER, def:'70' },
+    { key:'gradePoints', label:'Grade points',type:COLTYPE.NUMBER, def:'5' },
     { key:'letterGrade', label:'Grade',       type:COLTYPE.TEXT,   order:GRADE_ORDER }
   ];
 }
@@ -2213,7 +2288,7 @@ function applyProject(node, t, log) {
     var prefix = carryIdx.map(function(i){ return r[i]; });
     var list = r[ci] || [];
     list.forEach(function(e) {
-      rows.push(prefix.concat([e.code, e.name, e.subject, e.points, e.mark, e.letterGrade]));
+      rows.push(prefix.concat([e.code, e.name, e.subject, e.points, e.gradePoints, e.letterGrade]));
     });
   });
 
@@ -3217,20 +3292,20 @@ function criterionHTML(node, ci, c, schema) {
     body = '<div class="criterion-controls stack">' + fieldSel +
       courseSelect(nid, vKey, critValue(c, cur.key, null) || DEFAULT_COURSE) + '</div>';
 
-  } else if (cur.kind === 'courseMark') {
+  } else if (cur.kind === 'courseGrade') {
     var mOp = critOp(c, cur.key, 'gte');
     var markBox = function(key, val) {
-      return '<input type="number" min="0" max="100" value="' + esc(val) + '"' + ctl(nid, key) + '>';
+      return '<input type="number" min="0" max="9" value="' + esc(val) + '"' + ctl(nid, key) + '>';
     };
     body = '<div class="criterion-controls stack">' + fieldSel +
       courseSelect(nid, 'crit.' + ci + '.course', c.course) +
       (mOp === 'between'
         ? opSelect(nid, oKey, NUM_OPS, mOp)
         : '<div class="cc-pair">' + opSelect(nid, oKey, NUM_OPS, mOp) +
-            markBox(vKey, critValue(c, cur.key, { def:'70' })) + '</div>') +
+            markBox(vKey, critValue(c, cur.key, { def:'5' })) + '</div>') +
       '</div>' +
       (mOp === 'between'
-        ? rangeBandHTML(nid, ci, { key: cur.key, column: { def:'70' } }, c, markBox)
+        ? rangeBandHTML(nid, ci, { key: cur.key, column: { def:'5' } }, c, markBox)
         : '');
 
   } else if (cur.kind === COLTYPE.NUMBER) {
@@ -5878,6 +5953,8 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     sortRowComparator: sortRowComparator,
     resolveSortKeys: resolveSortKeys, newSortKey: newSortKey, dirLabel: dirLabel,
     ordinalsFor: ordinalsFor, GRADE_ORDER: GRADE_ORDER,
+    GRADE_POINTS: GRADE_POINTS, gradePoint: gradePoint, gpaOf: gpaOf,
+    gradeFromGpa: gradeFromGpa,
 
     // combine
     COMBINE_MODES: COMBINE_MODES, combineMode: combineMode, combineTables: combineTables,

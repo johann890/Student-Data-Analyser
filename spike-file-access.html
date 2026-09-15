@@ -1,0 +1,149 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>file:// capability spike</title>
+<style>
+  body { font: 13px/1.5 ui-monospace, Menlo, monospace; margin: 24px; max-width: 860px; }
+  h2 { font-size: 13px; margin: 20px 0 6px; text-transform: uppercase; letter-spacing: .08em; }
+  .ok   { color: #0a7a2f; }
+  .bad  { color: #b00020; }
+  .warn { color: #a06000; }
+  pre { background: #f4f4f4; padding: 10px; white-space: pre-wrap; margin: 4px 0; }
+  button { font: inherit; padding: 6px 12px; margin: 2px 4px 2px 0; }
+</style>
+
+<h1 style="font-size:16px">file:// capability spike</h1>
+<div id="env"></div>
+
+<h2>A &mdash; automatic checks (no dialog)</h2>
+<pre id="auto">running…</pre>
+
+<h2>B &mdash; needs a click (native dialog)</h2>
+<button id="bDir">1. Pick folder (webkitdirectory)</button>
+<button id="bFSA">2. showDirectoryPicker()</button>
+<button id="bSave">3. showSaveFilePicker()</button>
+<input id="picker" type="file" webkitdirectory directory multiple hidden>
+<pre id="out">(nothing yet)</pre>
+
+<script>
+var $ = function(id){ return document.getElementById(id); };
+function log(el, s, cls) {
+  var d = document.createElement('div');
+  if (cls) d.className = cls;
+  d.textContent = s;
+  $(el).appendChild(d);
+}
+function mark(b){ return b ? '[ok]  ' : '[NO]  '; }
+function cls(b){ return b ? 'ok' : 'bad'; }
+
+$('env').innerHTML = '<pre>protocol      ' + location.protocol +
+  '\nhref          ' + location.href +
+  '\norigin        ' + location.origin +
+  '\nsecureContext ' + window.isSecureContext +
+  '\nua            ' + navigator.userAgent + '</pre>';
+
+/* ---- A: automatic ---- */
+$('auto').textContent = '';
+var checks = [
+  ['webkitdirectory supported', 'webkitdirectory' in HTMLInputElement.prototype],
+  ['showOpenFilePicker  exists', typeof window.showOpenFilePicker  === 'function'],
+  ['showDirectoryPicker exists', typeof window.showDirectoryPicker === 'function'],
+  ['showSaveFilePicker  exists', typeof window.showSaveFilePicker  === 'function'],
+  ['FileReader          exists', typeof window.FileReader          === 'function'],
+  ['DecompressionStream exists', typeof window.DecompressionStream === 'function']
+];
+checks.forEach(function(c){ log('auto', mark(c[1]) + c[0], cls(c[1])); });
+
+// Real gzip round-trip — settles the .gz question without needing a .gz file.
+(async function () {
+  try {
+    var bytes = new TextEncoder().encode('ID\tgender\tdeg1\n300103250\tM\tBSC\n');
+    var gz = await new Response(
+      new Blob([bytes]).stream().pipeThrough(new CompressionStream('gzip'))
+    ).arrayBuffer();
+    var back = await new Response(
+      new Blob([gz]).stream().pipeThrough(new DecompressionStream('gzip'))
+    ).text();
+    var good = back.indexOf('300103250') !== -1;
+    log('auto', mark(good) + 'gzip round-trip (' + bytes.length + 'B -> ' +
+        gz.byteLength + 'B gz -> ' + back.length + 'B)', cls(good));
+  } catch (e) {
+    log('auto', '[NO]  gzip round-trip threw: ' + e.name + ' — ' + e.message, 'bad');
+  }
+})();
+
+/* ---- B: needs a user gesture ---- */
+$('out').textContent = '';
+
+$('bDir').onclick = function(){ $('picker').click(); };
+
+$('picker').onchange = function (e) {
+  var files = Array.prototype.slice.call(e.target.files || []);
+  log('out', '--- webkitdirectory ---');
+  if (!files.length) { log('out', '[NO]  no files returned', 'bad'); return; }
+  log('out', '[ok]  ' + files.length + ' file(s) returned', 'ok');
+
+  var rel = files[0].webkitRelativePath;
+  log('out', mark(!!rel) + 'webkitRelativePath: ' + (rel || '(EMPTY — cannot resolve by name)'),
+      cls(!!rel));
+
+  files.forEach(function (f) {
+    log('out', '      ' + (f.webkitRelativePath || f.name) + '  ' + f.size + 'B');
+  });
+
+  // The thing the design actually depends on: year -> filename, by name, in JS.
+  var wanted = 'mcs-students-2022';
+  var hit = files.filter(function (f) {
+    var p = f.webkitRelativePath || f.name;
+    return p.split('/').pop() === wanted;
+  })[0];
+  var hdr = files.filter(function (f) {
+    return (f.webkitRelativePath || f.name).split('/').pop() === 'headers.txt';
+  })[0];
+
+  log('out', mark(!!hit) + 'resolved "' + wanted + '" from a year', cls(!!hit));
+  log('out', mark(!!hdr) + 'found headers.txt', cls(!!hdr));
+
+  if (hit) {
+    var r = new FileReader();
+    r.onload = function () {
+      var text = String(r.result);
+      var lines = text.split('\n').filter(function (l) { return l.length; });
+      var cols = lines[0].split('\t').length;
+      log('out', '[ok]  read ' + text.length + ' chars, ' + lines.length +
+                 ' rows, ' + cols + ' tab-separated columns', 'ok');
+      log('out', '      first row: ' + lines[0].replace(/\t/g, ' | '));
+    };
+    r.onerror = function () { log('out', '[NO]  FileReader failed', 'bad'); };
+    r.readAsText(hit);
+  }
+};
+
+$('bFSA').onclick = async function () {
+  log('out', '--- showDirectoryPicker ---');
+  if (typeof window.showDirectoryPicker !== 'function') {
+    log('out', '[NO]  not available in this browser', 'bad'); return;
+  }
+  try {
+    var h = await window.showDirectoryPicker();
+    log('out', '[ok]  granted a handle to "' + h.name + '"', 'ok');
+  } catch (e) {
+    log('out', '[NO]  ' + e.name + ' — ' + e.message, 'bad');
+  }
+};
+
+$('bSave').onclick = async function () {
+  log('out', '--- showSaveFilePicker (D7) ---');
+  if (typeof window.showSaveFilePicker !== 'function') {
+    log('out', '[NO]  not available in this browser', 'bad'); return;
+  }
+  try {
+    var h = await window.showSaveFilePicker({ suggestedName: 'spike.json' });
+    log('out', '[ok]  returned a handle: ' + h.name, 'ok');
+  } catch (e) {
+    var aborted = e.name === 'AbortError';
+    log('out', (aborted ? '[--]  ' : '[NO]  ') + e.name + ' — ' + e.message,
+        aborted ? 'warn' : 'bad');
+    if (aborted) log('out', '      (AbortError = you cancelled; the API itself WORKS here)', 'warn');
+  }
+};
+</script>
