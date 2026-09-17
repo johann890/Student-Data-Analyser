@@ -75,7 +75,7 @@ module.exports = ({ describe, test }) => {
 
     test('the values left behind are the right ones', () => {
       const r = rig();
-      ['gender', 'year', 'specialisation', 'letterGrade', 'courses']
+      ['gender', 'year', 'degree', 'specialisation', 'letterGrade', 'courses']
         .forEach(k => r.set(r.o.id, 'column:' + k, false));
       r.w.runQuery();
       const t = r.entry(r.o.id).table;
@@ -211,7 +211,7 @@ module.exports = ({ describe, test }) => {
       r.w.runQuery();
       r.w.saveOutput(r.o.id, r.doc.createElement('button'));
       const lines = r.saved[r.saved.length - 1].content.split('\n');
-      assert.equal(lines[0], 'ID,Year,Specialisation,GPA,Grade');
+      assert.equal(lines[0], 'ID,Year,Degree,Specialisation,GPA,Grade');
       assert.equal(lines.length - 1, A.STUDENTS.length, 'display truncates rows; export never does');
     });
 
@@ -221,7 +221,7 @@ module.exports = ({ describe, test }) => {
       r.w.runQuery();
       r.w.copyOutput(r.o.id, r.doc.createElement('button'));
       const head = r.copied[r.copied.length - 1].split('\n')[0].split('\t');
-      assert.deepEqual(head, ['ID', 'Year', 'Specialisation', 'GPA', 'Grade']);
+      assert.deepEqual(head, ['ID', 'Year', 'Degree', 'Specialisation', 'GPA', 'Grade']);
     });
   });
 

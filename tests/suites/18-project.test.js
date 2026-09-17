@@ -403,7 +403,8 @@ module.exports = ({ describe, test }) => {
 
     test('Select can narrow an unfolded table', () => {
       const r = rig('select');
-      ['gender', 'year', 'specialisation', 'gpa', 'name', 'subject', 'points']
+      ['gender', 'year', 'degree', 'specialisation', 'gpa',
+       'name', 'subject', 'level', 'points']
         .forEach(k => r.set(r.mid[0].id, 'column:' + k, false));
       r.w.runQuery();
       assert.deepEqual(r.entry(r.o.id).table.columns.map(c => c.key),

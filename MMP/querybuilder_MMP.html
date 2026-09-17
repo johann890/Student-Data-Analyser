@@ -271,10 +271,25 @@
             year files instead.
           </div>
 
-          <p>Only seven columns are read: the ID, gender, the first major, the year, the course, the
-             grade and the points. Names, usernames, email addresses and ethnicity are in the file
-             and are deliberately not kept &mdash; nothing that is never loaded can leak out of an
-             export or a screenshot.</p>
+          <p>Eight columns are read: the ID, gender, the first degree, the first major, the year,
+             the course, the grade and the points. Names, usernames, email addresses and ethnicity
+             are in the file and are deliberately not kept &mdash; nothing that is never loaded can
+             leak out of an export or a screenshot.</p>
+
+          <p>One more column is <em>derived</em> rather than read. A course code carries the level
+             it is taught at in its first digit &mdash; <code>CGRA151</code> is 100-level,
+             <code>SWEN421</code> is 400-level &mdash; so every enrolment gets a <b>Level</b>
+             alongside its subject. The archive is not a single honours year: 2022 alone holds 697
+             enrolments at 100-level against 454 at 400-level, and averaging those together without
+             being able to see the difference gives an answer that is wrong without looking wrong.</p>
+
+          <div class="help-tip">
+            <b>Level is a number, so it can be measured.</b> <b>Took level</b> on a Filter keeps
+            students who took at least one course at a level &mdash; and because the operators come
+            with it, <q>at 300-level or above</q> is the progression question. Put a <b>Project</b>
+            in front of an <b>Aggregate</b> to ask for the highest level a student reached, or the
+            average level across a cohort.
+          </div>
         </section>
 
         <!-- ── TOOLBAR ─────────────────────────────────────── -->

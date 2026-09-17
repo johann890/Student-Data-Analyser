@@ -87,7 +87,9 @@ module.exports = ({ describe, test }) => {
       assert.equal(byRow.rows.length, A.STUDENTS.length);
       assert.equal(byRow.columns.length, 1);
       assert.equal(byCol.rows.length, 1);
-      assert.equal(byCol.columns.length, 7);
+      // One column per column that came in — asserted against the schema, so a
+      // column added to the Source does not look like a regression here.
+      assert.equal(byCol.columns.length, A.STUDENT_COLUMNS.length);
     });
 
     test('the column names the measure', () => {
@@ -136,7 +138,9 @@ module.exports = ({ describe, test }) => {
       const r = rig('count');
       r.w.runQuery();
       const t = r.entry(r.o.id).table;
-      assert.deepEqual(values(t), A.STUDENTS.map(() => 7), 'seven columns, none blank');
+      const width = A.STUDENT_COLUMNS.length;
+      assert.deepEqual(values(t), A.STUDENTS.map(() => width),
+        'every column, none blank');
     });
 
     test('min, max and average of a single-measure row are that measure', () => {
@@ -194,7 +198,7 @@ module.exports = ({ describe, test }) => {
     test('Select in front decides which columns are combined', () => {
       // The answer to "specify which columns are aggregated", by composition
       const r = rig('count', ['select']);
-      ['gender', 'year', 'specialisation', 'letterGrade', 'courses']
+      ['gender', 'year', 'degree', 'specialisation', 'letterGrade', 'courses']
         .forEach(k => r.set(r.mid[0].id, 'column:' + k, false));   // id + gpa
       r.w.runQuery();
       assert.deepEqual(values(r.entry(r.o.id).table), A.STUDENTS.map(() => 2));
@@ -202,7 +206,7 @@ module.exports = ({ describe, test }) => {
 
     test('an identifier is still excluded from the arithmetic', () => {
       const r = rig('sum', ['select']);
-      ['gender', 'year', 'specialisation', 'letterGrade', 'courses']
+      ['gender', 'year', 'degree', 'specialisation', 'letterGrade', 'courses']
         .forEach(k => r.set(r.mid[0].id, 'column:' + k, false));   // id + gpa
       r.w.runQuery();
       assert.deepEqual(values(r.entry(r.o.id).table), A.STUDENTS.map(s => s.gpa),
@@ -256,7 +260,8 @@ module.exports = ({ describe, test }) => {
       const r = rig('sum');
       const hint = r.qa('[data-node="' + r.n.id + '"]')[0]
         .closest('.node-config').textContent;
-      assert.includes(hint, '1 of 7', 'naming the count is the warning');
+      assert.includes(hint, '1 of ' + A.STUDENT_COLUMNS.length,
+        'naming the count is the warning');
       assert.includes(hint, 'Select', 'and it says how to change it');
     });
 
@@ -265,7 +270,7 @@ module.exports = ({ describe, test }) => {
       r.set(r.mid[0].id, 'column:courses', false);
       const hint = r.qa('[data-node="' + r.n.id + '"]')[0]
         .closest('.node-config').textContent;
-      assert.includes(hint, 'of 6');
+      assert.includes(hint, 'of ' + (A.STUDENT_COLUMNS.length - 1));
     });
   });
 

@@ -52,6 +52,22 @@ const APP_DIR = findAppDir();
 const APP_JS = path.join(APP_DIR, 'app.js');
 const APP_HTML = findHtml(APP_DIR);
 
+/* The real archive, beside the application rather than inside it. The data
+   suites read from here, because a parser tested only against fixtures written
+   by the same person who wrote the parser is a parser tested against its own
+   assumptions. Fixtures still have their place — a file has to be malformed
+   deliberately to test a refusal — but "does it read the actual export" is a
+   question only the actual export answers. */
+const DATA_DIR = path.resolve(APP_DIR, '..', 'data');
+
+function dataDirFile(name) {
+  return fs.readFileSync(path.join(DATA_DIR, name), 'utf8');
+}
+function hasDataDir() {
+  try { return fs.existsSync(path.join(DATA_DIR, 'headers.txt')); }
+  catch (e) { return false; }
+}
+
 /* __qb hands back live state through functions, because `nodes` and
    `connections` are reassigned wholesale by clearAll() and applyGraph() and a
    captured value would go stale. The suites were written against getters, so
@@ -120,7 +136,7 @@ function boot() {
   // than exporting it from production code.
   w.render = app.render;
 
-  return { w, doc, app, saved, copied, ...helpers(w, doc, app) };
+  return { w, doc, app, saved, copied, ...helpers(w, doc, app), ...fileHelpers(w, doc, app) };
 }
 
 /* Helpers that drive the UI the way a user would — set a control's value and
@@ -192,4 +208,83 @@ function helpers(w, doc, app) {
            q, qa, text, panel, bigNum, optionsOf, entry };
 }
 
-module.exports = { boot, APP_DIR, APP_JS, APP_HTML };
+/* DRIVING THE FILE PICKERS
+   ---------------------------------------------------------------------------
+   The two data inputs are hidden and opened by a button, so a test cannot
+   "click" its way to a file — no browser lets script choose one, which is the
+   whole point of the control. What a test CAN do is stand where the browser
+   stands: build real File objects, put them on the input, and fire the change
+   event the application listens for.
+
+   That keeps the assertions honest about the path they exercise. Everything
+   from the change listener inward is the shipped code, including the real
+   FileReader, which is why these tests are async.                            */
+function fileHelpers(w, doc, app) {
+  // A real jsdom File. Its `name` and `size` are what the admission checks read,
+  // and its contents are what the parser reads, so nothing about it is a stub.
+  function file(name, text) { return new w.File([text], name); }
+
+  // The archive's own files, as Files.
+  function archiveFile(name) { return file(name, dataDirFile(name)); }
+
+  /* Put a selection on a hidden input and fire `change`, which is exactly the
+     sequence a real pick produces. `files` is read-only on an <input>, so it is
+     redefined — the alternative is a DataTransfer, which jsdom does not
+     implement. */
+  function choose(inputId, nodeId, files) {
+    const input = doc.getElementById(inputId);
+    if (!input) throw new Error('No #' + inputId + ' in the page.');
+    const list = [].concat(files);
+    Object.defineProperty(input, 'files', {
+      configurable: true,
+      get: () => Object.assign(list.slice(), { item: (i) => list[i], length: list.length })
+    });
+    input._node = nodeId;
+    input.dispatchEvent(new w.Event('change', { bubbles: true }));
+    return input;
+  }
+
+  // The loader's callbacks, as promises, so a test reads as the sequence it is.
+  function loadHeaders(nodeId, f) {
+    return new Promise(res => app.loadHeadersFor(nodeId, f, (err, header) => res({ err, header })));
+  }
+  function loadYears(nodeId, files) {
+    return new Promise(res =>
+      app.loadYearFilesFor(nodeId, [].concat(files), (err, dataset) => res({ err, dataset })));
+  }
+
+  /* The common arrangement: a Source holding the real 2022 and 2023 archive.
+     Written once because half the assertions in these suites need it and none
+     of them are about the arranging. */
+  async function loadArchive(nodeId, years) {
+    const yrs = years || [2022, 2023];
+    const h = await loadHeaders(nodeId, archiveFile('headers.txt'));
+    if (h.err) throw new Error('arranging the archive header failed: ' + h.err);
+    const y = await loadYears(nodeId, yrs.map(v => archiveFile('mcs-students-' + v)));
+    if (y.err) throw new Error('arranging the archive years failed: ' + y.err);
+    return y.dataset;
+  }
+
+  /* A real FileReader takes as long as it takes, and a test that guesses at a
+     fixed delay is a test that is flaky on a slow machine and slow on a fast
+     one. Poll for the condition instead, with a ceiling so a genuine failure
+     reports as a failure rather than as a hang. */
+  function waitFor(predicate, what) {
+    const deadline = Date.now() + 2000;
+    return new Promise((resolve, reject) => {
+      (function tick() {
+        let got;
+        try { got = predicate(); } catch (e) { return reject(e); }
+        if (got) return resolve(got);
+        if (Date.now() > deadline) {
+          return reject(new Error('timed out waiting for ' + (what || 'a condition')));
+        }
+        setTimeout(tick, 5);
+      })();
+    });
+  }
+
+  return { file, archiveFile, choose, loadHeaders, loadYears, loadArchive, waitFor };
+}
+
+module.exports = { boot, APP_DIR, APP_JS, APP_HTML, DATA_DIR, dataDirFile, hasDataDir };

@@ -26,9 +26,11 @@ var edgeColorIndex = 0;
    course no rows contain costs an empty result, which is the honest answer.  */
 var STUDENTS       = [];   // every loaded student, all Sources
 var SPECS          = [];   // maj1 codes, as the archive writes them
+var DEGREES        = [];   // deg1 codes: BSC, BEHONS, BCA
 var YEARS          = [];   // calendar years, ascending
 var SUBJECTS       = [];   // four-letter course prefixes, first-seen order
-var COURSES        = [];   // { code, name, subject, points }
+var LEVELS         = [];   // course levels present, ascending: 1, 2, 3, 4
+var COURSES        = [];   // { code, name, subject, level, points }
 var COURSE_BY_CODE = {};
 
 /* Rebuilt from scratch on every load or clear, because a registry that only
@@ -36,9 +38,9 @@ var COURSE_BY_CODE = {};
    unloaded. Cheap enough to do wholesale — a few thousand enrolments — and a
    great deal easier to reason about than incremental bookkeeping. */
 function rebuildRegistries() {
-  var seenSpec = {}, seenYear = {}, seenSubj = {}, seenCode = {};
-  STUDENTS.length = 0; SPECS.length = 0; YEARS.length = 0;
-  SUBJECTS.length = 0; COURSES.length = 0;
+  var seenSpec = {}, seenDeg = {}, seenYear = {}, seenSubj = {}, seenLvl = {}, seenCode = {};
+  STUDENTS.length = 0; SPECS.length = 0; DEGREES.length = 0; YEARS.length = 0;
+  SUBJECTS.length = 0; LEVELS.length = 0; COURSES.length = 0;
   Object.keys(COURSE_BY_CODE).forEach(function(k){ delete COURSE_BY_CODE[k]; });
 
   loadedDatasets().forEach(function(d) {
@@ -47,14 +49,21 @@ function rebuildRegistries() {
       if (s.specialisation && !seenSpec[s.specialisation]) {
         seenSpec[s.specialisation] = true; SPECS.push(s.specialisation);
       }
+      if (s.degree && !seenDeg[s.degree]) {
+        seenDeg[s.degree] = true; DEGREES.push(s.degree);
+      }
       if (!seenYear[s.year]) { seenYear[s.year] = true; YEARS.push(s.year); }
       s.courses.forEach(function(e) {
         if (e.subject && !seenSubj[e.subject]) {
           seenSubj[e.subject] = true; SUBJECTS.push(e.subject);
         }
+        if (e.level !== null && e.level !== undefined && !seenLvl[e.level]) {
+          seenLvl[e.level] = true; LEVELS.push(e.level);
+        }
         if (!seenCode[e.code]) {
           seenCode[e.code] = true;
-          var c = { code:e.code, name:e.name, subject:e.subject, points:e.points };
+          var c = { code:e.code, name:e.name, subject:e.subject,
+                    level:e.level, points:e.points };
           COURSES.push(c);
           COURSE_BY_CODE[e.code] = c;
         }
@@ -63,8 +72,10 @@ function rebuildRegistries() {
   });
 
   SPECS.sort();
+  DEGREES.sort();
   YEARS.sort(function(a, b){ return a - b; });
   SUBJECTS.sort();
+  LEVELS.sort(function(a, b){ return a - b; });
   COURSES.sort(function(a, b){ return a.code < b.code ? -1 : a.code > b.code ? 1 : 0; });
 }
 
@@ -75,6 +86,25 @@ function rebuildRegistries() {
    behaviour for "took course ___" with no courses known. */
 function defaultCourse() { return COURSES.length ? COURSES[0].code : ''; }
 function defaultSubject() { return SUBJECTS.length ? SUBJECTS[0] : ''; }
+function defaultLevel()   { return LEVELS.length ? LEVELS[0] : ''; }
+
+/* THE LEVEL A COURSE IS TAUGHT AT, read from its own code: SWEN421 is a
+   400-level course, CGRA151 a 100-level one. The first digit is the level, and
+   the rest of the number distinguishes courses within it.
+
+   Derived rather than stored, because the archive has no level column and the
+   code is the only place the fact lives. That is the same reasoning `subject`
+   already follows — both are properties OF the code, and reading them out of it
+   keeps them true for a course this catalogue has never seen.
+
+   Worth having because the archive is not the honours-only year the built-in
+   dataset pretended: 2022 alone carries 697 enrolments at 100-level and 454 at
+   400-level. Averaging those together without being able to see the difference
+   is the kind of answer that is wrong without looking wrong. */
+function courseLevel(code) {
+  var m = /\d/.exec(String(code == null ? '' : code));
+  return m ? parseInt(m[0], 10) : null;
+}
 
 /* SYNTHETIC DATASET — reachable only from the test harness
    ---------------------------------------------------------------------------
@@ -206,6 +236,7 @@ var COURSES_PER_YEAR = 8; // 8 x 15 = 120 points, a full Honours year
 
 SYN_COURSES.forEach(function(c) {
   c.subject = c.code.slice(0, 4);
+  c.level = courseLevel(c.code);
   c.points = COURSE_POINTS;
 });
 var SYN_COURSE_BY_CODE = {};
@@ -309,6 +340,7 @@ function buildEnrolments(id, spec, year, target) {
       code: c.code,
       name: c.name,
       subject: c.subject,
+      level: c.level,
       points: c.points,
       year: year,
       letterGrade: gradeFromMark(marks[i]),
@@ -338,6 +370,12 @@ function buildSyntheticStudents() {
         id: id,
         gender: i % 2 === 0 ? 'M' : 'F',
         year: year,
+        /* The generator's catalogue is a single honours year, so every
+           synthetic student is on the one programme the built-in dataset was
+           ever about. Stating it beats leaving the column undefined: the two
+           paths have to hand the rest of the tool the same shape, and a suite
+           asserts that they do. */
+        degree: 'BEHONS',
         specialisation: spec,
         courses: enrolments,
         gpa: avg,
@@ -459,11 +497,14 @@ var MAX_YEAR_FILES = 50;
    column has been misread rather than that the course is unusual. */
 var MAX_COURSE_POINTS = 200;
 
-/* The columns this tool reads. Everything else in the file — the names, the
-   usernames, the email addresses, the ethnicity — is parsed past and dropped on
-   the floor. It is not needed to answer any of the supervisor's questions, and
+/* The columns this tool reads. `deg1` joined them when the archive turned out
+   to hold three degrees rather than the single honours programme the built-in
+   dataset assumed, and it is a student-level fact: no student in either year
+   carries two of them, or changes between years. Everything else in the file —
+   the names, the usernames, the email addresses, the ethnicity — is parsed past
+   and dropped on the floor. It is not needed to answer any of the supervisor's questions, and
    the least exposed way to hold personal data is not to hold it. */
-var REQUIRED_HEADER_COLUMNS = ['ID', 'gender', 'maj1', 'Year', 'Crse', 'Grade', 'Pts'];
+var REQUIRED_HEADER_COLUMNS = ['ID', 'gender', 'deg1', 'maj1', 'Year', 'Crse', 'Grade', 'Pts'];
 
 /* C0 controls except tab, newline and carriage return, plus DEL. Tested against
    the whole file before it is split, because the cheapest place to refuse a
@@ -744,7 +785,8 @@ function parseYearFile(text, year, header) {
     var s = byId[id];
     if (!s) {
       s = byId[id] = { id: parseInt(id, 10), gender: f[at.gender].trim(), year: year,
-                       specialisation: f[at.maj1].trim(), courses: [] };
+                       degree: f[at.deg1].trim(), specialisation: f[at.maj1].trim(),
+                       courses: [] };
       order.push(id);
     }
 
@@ -755,6 +797,7 @@ function parseYearFile(text, year, header) {
          prints one of them rather than "AIML427 - AIML427". */
       name: code,
       subject: code.slice(0, 4).toUpperCase(),
+      level: courseLevel(code),
       points: pts,
       year: year,
       letterGrade: grade,
@@ -1239,6 +1282,10 @@ var STUDENT_COLUMNS = [
   { key:'id',             label:'ID',             type:COLTYPE.NUMBER, def:'1001' },
   { key:'gender',         label:'Gender',         type:COLTYPE.ENUM,   values:['M','F'] },
   { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS },
+  /* Degree sits beside Specialisation because they are the same kind of fact at
+     two widths — BSC and BEHONS are programmes, SWEN and CYBR are majors within
+     them — and a question about one is nearly always a question about both. */
+  { key:'degree',         label:'Degree',         type:COLTYPE.ENUM,   values:DEGREES },
   { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
   { key:'gpa',            label:'GPA',            type:COLTYPE.NUMBER, def:'5' },
   { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT,   order:GRADE_ORDER },
@@ -1248,9 +1295,17 @@ var STUDENT_COLUMNS = [
 /* The one table builder: every Source produces this shape, and a row is a
    student. The student's courses ride along nested in the last cell rather than
    being flattened into rows of their own. */
+/* Built from the COLUMN LIST rather than from a hand-written array, because the
+   two were positional and could disagree — and did, the moment Degree was added
+   to STUDENT_COLUMNS and the row builder was not updated with it. Every cell
+   shifted one place left, and a Filter on Specialisation started reading grades.
+
+   Driving both from `key` means a column added tomorrow needs no second edit,
+   and the invariant the suite asserts — one cell per column, in order — is true
+   by construction instead of by vigilance. */
 function studentsTable(list) {
   return makeTable(STUDENT_COLUMNS, list.map(function(s) {
-    return [s.id, s.gender, s.year, s.specialisation, s.gpa, s.letterGrade, s.courses];
+    return STUDENT_COLUMNS.map(function(c){ return s[c.key]; });
   }));
 }
 
@@ -2330,6 +2385,12 @@ function courseFields() {
     // which is what the same filter does at enrolment granularity.
     { key:'courses.subject', label:'Took subject',   kind:'courseSubject' },
     { key:'courses.code',    label:'Took course',    kind:'courseCode' },
+    /* Named the same way, and a NUMBER rather than a set, so the operators come
+       with it: "took a course at level 400" is the equality case, and "at 300
+       or above" — the progression question — is the one that needed the
+       ordering. Without this, asking it at student granularity means a Project
+       first, which changes what a row is and therefore what a count counts. */
+    { key:'courses.level',   label:'Took level',     kind:'courseLevel' },
     { key:'courses.gradePoints', label:'Grade in course', kind:'courseGrade' }
   ];
 }
@@ -2378,7 +2439,7 @@ function fieldByKey(schema, key) {
 }
 
 function opsFor(kind, col) {
-  if (kind === COLTYPE.NUMBER || kind === 'courseGrade') return NUM_OPS;
+  if (kind === COLTYPE.NUMBER || kind === 'courseGrade' || kind === 'courseLevel') return NUM_OPS;
   // Passed the column where there is one, because whether a category can carry
   // a range is a property of that column rather than of its type.
   if (isRangeable(col)) return ORDERED_OPS;
@@ -2386,6 +2447,10 @@ function opsFor(kind, col) {
 }
 function defaultOpFor(kind) {
   if (kind === COLTYPE.NUMBER || kind === 'courseGrade') return 'gt';
+  // Levels are a handful of small integers, so the common question is "did they
+  // take one at THIS level" rather than "above it" — the ordering is there when
+  // it is wanted, but equality is the honest default.
+  if (kind === 'courseLevel') return 'eq';
   return 'eq';
 }
 
@@ -2429,6 +2494,43 @@ function applyCriterion(t, c, f, log) {
       {s: prop === 'subject' ? 'subject' : 'course'}, {c:'val', s:'"'+want+'"'}
     ]));
     return { table: makeTable(t.columns, rows) };
+  }
+
+  /* Keeps a STUDENT who took at least one course matching the test, with all
+     their enrolments intact — the same row semantics "Took subject" has, and
+     the reason these are named for what they do to a row. A student who took a
+     100-level and a 400-level course satisfies both "level = 1" and
+     "level = 4", because they genuinely did both. */
+  if (f.kind === 'courseLevel') {
+    if (coursesIdx === -1) return { table: t };
+    var lvlCol = { def: String(defaultLevel() || 4) };
+    var lop = critOp(c, f.key, 'eq');
+    var lrange = critRange(c, f.key, lvlCol);
+    var lfn = OP_FNS[lop] || OP_FNS.eq;
+
+    if (lop === 'between' && (lrange.lo === null || lrange.hi === null)) {
+      return { error: 'A level range needs a number at both ends.' };
+    }
+    if (lop !== 'between' && isNaN(parseFloat(critValue(c, f.key, lvlCol)))) {
+      return { error: 'Course level must be a number.' };
+    }
+    var lwant = parseFloat(critValue(c, f.key, lvlCol));
+
+    var lrows = t.rows.filter(function(r) {
+      return (r[coursesIdx] || []).some(function(e) {
+        if (e.level === null || e.level === undefined) return false;
+        return lop === 'between'
+          ? (e.level >= lrange.lo && e.level <= lrange.hi)
+          : lfn(e.level, lwant);
+      });
+    });
+
+    log.push(logEntry('FILTER', lop === 'between'
+      ? [{s:'student'}, {c:'op', s:'took'}, {s:'level'},
+         {c:'op', s:'between'}, {c:'val', s:lrange.loRaw}, {s:'and'}, {c:'val', s:lrange.hiRaw}]
+      : [{s:'student'}, {c:'op', s:'took'}, {s:'level'},
+         {c:'op', s:OP_SYM[lop] || lop}, {c:'val', s:lwant}]));
+    return { table: makeTable(t.columns, lrows) };
   }
 
   if (f.kind === 'courseGrade') {
@@ -3166,11 +3268,22 @@ function outputTable(node, t) {
 
 /* The columns an enrolment contributes. Fixed, because an enrolment has the
    shape the data file gives it. */
+/* Derived from enrolmentColumns() rather than written beside it, so the unfold
+   and the header it claims to produce cannot disagree. */
+function enrolmentKeys() {
+  return enrolmentColumns().map(function(c){ return c.key; });
+}
+
 function enrolmentColumns() {
   return [
     { key:'code',        label:'Course',      type:COLTYPE.ENUM,   values:COURSES.map(function(c){ return c.code; }) },
     { key:'name',        label:'Course name', type:COLTYPE.TEXT },
     { key:'subject',     label:'Subject',     type:COLTYPE.ENUM,   values:SUBJECTS },
+    /* A number rather than an enum, so it can be averaged, maximised and
+       compared. "The highest level this student reached" is an Aggregate over
+       this column, and it is the closest thing the archive has to a year of
+       study — which is what use cases (h) and (i) have been waiting on. */
+    { key:'level',       label:'Level',       type:COLTYPE.NUMBER, def:'4' },
     { key:'points',      label:'Points',      type:COLTYPE.NUMBER, def:'15' },
     { key:'gradePoints', label:'Grade points',type:COLTYPE.NUMBER, def:'5' },
     { key:'letterGrade', label:'Grade',       type:COLTYPE.TEXT,   order:GRADE_ORDER }
@@ -3227,13 +3340,20 @@ function applyProject(node, t, log) {
   var carry = projectCarried(t);
   var carryIdx = carry.map(function(c){ return colIndex(t, c.key); });
   var cols = projectColumns(t);
+  var eKeys = enrolmentKeys();   // hoisted: this is per unfold, not per row
 
   var rows = [];
   t.rows.forEach(function(r) {
     var prefix = carryIdx.map(function(i){ return r[i]; });
     var list = r[ci] || [];
     list.forEach(function(e) {
-      rows.push(prefix.concat([e.code, e.name, e.subject, e.points, e.gradePoints, e.letterGrade]));
+      /* Read out of the enrolment BY KEY, in the order enrolmentColumns()
+         declares, rather than as a hand-written array in the same order. The
+         two were positional and drifted the moment Level was added: every cell
+         after Subject shifted, so Grade points held a letter and Grade held
+         nothing. Same failure studentsTable() had, same fix — the column list
+         is the single statement of what a row holds. */
+      rows.push(prefix.concat(eKeys.map(function(k){ return e[k]; })));
     });
   });
 
@@ -4247,6 +4367,27 @@ function criterionHTML(node, ci, c, schema) {
   } else if (cur.kind === 'courseCode') {
     body = '<div class="criterion-controls stack">' + fieldSel +
       courseSelect(nid, vKey, critValue(c, cur.key, null) || defaultCourse()) + '</div>';
+
+  } else if (cur.kind === 'courseLevel') {
+    /* A select rather than a number box: the levels are the handful the loaded
+       files actually contain, and offering a free number invites "level 7",
+       which every file answers with nothing. */
+    var lOp = critOp(c, cur.key, 'eq');
+    var lvlDef = { def: String(defaultLevel() || 4) };
+    var lvlBox = function(key, val) {
+      return '<select' + ctl(nid, key) + '>' +
+        (LEVELS.length ? LEVELS : [1, 2, 3, 4]).map(function(v) {
+          return opt(String(v), String(val), v + '00-level');
+        }).join('') + '</select>';
+    };
+    body = (lOp === 'between'
+      ? '<div class="criterion-controls two-col">' + fieldSel +
+          opSelect(nid, oKey, NUM_OPS, lOp) + '</div>' +
+        rangeBandHTML(nid, ci, { key: cur.key, column: lvlDef }, c, lvlBox)
+      : '<div class="criterion-controls">' + fieldSel +
+          opSelect(nid, oKey, NUM_OPS, lOp) +
+          lvlBox(vKey, critValue(c, cur.key, lvlDef)) +
+        '</div>');
 
   } else if (cur.kind === 'courseGrade') {
     var mOp = critOp(c, cur.key, 'gte');
@@ -7109,7 +7250,8 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     COURSE_BY_CODE: COURSE_BY_CODE, CORE_COURSES: CORE_COURSES, COURSES_PER_YEAR: COURSES_PER_YEAR,
     SPEC_SUBJECTS: SPEC_SUBJECTS, SUBJECT_WEIGHTS: SUBJECT_WEIGHTS, subjectWeight: subjectWeight,
     rebuildRegistries: rebuildRegistries, defaultCourse: defaultCourse,
-    defaultSubject: defaultSubject,
+    defaultSubject: defaultSubject, defaultLevel: defaultLevel,
+    DEGREES: DEGREES, LEVELS: LEVELS, courseLevel: courseLevel,
 
     // loading the archive: admission, parsing, and per-source state
     DATA_HEADERS_NAME: DATA_HEADERS_NAME, DATA_YEAR_RE: DATA_YEAR_RE,
@@ -7138,7 +7280,8 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     installSyntheticDataset: installSyntheticDataset,
 
     // table primitives
-    COLTYPE: COLTYPE, makeTable: makeTable, colIndex: colIndex, colByKey: colByKey,
+    COLTYPE: COLTYPE, STUDENT_COLUMNS: STUDENT_COLUMNS,
+    makeTable: makeTable, colIndex: colIndex, colByKey: colByKey,
     hasCol: hasCol, cellAt: cellAt, headerOnly: headerOnly, numericCols: numericCols,
     coursesColIndex: coursesColIndex, studentsTable: studentsTable,
     fmtCell: fmtCell, exportCell: exportCell, cellTitle: cellTitle,
@@ -7189,7 +7332,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     selectedCols: selectedCols, selectSchema: selectSchema, applySelect: applySelect,
     canProject: canProject, projectCarried: projectCarried, projectColumns: projectColumns,
     projectSchema: projectSchema, applyProject: applyProject,
-    enrolmentColumns: enrolmentColumns,
+    enrolmentColumns: enrolmentColumns, enrolmentKeys: enrolmentKeys,
     combineOrder: combineOrder, joinColumns: joinColumns, joinTables: joinTables,
 
     // take

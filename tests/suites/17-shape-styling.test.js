@@ -146,6 +146,16 @@ module.exports = ({ describe, test }) => {
       });
     });
 
+    test('a node is offered exactly once, not once per menu', () => {
+      // Two menus means two places to list a node, and a node listed in both
+      // would give the same type two different homes.
+      const h = boot();
+      const offered = h.qa('.proc-item')
+        .map(b => (b.getAttribute('onclick').match(/addProcNode\('([^']+)'\)/) || [])[1]);
+      offered.forEach(t => assert.equal(
+        offered.filter(x => x === t).length, 1, t + ' is listed more than once'));
+    });
+
     test('each menu entry carries its family class', () => {
       const CAT = { reshape: 'cat-reshape', expand: 'cat-expand',
                     summarise: 'cat-summarise', branches: 'cat-branches' };
@@ -156,6 +166,87 @@ module.exports = ({ describe, test }) => {
         assert.ok(fam, t + ' has no family');
         assert.includes(b.className, CAT[fam], t + ' is listed under the wrong group');
       });
+    });
+  });
+
+  /* THE SPLIT
+     Reshape is its own button because it is its own colour. The whole point of
+     the split is that a coloured button can promise the colour behind it, so
+     these check the promise rather than the markup: which types are in which
+     menu is derived from FAMILY, so moving a node between families moves the
+     expectation with it. */
+  describe('the two menus', () => {
+    const menuOf = b => b.closest('.proc-menu').id;
+    const typeOf = b => (b.getAttribute('onclick').match(/addProcNode\('([^']+)'\)/) || [])[1];
+
+    test('there are exactly two, and both are dropdowns of the same kind', () => {
+      const h = boot();
+      const ids = h.qa('.proc-menu').map(m => m.id).sort();
+      assert.deepEqual(ids, ['procMenu', 'reshapeMenu']);
+    });
+
+    test('Reshape holds every violet node and nothing else', () => {
+      const h = boot();
+      const inReshape = h.qa('.proc-item').filter(b => menuOf(b) === 'reshapeMenu').map(typeOf);
+      assert.deepEqual(inReshape.slice().sort(), FAMILY.reshape.types.slice().sort(),
+        'the violet button must open a menu of exactly the violet nodes');
+    });
+
+    test('Processing holds everything that is not violet', () => {
+      const h = boot();
+      const rest = [].concat(...Object.keys(FAMILY)
+        .filter(f => f !== 'reshape').map(f => FAMILY[f].types));
+      const inProc = h.qa('.proc-item').filter(b => menuOf(b) === 'procMenu').map(typeOf);
+      assert.deepEqual(inProc.slice().sort(), rest.slice().sort());
+    });
+
+    test('the Reshape button wears the family colour, and Processing does not', () => {
+      // Grey is the honest answer for a menu holding three families; claiming
+      // one of their colours would promise a menu of that colour.
+      const h = boot();
+      const reshape = h.qa('.add-btn').find(b => b.className.indexOf('reshape') !== -1);
+      const proc    = h.qa('.add-btn').find(b => b.className.indexOf('processing') !== -1);
+      assert.ok(reshape, 'no Reshape button'); assert.ok(proc, 'no Processing button');
+
+      const rule = /\.add-btn\.reshape\s*\{([^}]*)\}/.exec(CSS);
+      assert.ok(rule, 'the Reshape button has no colour rule of its own');
+      assert.includes(rule[1].toLowerCase(), FAMILY.reshape.colour,
+        'the button must carry the same border colour as the nodes behind it');
+
+      const procRule = /\.add-btn\.processing\s*\{([^}]*)\}\s*\n\.add-btn\.processing:hover/.exec(CSS);
+      assert.ok(procRule, 'no Processing colour rule');
+      Object.keys(FAMILY).forEach(f => assert.excludes(
+        procRule[1].toLowerCase(), FAMILY[f].colour,
+        'Processing must not claim the ' + f + ' colour'));
+    });
+
+    test('the Reshape menu carries no group heading', () => {
+      // The button already says Reshape. A heading repeating it would read as
+      // the first of several groups, which is the thing the split removed.
+      const h = boot();
+      const headings = h.qa('#reshapeMenu .proc-group');
+      assert.equal(headings.length, 0);
+      assert.ok(h.qa('#procMenu .proc-group').length >= 3,
+        'Processing still needs its headings — it holds three families');
+    });
+
+    test('opening one menu closes the other', () => {
+      const h = boot();
+      h.w.toggleProcMenu(null, 'reshapeMenu');
+      assert.includes(h.doc.getElementById('reshapeMenu').className, 'open');
+
+      h.w.toggleProcMenu(null, 'procMenu');
+      assert.includes(h.doc.getElementById('procMenu').className, 'open');
+      assert.excludes(h.doc.getElementById('reshapeMenu').className, 'open',
+        'two open dropdowns overlap, and the second reads as a submenu of the first');
+    });
+
+    test('adding from either menu closes both', () => {
+      const h = boot();
+      h.w.toggleProcMenu(null, 'reshapeMenu');
+      h.w.addProcNode('sort');
+      h.qa('.proc-menu').forEach(m => assert.excludes(m.className, 'open'));
+      assert.ok(h.app.nodes.some(n => n.type === 'sort'), 'the node was still added');
     });
   });
 };

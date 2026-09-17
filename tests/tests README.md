@@ -25,6 +25,50 @@ tests/
   suites/*.test.js       the tests
 ```
 
+## The data the suites run against
+
+Two datasets, for two different jobs.
+
+**The built-in synthetic one** is what `app.js` used to ship with. It is now
+installed only under `__QB_TEST__` (`installSyntheticDataset()`), so a real page
+opens with no data and a Source refuses to run until it is handed files. Several
+hundred assertions are written in terms of its forty students a year and its
+seeded GPAs, and rewriting them against the archive would have changed what those
+tests *say* rather than what they check — so the generator stayed, behind the
+same flag that publishes the internals.
+
+`20-source-loading` calls `setSyntheticDataset(null)` around the blocks that test
+the refusal, because a refusal tested with a fallback still in place is not the
+refusal a user would meet.
+
+**The real archive** lives in `../data` beside the application, and `19-data-files`
+reads it through the shipped parser. A parser tested only against fixtures its own
+author wrote is a parser tested against its own assumptions; fixtures still cover
+the refusals, because a file has to be malformed deliberately.
+
+If `../data` is absent those tests return early rather than failing — the suite
+should still be runnable from a checkout that does not carry student records.
+
+The archive has two years, which is not enough to tell *added* from *replaced*
+apart from *there are two now*. `20-source-loading` makes the rest by rewriting
+the `Year` column of the real 2022 export, so they are genuine files by every
+rule in the parser — same 27 columns, same tab separation, same rows — differing
+only in the one field the file name has to agree with. A hand-written fixture
+would have been a fixture the parser was allowed to disagree with.
+
+## Asynchronous tests
+
+`run.js` awaits each test function, because the loading path goes through a real
+`FileReader` and a `FileReader` is asynchronous by construction. Stubbing it would
+have left the very path those suites exist to check — pick a file, read it, refuse
+or accept it — untested in favour of a synchronous imitation.
+
+The harness's `waitFor(predicate)` polls with a ceiling, rather than guessing at a
+fixed delay that is flaky on a slow machine and slow on a fast one. `choose()`
+puts real `File` objects on a hidden input and fires `change`, which is exactly
+where the browser stands after a pick: everything inward of the listener is the
+shipped code.
+
 ## Where it looks for the application
 
 By default the harness searches sibling folders for one containing `app.js` and
@@ -86,7 +130,7 @@ bridges them back to getters so tests can write `app.nodes`, in one place —
 
 | Suite | Covers |
 |---|---|
-| `01-dataset` | Generated data invariants: eight courses each, `gradeAvg` equals the mean of the marks, letter grades agree with numbers, catalogue fully exercised, generation is deterministic |
+| `01-dataset` | The grade model, and the built-in dataset's invariants: eight courses each, `gradeAvg` equals the mean of the marks, letter grades agree with numbers, catalogue fully exercised, generation is deterministic |
 | `02-table-model` | The `{columns, rows, meta}` primitive: access by key, finding the nested column by type rather than name, type-driven cell formatting |
 | `03-filter` | Every field type and operator, cross-checked against the raw dataset; multi-criterion AND; criteria orphaned by a narrowed header |
 | `04-schema` | Schema propagation, and that the Filter and Aggregate panels follow the incoming table rather than assuming student records |
@@ -104,6 +148,9 @@ bridges them back to getters so tests can write `app.nodes`, in one place —
 | `16-range` | The `between` operator: that it can be found at all, which columns may carry a range and which may not, the amber band's appearance, bounds cross-checked against the dataset on numbers, years and grade letters, reversed and incomplete bounds |
 | `17-shape-styling` | The model's `SHAPE` geometry against the stylesheet's, and that every processing node is named in its family's colour rule and its menu group |
 | `18-project` | The Project node: the unfold cross-checked against the raw enrolments, that the change in row identity is *visible*, the header being statically known, and use case (f) |
+| `19-data-files` | The boundary between an arbitrary file and the DOM: the two name rules, the size caps, the column file, every per-field check in a year file, the file-name/row-year agreement, and the real archive in `../data` read end to end |
+| `21-level-and-degree` | Course level (derived from the code) and degree (read from `deg1`): what they are against the archive, the `Took level` predicate and its operators, level as a measurable column after a Project — and guards for the two positional-array bugs adding them caused |
+| `20-source-loading` | The Source from the picker to the answer: the two ordered pickers driven through the real hidden inputs, year files accumulating across picks and coming back off one at a time, all-or-nothing within a pick, one Source per dataset, and that a saved query carries the graph and not one byte of the records |
 
 ### What was removed, and why
 
@@ -126,6 +173,32 @@ changed deliberately. Each says so at the point of the change:
 - `saveGraph` opens a naming dialog rather than writing immediately (`07-saveload`).
 - `CONNECT_RULES.compare` is no longer `['output']` (`08-graph`) — a comparison
   can be sorted, taken and aggregated like any other table.
+
+## Rows are built from the column list, not beside it
+
+Adding Degree to `STUDENT_COLUMNS` and Level to `enrolmentColumns()` broke two
+things at once, in the same way and for the same reason: both row builders were
+hand-written positional arrays sitting next to a column list, and neither was
+updated with it. Every cell after the insertion point shifted one place.
+
+Neither threw. A Filter on Specialisation started reading grades and returning
+zero rows; a projected Grade points column held a letter and Grade held nothing.
+Both produced output that looked like output.
+
+`studentsTable()` and `applyProject()` now map over the column list by `key`, so
+the invariant is true by construction rather than by vigilance, and
+`21-level-and-degree` asserts the stronger version of it — not just that a row
+has one cell per column, but that the cell under each column *is that column's
+value*. A matching length is what both bugs already had.
+
+Two consequences for writing tests here:
+
+- assert column counts against `A.STUDENT_COLUMNS.length`, not against a
+  literal, so a column added tomorrow moves the expectation instead of failing
+  it. Several suites were changed to do this;
+- where a test unticks columns by name to leave a known set behind, the new
+  column has to be named in that list. That is not boilerplate — it is the test
+  saying which columns it means.
 
 ## Tests that must be able to fail
 

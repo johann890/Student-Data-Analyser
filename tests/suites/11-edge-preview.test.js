@@ -77,9 +77,13 @@ module.exports = ({ describe, test }) => {
     });
 
     test('the student table shows all but its widest column', () => {
+      // Asserted against the schema rather than against a literal, so a column
+      // added to the Source moves this test's expectation with it instead of
+      // failing it. What is being checked is the CAP, not the width.
       const t = A.studentsTable(A.STUDENTS);
-      assert.equal(t.columns.length, 7);
-      assert.equal(A.previewColumns(t).length, 6);
+      assert.equal(t.columns.length, A.STUDENT_COLUMNS.length);
+      assert.ok(t.columns.length > A.PREVIEW_COLS, 'or there is nothing to drop');
+      assert.equal(A.previewColumns(t).length, A.PREVIEW_COLS);
     });
 
     test('rows are capped as well as columns', () => {
