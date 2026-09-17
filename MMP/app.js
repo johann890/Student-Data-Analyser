@@ -4,8 +4,91 @@
 var EDGE_PALETTE = ['#ffffff','#30d87a','#4aaff0','#e060b0','#a0d040','#9080e0'];
 var edgeColorIndex = 0;
 
-/* TEST DATASET */
-var SPECS = ["Software Engineering","Computer Science","Information Technology","Data Science","Cybersecurity","Artificial Intelligence"];
+/* ============================================================================
+   THE DATASET REGISTRIES
+   ============================================================================
+   Six arrays and one map, declared empty and filled from whatever files the
+   Source nodes are given. Nothing is generated at start-up any more: the tool
+   opens with no data at all, and a Source that has not been handed its files
+   refuses to run rather than quietly answering about a fictional cohort.
+
+   They are MUTATED IN PLACE, never reassigned, and that is load-bearing.
+   STUDENT_COLUMNS captures `values:SPECS` and `values:YEARS` by reference, and
+   enrolmentColumns() captures SUBJECTS and COURSES the same way, so a Filter
+   dropdown offers whatever is currently loaded without a single one of those
+   definitions knowing that data arrives from a file. Reassigning would leave
+   every column pointing at the empty array it was built from.
+
+   They are the UNION across every Source. Rows stay per-Source — two Sources
+   holding two different exports each answer about their own — but a dropdown
+   that offered only one Source's courses would be wrong for the graph as a
+   whole, and the alternative (a per-node schema pass) buys nothing: offering a
+   course no rows contain costs an empty result, which is the honest answer.  */
+var STUDENTS       = [];   // every loaded student, all Sources
+var SPECS          = [];   // maj1 codes, as the archive writes them
+var YEARS          = [];   // calendar years, ascending
+var SUBJECTS       = [];   // four-letter course prefixes, first-seen order
+var COURSES        = [];   // { code, name, subject, points }
+var COURSE_BY_CODE = {};
+
+/* Rebuilt from scratch on every load or clear, because a registry that only
+   ever grows would keep offering a course from a file that has since been
+   unloaded. Cheap enough to do wholesale — a few thousand enrolments — and a
+   great deal easier to reason about than incremental bookkeeping. */
+function rebuildRegistries() {
+  var seenSpec = {}, seenYear = {}, seenSubj = {}, seenCode = {};
+  STUDENTS.length = 0; SPECS.length = 0; YEARS.length = 0;
+  SUBJECTS.length = 0; COURSES.length = 0;
+  Object.keys(COURSE_BY_CODE).forEach(function(k){ delete COURSE_BY_CODE[k]; });
+
+  loadedDatasets().forEach(function(d) {
+    d.students.forEach(function(s) {
+      STUDENTS.push(s);
+      if (s.specialisation && !seenSpec[s.specialisation]) {
+        seenSpec[s.specialisation] = true; SPECS.push(s.specialisation);
+      }
+      if (!seenYear[s.year]) { seenYear[s.year] = true; YEARS.push(s.year); }
+      s.courses.forEach(function(e) {
+        if (e.subject && !seenSubj[e.subject]) {
+          seenSubj[e.subject] = true; SUBJECTS.push(e.subject);
+        }
+        if (!seenCode[e.code]) {
+          seenCode[e.code] = true;
+          var c = { code:e.code, name:e.name, subject:e.subject, points:e.points };
+          COURSES.push(c);
+          COURSE_BY_CODE[e.code] = c;
+        }
+      });
+    });
+  });
+
+  SPECS.sort();
+  YEARS.sort(function(a, b){ return a - b; });
+  SUBJECTS.sort();
+  COURSES.sort(function(a, b){ return a.code < b.code ? -1 : a.code > b.code ? 1 : 0; });
+}
+
+/* The catalogue's first course, for a fresh Filter criterion to point at. A
+   constant before, because the catalogue was a constant; a function now,
+   because at the moment a criterion is created there may be no catalogue at
+   all. Empty string is a criterion that matches nothing, which is the right
+   behaviour for "took course ___" with no courses known. */
+function defaultCourse() { return COURSES.length ? COURSES[0].code : ''; }
+function defaultSubject() { return SUBJECTS.length ? SUBJECTS[0] : ''; }
+
+/* SYNTHETIC DATASET — reachable only from the test harness
+   ---------------------------------------------------------------------------
+   This was the dataset the tool shipped with, and it is now what the suites run
+   against: several hundred assertions are written in terms of its forty
+   students a year, its six specialisation names and its seeded GPAs, and
+   rewriting them against the archive would have changed what those tests say
+   rather than what they check.
+
+   installSyntheticDataset() is called from the __QB_TEST__ block at the foot of
+   this file and from nowhere else, so a production page never reaches any of
+   it. The Source falls back to it only when it holds no files of its own —
+   which, with the flag unset, is a fallback to null and therefore an error. */
+var SYN_SPECS = ["Software Engineering","Computer Science","Information Technology","Data Science","Cybersecurity","Artificial Intelligence"];
 var G22 = [78,82,91,65,88,72,95,55,83,70,61,79,86,73,90,68,77,84,62,92,75,80,58,87,71,94,66,85,76,89,63,74,81,93,69,78,85,72,60,88];
 var G23 = [82,85,78,70,91,76,88,60,86,74,65,83,89,77,92,71,80,87,66,95,78,84,62,90,75,97,70,88,80,93,67,78,84,96,73,82,88,76,63,91];
 
@@ -89,8 +172,10 @@ function gradeFromMark(g) {
    The subject list is derived from the codes rather than hardcoded, so
    replacing this array with the real catalogue — more courses, new prefixes —
    requires no other change: the filter dropdowns, the subject criterion and
-   the breakdown tables all read from it. */
-var COURSES = [
+   the breakdown tables all read from it. That replacement has now happened for
+   real: COURSES is built from the Crse column of the loaded files, and this
+   array is only the synthetic generator's private catalogue. */
+var SYN_COURSES = [
   { code:'SWEN421', name:'Formal Foundations of Software Engineering' },
   { code:'SWEN422', name:'Human Computer Interaction' },
   { code:'SWEN423', name:'Software Design and Architecture' },
@@ -119,15 +204,16 @@ var COURSES = [
 var COURSE_POINTS = 15;   // every 400-level course in the catalogue
 var COURSES_PER_YEAR = 8; // 8 x 15 = 120 points, a full Honours year
 
-var SUBJECTS = [];        // derived from the codes, in first-seen order
-var COURSE_BY_CODE = {};
-COURSES.forEach(function(c) {
+SYN_COURSES.forEach(function(c) {
   c.subject = c.code.slice(0, 4);
   c.points = COURSE_POINTS;
-  COURSE_BY_CODE[c.code] = c;
-  if (SUBJECTS.indexOf(c.subject) === -1) SUBJECTS.push(c.subject);
 });
-var DEFAULT_COURSE = COURSES[0].code;
+var SYN_COURSE_BY_CODE = {};
+SYN_COURSES.forEach(function(c){ SYN_COURSE_BY_CODE[c.code] = c; });
+var SYN_SUBJECTS = [];
+SYN_COURSES.forEach(function(c) {
+  if (SYN_SUBJECTS.indexOf(c.subject) === -1) SYN_SUBJECTS.push(c.subject);
+});
 
 // Taken by everyone regardless of specialisation — the project and the
 // professional-practice course are core to the Honours year.
@@ -168,8 +254,8 @@ function makeRng(seed) {
 
 // Weighted sampling without replacement, seeded from the student's own id.
 function pickCourses(rand, spec) {
-  var chosen = CORE_COURSES.filter(function(code){ return COURSE_BY_CODE[code]; });
-  var pool = COURSES.filter(function(c){ return chosen.indexOf(c.code) === -1; });
+  var chosen = CORE_COURSES.filter(function(code){ return SYN_COURSE_BY_CODE[code]; });
+  var pool = SYN_COURSES.filter(function(c){ return chosen.indexOf(c.code) === -1; });
   var weights = pool.map(function(c){ return subjectWeight(spec, c.subject); });
 
   while (chosen.length < COURSES_PER_YEAR && pool.length) {
@@ -218,7 +304,7 @@ function buildEnrolments(id, spec, year, target) {
   var codes = pickCourses(rand, spec);
   var marks = marksAround(rand, target, codes.length);
   return codes.map(function(code, i) {
-    var c = COURSE_BY_CODE[code];
+    var c = SYN_COURSE_BY_CODE[code];
     return {
       code: c.code,
       name: c.name,
@@ -231,34 +317,725 @@ function buildEnrolments(id, spec, year, target) {
   });
 }
 
-var STUDENTS = [];
-var baseId = 1001;
-[G22, G23].forEach(function(arr, yi) {
-  arr.forEach(function(g, i) {
-    var id = baseId++;
-    var year = 2022 + yi;
-    var spec = SPECS[i % SPECS.length];
-    var enrolments = buildEnrolments(id, spec, year, g);
-    // Derived from the enrolments, not stored alongside them, so the two can
-    // never disagree.
-    var avg = gpaOf(enrolments);
-    STUDENTS.push({
-      id: id,
-      gender: i % 2 === 0 ? 'M' : 'F',
-      year: year,
-      specialisation: spec,
-      courses: enrolments,
-      gpa: avg,
-      letterGrade: gradeFromGpa(avg)
+/* The generator's output, in the same shape parseYearFile() produces: one
+   object per student, enrolments nested. Both paths therefore hand the rest of
+   the tool the identical thing, which is what lets the suites go on exercising
+   every node against synthetic students while the Source itself only ever sees
+   a dataset it was given. */
+function buildSyntheticStudents() {
+  var out = [];
+  var baseId = 1001;
+  [G22, G23].forEach(function(arr, yi) {
+    arr.forEach(function(g, i) {
+      var id = baseId++;
+      var year = 2022 + yi;
+      var spec = SYN_SPECS[i % SYN_SPECS.length];
+      var enrolments = buildEnrolments(id, spec, year, g);
+      // Derived from the enrolments, not stored alongside them, so the two can
+      // never disagree.
+      var avg = gpaOf(enrolments);
+      out.push({
+        id: id,
+        gender: i % 2 === 0 ? 'M' : 'F',
+        year: year,
+        specialisation: spec,
+        courses: enrolments,
+        gpa: avg,
+        letterGrade: gradeFromGpa(avg)
+      });
     });
   });
-});
+  return out;
+}
 
 /* These student-object lookups (courseMark, takesCourse, courseStats, ...) were
    removed in the table refactor: course predicates now go through
    coursesColIndex() like every other table operation. They worked on arrays of
    student objects, which no longer travel anywhere. */
 
+
+
+/* ============================================================================
+   LOADING THE ARCHIVE — admission, parsing, and what a Source holds
+   ============================================================================
+   The tool ships with no data. A Source is handed two things, in this order:
+
+     headers.txt          the column names, and the 1..N index line under them
+     mcs-students-YYYY    one file per year, tab separated, one row per
+                          enrolment, with no extension at all
+
+   Both names are fixed by the archive, and BOTH ARE ENFORCED HERE rather than
+   left to the file picker. `accept` on an <input type=file> filters what the
+   dialog shows and binds nothing: every browser offers "All files", a file can
+   be dragged in, and a file can be renamed. The same reasoning already governs
+   graphFileProblem() for saved queries; this is that rule applied to the data.
+
+   WHY ADMISSION IS A SECURITY CONCERN AND NOT MERELY TIDINESS
+   ---------------------------------------------------------------------------
+   Every cell that survives this module reaches the DOM — the results table, the
+   edge preview, a filter dropdown, an exported CSV. A file read without
+   question is arbitrary attacker-chosen content given a path to all four. The
+   checks below are therefore layered, cheapest first, and each one refuses
+   rather than repairs:
+
+     1. NAME      exact for headers.txt, anchored for a year file, and the year
+                  has to be a plausible calendar year. Any directory component
+                  is stripped before matching, so a hand-built object claiming
+                  "../../etc/passwd" is judged on its last segment and then
+                  refused for not being one of the two names.
+     2. SIZE      empty is refused, and so is anything past MAX_DATA_FILE_BYTES,
+                  before a single byte is read. The archive's year files are
+                  ~300 KB; the cap is a hundred times that and still far below
+                  what would hang the tab.
+     3. SHAPE     a year file's every row must carry exactly as many tab
+                  separated fields as headers.txt declares. This is the check
+                  that makes the pair a pair: a file with the right name but
+                  another archive's columns is refused on line one rather than
+                  silently read into the wrong fields.
+     4. CONTENT   NUL and other C0 control characters are refused outright — no
+                  legitimate export contains them, and they are how a payload
+                  hides from a reader. Fields are capped, rows are capped, the
+                  ID must be digits, Pts must be a small non-negative number,
+                  and the Year column must agree with the year in the FILE NAME.
+                  That last one is the integrity check with teeth: a file called
+                  mcs-students-2022 whose rows say 202301 is not the 2022 data
+                  and is not treated as though it were.
+
+   None of this replaces escaping — esc() still runs on every value on its way
+   into markup, because defence at the boundary and defence at the sink are
+   different jobs. What it does is keep the boundary narrow enough to describe
+   in a sentence: two file names, a fixed column count, and printable text.
+
+   WHY PER SOURCE
+   ---------------------------------------------------------------------------
+   A Source owns its files. Two Sources can hold two different exports and each
+   answers about its own rows, which is what makes "last year's archive against
+   this year's" a graph rather than two sessions. The registries above are the
+   union across all of them, for dropdowns only — see rebuildRegistries().
+
+   WHY THE DATA IS NEVER SAVED
+   ---------------------------------------------------------------------------
+   A saved query records the NAMES of the files a Source was given and not one
+   byte of their contents. Three reasons, and the first is sufficient on its
+   own: the archive is student records, and a query file gets emailed around.
+   The second is that a query is meant to be re-run against next year's data, so
+   baking in a snapshot defeats the point. The third is that a .json file is
+   trusted no further than any other input — data pasted into it would arrive
+   already parsed, past every check in this module.
+
+   So loading a query re-creates the graph and clears the data, and the Source
+   panel then names the files it wants. That is not an inconvenience to be
+   engineered away; it is the file-picker grant being asked for again, by the
+   user, for files this session has not been given.                           */
+
+var DATA_HEADERS_NAME = 'headers.txt';
+var DATA_YEAR_RE      = /^mcs-students-(\d{4})$/;
+var DATA_YEAR_MIN     = 1990;
+var DATA_YEAR_MAX     = 2099;
+
+/* 32 MB. The archive's year files are about 300 KB each, so this is two orders
+   of magnitude of headroom for a bigger cohort or a longer field list, and
+   still small enough that a refusal happens instantly rather than after the tab
+   has swallowed the file. */
+var MAX_DATA_FILE_BYTES = 32 * 1024 * 1024;
+
+/* Row and field caps. A quarter of a million enrolments is far more than any
+   single year of one school, and 512 characters is far more than any field in
+   this archive — the longest is an email address. Both exist so that a file
+   which passed the name check cannot still arrive as a denial of service or as
+   a single cell that unbalances every table it appears in. */
+var MAX_DATA_ROWS   = 250000;
+var MAX_FIELD_CHARS = 512;
+
+/* A course is worth points; nothing in this catalogue is worth more than a
+   double-weight honours project, and a number outside this range means the
+   column has been misread rather than that the course is unusual. */
+var MAX_COURSE_POINTS = 200;
+
+/* The columns this tool reads. Everything else in the file — the names, the
+   usernames, the email addresses, the ethnicity — is parsed past and dropped on
+   the floor. It is not needed to answer any of the supervisor's questions, and
+   the least exposed way to hold personal data is not to hold it. */
+var REQUIRED_HEADER_COLUMNS = ['ID', 'gender', 'maj1', 'Year', 'Crse', 'Grade', 'Pts'];
+
+/* C0 controls except tab, newline and carriage return, plus DEL. Tested against
+   the whole file before it is split, because the cheapest place to refuse a
+   file is before it has become anything more structured than a string. */
+var CONTROL_CHAR_RE = new RegExp('[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]');
+
+/* PER-SOURCE STATE — deliberately not part of the node model
+   ---------------------------------------------------------------------------
+   Keyed by node id and reset by applyGraph(), so it cannot travel through a
+   saved file or survive a load. Keeping it out of `node.cfg` is what makes
+   "the query is saved, the data is not" true by construction rather than by
+   remembering to strip a field on the way out. */
+var SOURCE_DATA = {};
+
+/* A header accepted but not yet paired with any year file. Held apart from
+   SOURCE_DATA because a header on its own is not a dataset — there is nothing
+   to run a query against until a year file arrives — and the panel should say
+   so rather than showing a Source that looks ready. */
+var PENDING_HEADERS = {};
+
+/* The last thing that happened on this Source, shown under its file list: an
+   error to fix, or a confirmation of what went in. Transient, per node, and
+   never serialised. */
+var SOURCE_NOTICE = {};
+
+/* The synthetic dataset, installed only under __QB_TEST__ and null otherwise.
+   A Source with no files of its own falls back to it, which in a real page is a
+   fallback to nothing — and therefore the error this feature exists to raise. */
+var SYNTHETIC_DATASET = null;
+
+function loadedDatasets() {
+  var out = [];
+  if (SYNTHETIC_DATASET) out.push(SYNTHETIC_DATASET);
+  Object.keys(SOURCE_DATA).forEach(function(k) {
+    if (SOURCE_DATA[k]) out.push(SOURCE_DATA[k]);
+  });
+  return out;
+}
+
+function datasetFor(node) {
+  if (!node) return null;
+  return SOURCE_DATA[node.id] || SYNTHETIC_DATASET || null;
+}
+
+function hasSourceData(node) { return !!datasetFor(node); }
+
+/* The descriptor that DOES travel: names only. Read back out of cfg on load, so
+   the panel can say which files this query was built against without having
+   seen them. */
+function datasetCfg(node) {
+  var cfg = node.cfg = node.cfg || defaultCfg('source');
+  if (!cfg.dataset || typeof cfg.dataset !== 'object' || Array.isArray(cfg.dataset)) {
+    cfg.dataset = { headers:'', years:[] };
+  }
+  if (typeof cfg.dataset.headers !== 'string') cfg.dataset.headers = '';
+  if (!Array.isArray(cfg.dataset.years)) cfg.dataset.years = [];
+  return cfg.dataset;
+}
+
+/* ---------------------------------------------------------------- ADMISSION */
+
+/* A File's name never carries a directory, but this function is also handed
+   objects the tests build and, in principle, anything a future drag-and-drop
+   path produces. Judging the last segment means a name that tries to be a path
+   is answered by the ordinary "that is not one of the two names" refusal rather
+   than by a special case for traversal. */
+function dataFileName(file) {
+  var n = (file && file.name) != null ? String(file.name) : '';
+  return n.split(/[\\/]/).pop();
+}
+
+function sizeProblem(file, label) {
+  var size = Number(file && file.size);
+  if (!isFinite(size)) return null;   // a harness object that declares no size
+  if (size === 0) return 'The ' + label + ' is empty.';
+  if (size > MAX_DATA_FILE_BYTES) {
+    return 'The ' + label + ' is ' + Math.round(size / 1048576) + ' MB, past the ' +
+      Math.round(MAX_DATA_FILE_BYTES / 1048576) + ' MB limit, so it has not been read.';
+  }
+  return null;
+}
+
+function headersFileProblem(file) {
+  if (!file) return 'No file was chosen.';
+  var name = dataFileName(file);
+  if (name.toLowerCase() !== DATA_HEADERS_NAME) {
+    return 'The column file has to be named exactly "' + DATA_HEADERS_NAME +
+      '", and "' + name + '" is not. Nothing has been read from it.';
+  }
+  return sizeProblem(file, 'column file');
+}
+
+/* The year lives in the name, and the name is the only place the tool will take
+   it from. Deriving it from the contents instead would mean trusting the file
+   to say which year it is — and then the agreement check in parseYearFile()
+   would be comparing a value with itself. */
+function yearFileProblem(file) {
+  if (!file) return 'No file was chosen.';
+  var name = dataFileName(file);
+  var m = DATA_YEAR_RE.exec(name);
+  if (!m) {
+    return 'A year file has to be named "mcs-students-" followed by a four-digit ' +
+      'year and nothing else, like "mcs-students-2022", with no extension. "' + name +
+      '" is not, so nothing has been read from it.';
+  }
+  var year = parseInt(m[1], 10);
+  if (year < DATA_YEAR_MIN || year > DATA_YEAR_MAX) {
+    return '"' + name + '" claims the year ' + year + ', which is outside ' +
+      DATA_YEAR_MIN + ' to ' + DATA_YEAR_MAX + '. Nothing has been read from it.';
+  }
+  return sizeProblem(file, 'year file "' + name + '"');
+}
+
+function yearOfFile(file) {
+  var m = DATA_YEAR_RE.exec(dataFileName(file));
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/* ------------------------------------------------------------------ PARSING */
+
+function controlCharProblem(text, label) {
+  if (CONTROL_CHAR_RE.test(text)) {
+    return 'The ' + label + ' contains control characters, which no export from ' +
+      'the archive does. It has been refused rather than read.';
+  }
+  return null;
+}
+
+/* headers.txt is two lines: the names, space separated and space aligned, and
+   under them the numbers 1..N naming each column's position. Both are used. The
+   names say which column holds what; the index line is checked against them,
+   because a file whose names and numbers disagree is a file that has been
+   edited by hand and should not be guessed at. */
+function parseHeaderFile(text, name) {
+  var problem = controlCharProblem(text, 'column file');
+  if (problem) return { error: problem };
+
+  var lines = String(text).split(/\r?\n/).filter(function(l){ return l.trim() !== ''; });
+  if (!lines.length) return { error: 'The column file has no column names in it.' };
+
+  var names = lines[0].trim().split(/\s+/);
+  if (names.length < REQUIRED_HEADER_COLUMNS.length) {
+    return { error: 'The column file declares only ' + names.length +
+      ' columns, which is too few to be the archive header.' };
+  }
+
+  /* The index line is optional — a header trimmed to its names alone is still a
+     usable header — but if it is there it has to be right. Present and wrong is
+     the case worth refusing: it means the two halves of the file describe
+     different things, and picking one of them would be a guess. */
+  if (lines.length > 1) {
+    var idx = lines[1].trim().split(/\s+/);
+    var numeric = idx.every(function(v){ return /^\d+$/.test(v); });
+    if (numeric) {
+      if (idx.length !== names.length) {
+        return { error: 'The column file names ' + names.length + ' columns but numbers ' +
+          idx.length + ' of them. It has been refused rather than guessed at.' };
+      }
+      for (var i = 0; i < idx.length; i++) {
+        if (parseInt(idx[i], 10) !== i + 1) {
+          return { error: 'The column file numbering is out of order at position ' +
+            (i + 1) + ', where it reads ' + idx[i] + '. It has been refused rather ' +
+            'than guessed at.' };
+        }
+      }
+    }
+  }
+
+  /* Duplicate names are expected, not an error: the archive carries maj1 and
+     maj2 twice, once for each degree. First occurrence wins, which is the first
+     degree — the one every other column on the row is about. */
+  var byName = {};
+  names.forEach(function(n, i) { if (!(n in byName)) byName[n] = i; });
+
+  var missing = REQUIRED_HEADER_COLUMNS.filter(function(c){ return !(c in byName); });
+  if (missing.length) {
+    return { error: 'The column file is missing ' + missing.join(', ') +
+      ', which the tool needs in order to read a year file.' };
+  }
+
+  return { name: dataFileName({ name: name }), columns: names, byName: byName };
+}
+
+/* The Year column reads 202201: a calendar year and a trimester. Only the year
+   half is used — the trimester is already in Sem — and it has to be the year
+   the FILE NAME claims. */
+function calendarYearOf(raw) {
+  var v = String(raw == null ? '' : raw).trim();
+  if (!/^\d{4}(\d{2})?$/.test(v)) return null;
+  return parseInt(v.slice(0, 4), 10);
+}
+
+/* One year file to a list of students, enrolments nested — the same shape the
+   synthetic generator produces, so nothing downstream can tell which it was
+   handed.
+
+   Errors name the line. A message that says only "the file is malformed" leaves
+   the user to bisect a two thousand line export by hand, and the line number is
+   free to carry. */
+function parseYearFile(text, year, header) {
+  var problem = controlCharProblem(text, 'year file');
+  if (problem) return { error: problem };
+
+  var lines = String(text).split(/\r?\n/);
+  var width = header.columns.length;
+  var at = header.byName;
+
+  var byId = {}, order = [], rows = 0;
+  var warnings = {};
+
+  for (var ln = 0; ln < lines.length; ln++) {
+    var line = lines[ln];
+    if (line === '' || line.trim() === '') continue;
+
+    if (++rows > MAX_DATA_ROWS) {
+      return { error: 'The year file holds more than ' + MAX_DATA_ROWS +
+        ' rows, which is past what this tool will read.' };
+    }
+
+    var f = line.split('\t');
+    if (f.length !== width) {
+      return { error: 'Line ' + (ln + 1) + ' has ' + f.length + ' tab-separated fields ' +
+        'but the column file declares ' + width + '. The two files do not describe the ' +
+        'same export, so neither has been loaded.' };
+    }
+
+    var i;
+    for (i = 0; i < f.length; i++) {
+      if (f[i].length > MAX_FIELD_CHARS) {
+        return { error: 'Line ' + (ln + 1) + ' has a field longer than ' + MAX_FIELD_CHARS +
+          ' characters, which no column in this archive is. It has been refused.' };
+      }
+    }
+
+    var id = f[at.ID].trim();
+    if (!/^\d{1,12}$/.test(id)) {
+      return { error: 'Line ' + (ln + 1) + ' has "' + id + '" where a student ID belongs. ' +
+        'An ID is digits only, so the file has been refused.' };
+    }
+
+    var rowYear = calendarYearOf(f[at.Year]);
+    if (rowYear === null) {
+      return { error: 'Line ' + (ln + 1) + ' has "' + String(f[at.Year]).trim() +
+        '" in the Year column, which is not a year. The file has been refused.' };
+    }
+    if (rowYear !== year) {
+      return { error: 'The file is named for ' + year + ' but line ' + (ln + 1) +
+        ' is a ' + rowYear + ' enrolment. A file is only loaded as the year it is ' +
+        'named for, so it has been refused.' };
+    }
+
+    var ptsRaw = f[at.Pts].trim();
+    if (!/^\d+(\.\d+)?$/.test(ptsRaw)) {
+      return { error: 'Line ' + (ln + 1) + ' has "' + ptsRaw + '" where a course’s ' +
+        'points belong. The file has been refused.' };
+    }
+    var pts = parseFloat(ptsRaw);
+    if (pts > MAX_COURSE_POINTS) {
+      return { error: 'Line ' + (ln + 1) + ' says a course is worth ' + pts +
+        ' points, which is past anything the catalogue holds. The file has been refused.' };
+    }
+
+    var code = f[at.Crse].trim();
+    if (!/^[A-Za-z]{2,6}\d{1,4}[A-Za-z]?$/.test(code)) {
+      return { error: 'Line ' + (ln + 1) + ' has "' + code + '" where a course code belongs. ' +
+        'The file has been refused.' };
+    }
+
+    var grade = f[at.Grade].trim();
+    /* An unrecognised grade is a warning, not a refusal. gradePoint() already
+       answers null for anything off the scale — the same answer it gives a
+       dropped course's blank — so the row is safe to keep and the GPA stays
+       honest. Refusing the file would be refusing real data over a code this
+       tool has not been told about yet, which is a worse failure than saying so
+       and carrying on. */
+    if (grade !== '' && gradePoint(grade) === null) warnings['grade "' + grade + '"'] = true;
+
+    var s = byId[id];
+    if (!s) {
+      s = byId[id] = { id: parseInt(id, 10), gender: f[at.gender].trim(), year: year,
+                       specialisation: f[at.maj1].trim(), courses: [] };
+      order.push(id);
+    }
+
+    s.courses.push({
+      code: code,
+      /* The archive records a course by code and never by title, so the name IS
+         the code. Saying so plainly beats inventing a title, and courseTitle()
+         prints one of them rather than "AIML427 - AIML427". */
+      name: code,
+      subject: code.slice(0, 4).toUpperCase(),
+      points: pts,
+      year: year,
+      letterGrade: grade,
+      gradePoints: gradePoint(grade)
+    });
+  }
+
+  if (!order.length) {
+    return { error: 'The year file has no enrolment rows in it.' };
+  }
+
+  var students = order.map(function(k) {
+    var s = byId[k];
+    // Derived from the enrolments rather than stored beside them, exactly as
+    // the generator does it, so the two can never disagree.
+    s.courses.sort(function(a, b){ return a.code < b.code ? -1 : a.code > b.code ? 1 : 0; });
+    var avg = gpaOf(s.courses);
+    s.gpa = avg;
+    s.letterGrade = gradeFromGpa(avg);
+    return s;
+  });
+
+  return { year: year, rows: rows, students: students, warnings: Object.keys(warnings) };
+}
+
+/* ------------------------------------------------------- BUILDING A DATASET */
+
+/* One header plus one or more parsed year files. A student who appears in two
+   years is two students here, because they are: a row is a student IN A YEAR,
+   which is what makes "the 2022 cohort" and "the 2023 cohort" separately
+   countable and is the granularity every existing node was written against. */
+function buildDataset(header, parsedYears) {
+  var students = [], years = [], files = [], warnings = {};
+  parsedYears.slice().sort(function(a, b){ return a.year - b.year; }).forEach(function(p) {
+    years.push(p.year);
+    files.push({ name: 'mcs-students-' + p.year, year: p.year,
+                 rows: p.rows, students: p.students.length });
+    p.students.forEach(function(s){ students.push(s); });
+    (p.warnings || []).forEach(function(w){ warnings[w] = true; });
+  });
+  return {
+    headers: header,
+    files: files,
+    years: years,
+    students: students,
+    warnings: Object.keys(warnings),
+    loadedAt: new Date().toISOString()
+  };
+}
+
+/* Install, or take away. Both go through here so that the registries are
+   rebuilt exactly once per change and there is one place that knows a dataset
+   change invalidates the results on screen. */
+function setSourceData(nodeId, dataset) {
+  if (dataset) SOURCE_DATA[nodeId] = dataset;
+  else delete SOURCE_DATA[nodeId];
+  rebuildRegistries();
+  markStale();
+}
+
+function clearSourceData(nodeId) {
+  var node = findNode(nodeId);
+  setSourceData(nodeId, null);
+  if (node) {
+    var d = datasetCfg(node);
+    d.headers = ''; d.years = [];
+  }
+  delete PENDING_HEADERS[nodeId];
+  setSourceNotice(nodeId, null);
+  render();
+}
+
+/* Every Source forgets its files. Called by applyGraph() — see the note at the
+   top of this section about why a loaded query starts with no data — and by
+   clearAll(), which is starting over in every other respect too. */
+function clearAllSourceData() {
+  Object.keys(SOURCE_DATA).forEach(function(k){ delete SOURCE_DATA[k]; });
+  Object.keys(PENDING_HEADERS).forEach(function(k){ delete PENDING_HEADERS[k]; });
+  Object.keys(SOURCE_NOTICE).forEach(function(k){ delete SOURCE_NOTICE[k]; });
+  rebuildRegistries();
+}
+
+function setSourceNotice(nodeId, notice) {
+  if (notice) SOURCE_NOTICE[nodeId] = notice;
+  else delete SOURCE_NOTICE[nodeId];
+}
+
+function headerFor(nodeId) {
+  var d = SOURCE_DATA[nodeId];
+  return (d && d.headers) || PENDING_HEADERS[nodeId] || null;
+}
+
+/* ------------------------------------------------------------- READING FILES
+
+   Callbacks rather than promises, to match the rest of the file, and because
+   the failure path has to be as visible as the success one: a FileReader that
+   errors must leave the Source exactly as it was, not half loaded.           */
+
+function readFileText(file, cb) {
+  var reader = new FileReader();
+  reader.onload  = function(){ cb(null, String(reader.result)); };
+  reader.onerror = function(){ cb('Could not read "' + dataFileName(file) + '".'); };
+  try { reader.readAsText(file); }
+  catch (e) { cb('Could not read "' + dataFileName(file) + '".'); }
+}
+
+/* THE HEADER STEP.
+   Accepting a new header discards any year files already loaded on this Source.
+   They were parsed against the old column list, and keeping them would leave a
+   Source whose rows and whose header came from different exports — the precise
+   thing the field-count check exists to prevent, arrived at by a different
+   route. */
+function loadHeadersFor(nodeId, file, done) {
+  done = done || function(){};
+  var problem = headersFileProblem(file);
+  if (problem) { failSource(nodeId, problem, done); return; }
+
+  readFileText(file, function(err, text) {
+    if (err) { failSource(nodeId, err, done); return; }
+    var header = parseHeaderFile(text, dataFileName(file));
+    if (header.error) { failSource(nodeId, header.error, done); return; }
+
+    PENDING_HEADERS[nodeId] = header;
+    setSourceData(nodeId, null);
+    var node = findNode(nodeId);
+    if (node) {
+      var d = datasetCfg(node);
+      d.headers = header.name;
+      d.years = [];
+    }
+    setSourceNotice(nodeId, { kind:'ok', text:
+      'Read ' + header.columns.length + ' columns from ' + header.name +
+      '. Now choose the year files.' });
+    render();
+    done(null, header);
+  });
+}
+
+/* THE YEAR STEP.
+   All or nothing across the whole selection. A user who picks three files and
+   gets two of them has a Source that answers about a cohort they did not ask
+   for, and no amount of wording in a notice makes that safe. */
+function loadYearFilesFor(nodeId, fileList, done) {
+  done = done || function(){};
+  var files = Array.prototype.slice.call(fileList || []);
+  if (!files.length) { done(null, null); return; }
+
+  var header = headerFor(nodeId);
+  if (!header) {
+    failSource(nodeId, 'Load ' + DATA_HEADERS_NAME + ' first. A year file cannot be ' +
+      'read without the column list that says what its fields are.', done);
+    return;
+  }
+
+  var problem = null;
+  var seen = {};
+  files.forEach(function(f) {
+    if (problem) return;
+    problem = yearFileProblem(f);
+    if (problem) return;
+    var y = yearOfFile(f);
+    if (seen[y]) { problem = 'Two of the chosen files are for ' + y + '.'; return; }
+    seen[y] = true;
+  });
+  if (problem) { failSource(nodeId, problem, done); return; }
+
+  var parsed = [], pending = files.length, failed = false;
+
+  files.forEach(function(file, i) {
+    readFileText(file, function(err, text) {
+      if (failed) return;
+      if (err) { failed = true; failSource(nodeId, err, done); return; }
+
+      var out = parseYearFile(text, yearOfFile(file), header);
+      if (out.error) {
+        failed = true;
+        failSource(nodeId, dataFileName(file) + ': ' + out.error, done);
+        return;
+      }
+      parsed[i] = out;
+      if (--pending === 0) finishYearLoad(nodeId, header, parsed, done);
+    });
+  });
+}
+
+function finishYearLoad(nodeId, header, parsed, done) {
+  var dataset = buildDataset(header, parsed);
+  setSourceData(nodeId, dataset);
+  delete PENDING_HEADERS[nodeId];
+
+  var node = findNode(nodeId);
+  if (node) {
+    var d = datasetCfg(node);
+    d.headers = header.name;
+    d.years = dataset.years.slice();
+    /* A population the new files cannot answer would leave the Source silently
+       empty. Falling back to "all students" is the only choice that is right
+       whatever was loaded, and the panel shows the change. */
+    if (node.cfg.pop !== 'all' && dataset.years.indexOf(parseInt(node.cfg.pop, 10)) === -1) {
+      node.cfg.pop = 'all';
+    }
+  }
+
+  var text = 'Loaded ' + dataset.students.length + ' student record' +
+    (dataset.students.length === 1 ? '' : 's') + ' from ' +
+    dataset.files.length + ' year file' + (dataset.files.length === 1 ? '' : 's') + '.';
+  if (dataset.warnings.length) {
+    text += ' Kept as ungraded: ' + dataset.warnings.join(', ') + '.';
+  }
+  setSourceNotice(nodeId, { kind:'ok', text: text });
+  render();
+  done(null, dataset);
+}
+
+/* One refusal path. The Source is left as it was — nothing half-applied — the
+   reason is shown on the node rather than in the results panel, because that is
+   where the button that caused it lives, and the caller is told. */
+function failSource(nodeId, message, done) {
+  setSourceNotice(nodeId, { kind:'error', text: message });
+  render();
+  (done || function(){})(message);
+}
+
+/* ---------------------------------------------------- THE PICKERS THEMSELVES
+
+   Two inputs, not one, because the two steps are genuinely ordered: a year file
+   cannot be parsed without the column list. `accept` is set on the header input
+   as a courtesy to the dialog and trusted by neither check above — and on the
+   year picker it is absent, since the archive's year files carry no extension
+   for a filter to match on.                                                  */
+
+function pickHeadersFile(nodeId) {
+  var input = document.getElementById('headersFile');
+  if (!input) return;
+  input.value = '';          // or choosing the same file twice fires no change
+  input._node = nodeId;
+  input.click();
+}
+
+function pickYearFiles(nodeId) {
+  var input = document.getElementById('yearFiles');
+  if (!input) return;
+  input.value = '';
+  input._node = nodeId;
+  input.click();
+}
+
+function onHeadersChosen(e) {
+  var input = e.target;
+  var nodeId = input._node;
+  var file = input.files && input.files[0];
+  if (!file || nodeId == null) return;
+  loadHeadersFor(nodeId, file);
+}
+
+function onYearFilesChosen(e) {
+  var input = e.target;
+  var nodeId = input._node;
+  if (nodeId == null || !input.files || !input.files.length) return;
+  loadYearFilesFor(nodeId, input.files);
+}
+
+/* Installed by the test harness and by nothing else. Kept beside the loader
+   rather than at the foot of the file so that the one call site and the thing
+   it switches on are readable together. */
+/* Stand the fallback down, so a Source is in exactly the position a Source on a
+   real page is in: no files, no built-in dataset, nothing to answer with. Used
+   by the suite that tests the refusal, because a refusal tested with a fallback
+   still in place is not the refusal a user would meet. Test-only, alongside
+   installSyntheticDataset() and exported from the same guarded block. */
+function setSyntheticDataset(dataset) {
+  SYNTHETIC_DATASET = dataset || null;
+  rebuildRegistries();
+}
+
+function installSyntheticDataset() {
+  var students = buildSyntheticStudents();
+  SYNTHETIC_DATASET = {
+    headers: { name:'(built in)', columns:[], byName:{} },
+    files: [{ name:'(built in)', year:2022, rows:students.length, students:students.length }],
+    years: [2022, 2023],
+    students: students,
+    warnings: [],
+    loadedAt: null,
+    synthetic: true
+  };
+  rebuildRegistries();
+}
 
 /* ============================================================================
    TABLE — the single data type carried on every wire
@@ -337,10 +1114,6 @@ function coursesColIndex(t) {
    two views of one — "how many students" and "how many enrolments" are
    different questions — so the Source says which it emits and every downstream
    node adapts through the schema rather than through special cases. */
-
-var YEARS = STUDENTS.map(function(s){ return s.year; })
-  .filter(function(v, i, a){ return a.indexOf(v) === i; })
-  .sort();
 
 var STUDENT_COLUMNS = [
   { key:'id',             label:'ID',             type:COLTYPE.NUMBER, def:'1001' },
@@ -645,6 +1418,8 @@ function selectBranch(id) { setSelection(connectedComponent(id)); }
 function deleteSelection() {
   if (!selection.length) return;
   var doomed = selection.slice();
+  doomed.forEach(forgetSourceData);
+  rebuildRegistries();
   nodes = nodes.filter(function(n){ return doomed.indexOf(n.id) === -1; });
   connections = connections.filter(function(c) {
     return doomed.indexOf(c.from) === -1 && doomed.indexOf(c.to) === -1;
@@ -856,7 +1631,11 @@ function resolveDirection(a, b) {
    contains every key a node uses and loading never depends on defaults that
    may have changed since the file was written. */
 function defaultCfg(type) {
-  if (type === 'source')  return { pop:'all' };
+  /* `dataset` records the NAMES of the files this Source was given, and never
+     their contents — see the loader section. It is the one cfg key whose value
+     is a description of state held outside the model, which is exactly what
+     makes a saved query re-openable without carrying student records in it. */
+  if (type === 'source')  return { pop:'all', dataset:{ headers:'', years:[] } };
   if (type === 'filter')  return { criteria:[newCriterion()] };
   if (type === 'compare') return { measures:DEFAULT_MEASURES.slice(), sort:'wired', labels:{} };
   if (type === 'sort')    return { keys: [newSortKey()] };
@@ -900,7 +1679,7 @@ function defaultCfg(type) {
    any table schema — including ones with columns that did not exist when it was
    created. */
 function newCriterion() {
-  return { field:'gpa', values:{}, ops:{}, course:DEFAULT_COURSE };
+  return { field:'gpa', values:{}, ops:{}, course:defaultCourse() };
 }
 
 function critValue(c, field, col) {
@@ -1091,15 +1870,31 @@ function addNode(type) {
   render();
 }
 
+/* Deleting a Source deletes what it was holding. Node ids are handed out by a
+   counter that resets on load, so leaving the data behind would let a later
+   node inherit a cohort it was never given — and in the meantime its rows would
+   still be feeding the registries from nowhere. */
+function forgetSourceData(id) {
+  delete SOURCE_DATA[id];
+  delete PENDING_HEADERS[id];
+  delete SOURCE_NOTICE[id];
+}
+
 function removeNode(id) {
   nodes = nodes.filter(function(n){ return n.id !== id; });
   connections = connections.filter(function(c){ return c.from !== id && c.to !== id; });
   selection = selection.filter(function(x){ return x !== id; });
+  forgetSourceData(id);
+  rebuildRegistries();
   markStale();
   render();
 }
 
 function clearAll() {
+  // Clearing the canvas clears the data with it: the Sources that held it are
+  // about to stop existing, and leaving it behind would leak a cohort into the
+  // registries with no node on screen accounting for it.
+  clearAllSourceData();
   nodes = []; connections = []; edgeColorIndex = 0;
   exportData = {}; resultsFresh = false;
   // Clear starts a new query, so the name of the old one should not follow it
@@ -1310,19 +2105,49 @@ function logText(e) {
   return e.kw + '  ' + e.parts.map(function(p){ return p.s; }).join(' ');
 }
 
-/* SOURCE */
+/* SOURCE
+   Reads THIS node's dataset, not a global one. A Source with no files is not an
+   empty result but an error: an empty table would travel down the graph and
+   come out as "0 students", which is a claim about the cohort rather than about
+   the tool, and the two are not the same answer.
+
+   The log names the files as well as the population, because a query that was
+   run against last year's export and one run against this year's are different
+   queries with the same graph, and the log is the record of what was run. */
 function sourceTable(node, log) {
   var cfg = node.cfg || defaultCfg('source');
+  var data = datasetFor(node);
+  if (!data) return { error: sourceDataError(node) };
+
   var pop = cfg.pop || 'all';
-  var list = STUDENTS;
+  var list = data.students;
   if (pop !== 'all') {
     var yr = parseInt(pop, 10);
-    list = STUDENTS.filter(function(s){ return s.year === yr; });
+    list = list.filter(function(s){ return s.year === yr; });
     log.push(logEntry('SOURCE', [{s:'year'}, {c:'op', s:'='}, {c:'val', s:yr}]));
   } else {
     log.push(logEntry('SOURCE', [{s:'all_students'}]));
   }
-  return studentsTable(list);
+  if (data.files && data.files.length) {
+    log.push(logEntry('FROM', data.files.map(function(f, i) {
+      return { c:'val', s: f.name + (i === data.files.length - 1 ? '' : ',') };
+    })));
+  }
+  return { table: studentsTable(list) };
+}
+
+/* Why this Source cannot run, in the terms the user is in a position to act on.
+   A query loaded from a file knows which files it wants and says so; one built
+   from scratch does not, and asking for "the data files" is as specific as it
+   can honestly be. */
+function sourceDataError(node) {
+  var want = node.cfg && node.cfg.dataset;
+  var named = want && want.headers && want.years && want.years.length
+    ? ' This query was built against ' + want.headers + ' and ' +
+      want.years.map(function(y){ return 'mcs-students-' + y; }).join(', ') + '.'
+    : '';
+  return 'Source #' + node.id + ' has no data. Open its panel and load ' +
+    DATA_HEADERS_NAME + ', then the year files.' + named;
 }
 
 /* ROW IDENTITY AND UNION
@@ -1473,7 +2298,7 @@ function applyCriterion(t, c, f, log) {
   if (f.kind === 'courseSubject' || f.kind === 'courseCode') {
     if (coursesIdx === -1) return { table: t };
     var want = critValue(c, f.key, null) ||
-               (f.kind === 'courseSubject' ? SUBJECTS[0] : DEFAULT_COURSE);
+               (f.kind === 'courseSubject' ? defaultSubject() : defaultCourse());
     var prop = f.kind === 'courseSubject' ? 'subject' : 'code';
     var rows = t.rows.filter(function(r) {
       var list = r[coursesIdx] || [];
@@ -1491,7 +2316,7 @@ function applyCriterion(t, c, f, log) {
     // student who never took it is excluded rather than treated as zero, which
     // would silently satisfy every "less than" test.
     if (coursesIdx === -1) return { table: t };
-    var code = c.course || DEFAULT_COURSE;
+    var code = c.course || defaultCourse();
     var num = parseFloat(critValue(c, f.key, { def:'5' }));
     if (isNaN(num)) return { error: 'Course mark must be a number.' };
     var op = critOp(c, f.key, 'gte');
@@ -2918,7 +3743,9 @@ var NODE_SPEC = {
       return headerOnly(makeTable(STUDENT_COLUMNS, []));
     },
     evaluate: function(node, ctx) {
-      return { table: sourceTable(node, ctx.log), hasSource: true };
+      var out = sourceTable(node, ctx.log);
+      if (out.error) return { error: out.error };
+      return { table: out.table, hasSource: true };
     }
   },
 
@@ -3173,15 +4000,24 @@ function opt(val, cur, label) {
   return '<option value="' + esc(val) + '"' + (String(cur) === String(val) ? ' selected' : '') + '>' +
     esc(label === undefined ? val : label) + '</option>';
 }
+/* The archive names a course by code and never by title, so a loaded catalogue
+   has name === code and there is nothing to append. Saying "AIML427" beats
+   saying "AIML427 — AIML427", and the synthetic catalogue, which does carry
+   titles, still gets both. One function, because the course dropdown and its
+   tooltip must not disagree about how a course is written. */
+function courseLabel(c) {
+  if (!c) return '';
+  return (c.name && c.name !== c.code) ? c.code + ' — ' + c.name : c.code;
+}
 function courseTitle(code) {
   var c = COURSE_BY_CODE[code];
-  return c ? c.code + ' — ' + c.name : String(code);
+  return c ? courseLabel(c) : String(code);
 }
 
 // Grouped by subject so a 31-course catalogue stays navigable and a longer real
 // one degrades gracefully instead of becoming a single flat list.
 function courseSelect(nodeId, key, cur) {
-  var sel = cur || DEFAULT_COURSE;
+  var sel = cur || defaultCourse();
   var html = '<select class="course-sel" title="' + esc(courseTitle(sel)) + '"' + ctl(nodeId, key) + '>';
   SUBJECTS.forEach(function(subj) {
     var inSubj = COURSES.filter(function(c){ return c.subject === subj; });
@@ -3189,7 +4025,7 @@ function courseSelect(nodeId, key, cur) {
     html += '<optgroup label="' + esc(subj) + '">';
     inSubj.forEach(function(c) {
       html += '<option value="' + c.code + '"' + (sel === c.code ? ' selected' : '') + '>' +
-        esc(c.code + ' — ' + c.name) + '</option>';
+        esc(courseLabel(c)) + '</option>';
     });
     html += '</optgroup>';
   });
@@ -3285,12 +4121,12 @@ function criterionHTML(node, ci, c, schema) {
   if (cur.kind === 'courseSubject') {
     body = '<div class="criterion-controls two-col">' + fieldSel +
       '<select' + ctl(nid, vKey) + '>' +
-        SUBJECTS.map(function(s){ return opt(s, critValue(c, cur.key, null) || SUBJECTS[0]); }).join('') +
+        SUBJECTS.map(function(s){ return opt(s, critValue(c, cur.key, null) || defaultSubject()); }).join('') +
       '</select></div>';
 
   } else if (cur.kind === 'courseCode') {
     body = '<div class="criterion-controls stack">' + fieldSel +
-      courseSelect(nid, vKey, critValue(c, cur.key, null) || DEFAULT_COURSE) + '</div>';
+      courseSelect(nid, vKey, critValue(c, cur.key, null) || defaultCourse()) + '</div>';
 
   } else if (cur.kind === 'courseGrade') {
     var mOp = critOp(c, cur.key, 'gte');
@@ -3376,6 +4212,74 @@ function upstreamLabel(node) {
   return (NODE_LABELS[node.type] || node.type) + ' #' + node.id;
 }
 
+/* THE FILE SECTION ON A SOURCE PANEL
+   ---------------------------------------------------------------------------
+   Two rows, in the order the two steps have to happen in, each showing what is
+   currently held rather than only offering a button. A Source that says
+   "headers.txt, 27 columns" and "mcs-students-2022, 2170 rows" is a Source
+   whose answer can be checked against the files on disk, which is the whole
+   reason the names are shown at all.
+
+   The year button is disabled until a header is in hand. The ordering is a real
+   constraint rather than a stylistic one — a year file is a list of fields with
+   no names on it — so the control says so by being unavailable, and the hint
+   underneath says why. */
+function sourceFilesHTML(node) {
+  var id = node.id;
+  var data = datasetFor(node);
+  var header = headerFor(id);
+  var want = datasetCfg(node);
+  var notice = SOURCE_NOTICE[id];
+
+  var html = '<div class="cfg-label">Data files</div><div class="src-files">';
+
+  // 1 — the column file
+  html += '<div class="src-file' + (header ? ' done' : '') + '">' +
+    '<span class="src-step">1</span>' +
+    '<span class="src-what">' +
+      (header
+        ? '<b>' + esc(header.name) + '</b><small>' +
+            (header.columns.length ? header.columns.length + ' columns' : 'built in') + '</small>'
+        : '<b>' + esc(DATA_HEADERS_NAME) + '</b><small>not loaded</small>') +
+    '</span>' +
+    '<button class="src-btn" onclick="pickHeadersFile(' + id + ')">' +
+      (header ? 'Replace' : 'Choose') + '</button>' +
+  '</div>';
+
+  // 2 — the year files
+  var files = (data && !data.synthetic) ? data.files : [];
+  html += '<div class="src-file' + (files.length ? ' done' : '') + '">' +
+    '<span class="src-step">2</span>' +
+    '<span class="src-what">' +
+      (files.length
+        ? '<b>' + files.map(function(f){ return esc(f.name); }).join(', ') + '</b>' +
+          '<small>' + files.reduce(function(a, f){ return a + f.rows; }, 0) + ' rows, ' +
+          files.reduce(function(a, f){ return a + f.students; }, 0) + ' students</small>'
+        : '<b>mcs-students-' + (want.years.length ? want.years.join(', mcs-students-') : 'YYYY') +
+          '</b><small>' + (want.years.length ? 'wanted by this query' : 'not loaded') + '</small>') +
+    '</span>' +
+    '<button class="src-btn"' + (header ? '' : ' disabled') +
+      ' onclick="pickYearFiles(' + id + ')">' +
+      (files.length ? 'Replace' : 'Choose') + '</button>' +
+  '</div>';
+
+  html += '</div>';
+
+  if (!header) {
+    html += '<div class="src-hint">A year file has no column names in it, so ' +
+      esc(DATA_HEADERS_NAME) + ' has to come first.</div>';
+  }
+  if (data && !data.synthetic) {
+    html += '<button class="src-clear" onclick="clearSourceData(' + id + ')">' +
+      'Unload these files</button>';
+  }
+  if (notice) {
+    html += '<div class="src-notice ' + (notice.kind === 'error' ? 'bad' : 'ok') + '">' +
+      esc(notice.text) + '</div>';
+  }
+  return html;
+}
+
 function configHTML(node, schemas) {
   var id = node.id;
   var cfg = node.cfg = node.cfg || defaultCfg(node.type);
@@ -3383,10 +4287,17 @@ function configHTML(node, schemas) {
   var html = '<div class="node-config">';
 
   if (node.type === 'source') {
+    html += sourceFilesHTML(node);
+
+    /* The population offers THIS Source's years, not every year loaded anywhere
+       on the canvas. Offering a year this Source cannot answer would be
+       offering an empty result dressed as a choice. */
+    var data = datasetFor(node);
+    var years = data ? data.years : [];
     html += '<div class="cfg-label">Population</div>' +
-      '<select' + ctl(id, 'pop') + '>' +
+      '<select' + ctl(id, 'pop') + (years.length ? '' : ' disabled') + '>' +
         opt('all', cfg.pop, 'All students') +
-        YEARS.map(function(y){ return opt(String(y), cfg.pop, y + ' only'); }).join('') +
+        years.map(function(y){ return opt(String(y), cfg.pop, y + ' only'); }).join('') +
       '</select>';
   }
 
@@ -3778,7 +4689,20 @@ function portsHTML(node) {
 function shapeHTML(node) {
   var removeBtn = '<button class="node-remove" onclick="removeNode(' + node.id + ')">x</button>' +
                   portsHTML(node);
-  if (node.type === 'source') return '<div class="node-shape shape-source">' + removeBtn + 'Source</div>';
+  if (node.type === 'source') {
+    /* A Source with no files looks exactly like a Source with files until you
+       open its panel, and on a graph of a dozen nodes that is the difference
+       between "why is this empty" and "load that one". The dashed ring says
+       which, and it says it around the whole shape.
+
+       A badge in the corner did the same job and was a worse way to do it: the
+       delete button lives at top-right, so the two occupied the same spot and
+       the badge read as something to click. The border carries the state
+       without competing for that corner. */
+    return '<div class="node-shape shape-source' +
+      (hasSourceData(node) ? '' : ' no-data') + '">' +
+      removeBtn + 'Source</div>';
+  }
   if (node.type === 'filter') return '<div class="node-shape shape-filter">' + removeBtn + 'Filter</div>';
   if (node.type === 'compare') {
     var glyph = '<span class="cmp-glyph"><i style="width:26px"></i><i style="width:16px"></i><i style="width:21px"></i></span>';
@@ -4532,6 +5456,21 @@ function runQuery() {
 
   if (srcNodes.length === 0) { showError('Add a Source node.'); return; }
   if (outNodes.length === 0) { showError('Add an Output node.'); return; }
+
+  /* Checked before the topological sort rather than inside it, so that a graph
+     whose Sources are all empty says so plainly instead of reporting whichever
+     one the ordering happened to reach first. Every unloaded Source is named,
+     because fixing one and re-running to be told about the next is a poor way
+     to find out there were three. */
+  var starved = srcNodes.filter(function(n){ return !hasSourceData(n); });
+  if (starved.length) {
+    showError(starved.length === 1
+      ? sourceDataError(starved[0])
+      : starved.length + ' Source nodes have no data: ' +
+        starved.map(function(n){ return '#' + n.id; }).join(', ') +
+        '. Open each one and load ' + DATA_HEADERS_NAME + ', then its year files.');
+    return;
+  }
   if (connections.length === 0) {
     showError('Drag nodes close together to connect them, then drop to confirm the connection.');
     return;
@@ -4837,7 +5776,12 @@ function setOutput(html) {
    is what a version 1 wire meant when every node had exactly one. The guard
    below only refuses files from a *newer* tool, so the format widened without
    breaking anything already written. */
-var FILE_VERSION = 2;
+/* Version 3 adds `dataset` to a Source's config: the NAMES of the files it was
+   given, never their contents. Version 1 and 2 files still load — a Source with
+   no dataset key gets the empty one from defaultCfg() and simply asks for its
+   files without being able to name them. The guard below still only refuses
+   files from a newer tool. */
+var FILE_VERSION = 3;
 var FILE_KIND = 'student-data-analyser-query';
 
 function serialiseGraph() {
@@ -5086,6 +6030,30 @@ function mergeCfg(base, saved) {
   if (Object.prototype.hasOwnProperty.call(base, 'measures') && !Array.isArray(base.measures)) {
     base.measures = DEFAULT_MEASURES.slice();
   }
+  /* The dataset descriptor is a name and a list of years and nothing else. It
+     is read straight back into the panel's markup, so a file supplying an
+     object where the name belongs, or 2000 fabricated years, is normalised here
+     rather than trusted. Years are coerced to integers in the admitted range;
+     the header name is length-capped and stripped of any path, exactly as
+     dataFileName() would do to a real one. NOTHING in this key is ever used to
+     find or read a file — the user picks those — so the worst a hostile value
+     can do is misdescribe itself in one line of the panel. */
+  if (Object.prototype.hasOwnProperty.call(base, 'dataset')) {
+    var ds = base.dataset;
+    if (!ds || typeof ds !== 'object' || Array.isArray(ds)) ds = {};
+    var hname = typeof ds.headers === 'string' ? ds.headers.split(/[\\/]/).pop() : '';
+    base.dataset = {
+      headers: hname.slice(0, 120),
+      years: (Array.isArray(ds.years) ? ds.years : [])
+        .map(function(y){ return parseInt(y, 10); })
+        .filter(function(y, i, a) {
+          return !isNaN(y) && y >= DATA_YEAR_MIN && y <= DATA_YEAR_MAX && a.indexOf(y) === i;
+        })
+        .slice(0, 50)
+        .sort(function(a, b){ return a - b; })
+    };
+  }
+
   /* null is the meaningful default — "keep everything" — so only a value that is
      neither null nor an array of keys is rejected. Non-string entries are
      dropped rather than coerced: a column key is compared against real header
@@ -5116,6 +6084,16 @@ function mergeCfg(base, saved) {
 }
 
 function applyGraph(g) {
+  /* The data goes. Every Source in the new graph starts with nothing loaded,
+     including one whose id happens to match a Source that was loaded a moment
+     ago — matching ids across two unrelated files is a coincidence, not a
+     grant, and silently handing the new graph the old graph's student records
+     would be the worst possible reading of it.
+
+     This is the behaviour the feature was asked for: the query is restored, the
+     files are asked for again. */
+  clearAllSourceData();
+
   nodes = g.nodes;
   connections = g.connections;
   // Keep the counter clear of every id in the file, so a node added after a
@@ -5143,6 +6121,24 @@ function loadGraphFromText(raw, btn) {
 
   var msg = 'Loaded ' + g.nodes.length + ' node' + (g.nodes.length === 1 ? '' : 's') +
     ' and ' + g.connections.length + ' connection' + (g.connections.length === 1 ? '' : 's') + '.';
+
+  /* The data did not come with it, and saying so here is the difference between
+     a user who knows what to do next and one who presses Run and reads an
+     error. The files the query was built against are named where the file named
+     them, because picking the right ones out of a folder is the task. */
+  var srcs = g.nodes.filter(function(n){ return n.type === 'source'; });
+  if (srcs.length) {
+    var wanted = {};
+    srcs.forEach(function(n) {
+      var d = n.cfg && n.cfg.dataset;
+      if (d && d.headers) wanted[d.headers] = true;
+      if (d && d.years) d.years.forEach(function(y){ wanted['mcs-students-' + y] = true; });
+    });
+    var names = Object.keys(wanted);
+    msg += ' The data is not saved with a query, so load the files again on ' +
+      (srcs.length === 1 ? 'the Source' : 'each Source') + '.';
+    if (names.length) msg += ' This one was built against ' + names.join(', ') + '.';
+  }
   if (g.warnings.length) {
     msg += ' Skipped ' + g.warnings.length + ' item' + (g.warnings.length === 1 ? '' : 's') +
       ' that no longer fit the graph: ' + g.warnings.filter(function(w, i, a){ return a.indexOf(w) === i; }).join(', ') + '.';
@@ -5209,20 +6205,30 @@ function onGraphFileChosen(e) {
   reader.readAsText(file);
 }
 
-/* PROCESSING MENU
-   One toolbar button per pipeline stage. Processing nodes are a growing family,
-   so they live behind a single dropdown rather than adding a button each. */
-function procMenuEl() { return document.getElementById('procMenu'); }
-function closeProcMenu() {
-  var m = procMenuEl();
-  if (m) m.classList.remove('open');
+/* THE NODE MENUS
+   Processing nodes are a growing family, so they live behind dropdowns rather
+   than adding a toolbar button each. There are two, split on colour: Reshape
+   holds the violet nodes and is violet itself, Processing holds the other three
+   families and stays neutral because it cannot honestly claim one of them.
+
+   Written against every .proc-menu rather than a named one, so a third menu is
+   markup and needs no change here. Opening one closes the others: two open
+   dropdowns overlap, and the second would look like a submenu of the first. */
+function procMenus() {
+  return Array.prototype.slice.call(document.querySelectorAll('.proc-menu'));
 }
-function toggleProcMenu(e) {
+function closeProcMenu() {
+  procMenus().forEach(function(m){ m.classList.remove('open'); });
+}
+function toggleProcMenu(e, id) {
   // Without this the document listener below sees the same click and closes the
   // menu in the tick it was opened.
   if (e) e.stopPropagation();
-  var m = procMenuEl();
-  if (m) m.classList.toggle('open');
+  var wanted = document.getElementById(id);
+  procMenus().forEach(function(m) {
+    if (m === wanted) m.classList.toggle('open');
+    else m.classList.remove('open');
+  });
 }
 function addProcNode(type) {
   closeProcMenu();
@@ -5611,6 +6617,16 @@ if (panelEl) panelEl.addEventListener('input', onExportNameInput);
 var loadInput = document.getElementById('loadFile');
 if (loadInput) loadInput.addEventListener('change', onGraphFileChosen);
 
+/* The two data pickers. Shared by every Source rather than one pair per node:
+   which node asked is carried on the input itself by pickHeadersFile(), and a
+   dozen Sources would otherwise mean two dozen hidden inputs in the document
+   for one dialog at a time. */
+var headersInput = document.getElementById('headersFile');
+if (headersInput) headersInput.addEventListener('change', onHeadersChosen);
+
+var yearsInput = document.getElementById('yearFiles');
+if (yearsInput) yearsInput.addEventListener('change', onYearFilesChosen);
+
 /* The dialog's buttons are wired in the markup like the rest of the toolbar,
    but the field's keys are not something an attribute expresses well. Enter is
    handled here rather than by a <form>: there is no form on this page, and
@@ -5876,6 +6892,9 @@ window.openHelp = openHelp;
 window.closeHelp = closeHelp;
 window.confirmSaveGraph = confirmSaveGraph;
 window.openGraphFile = openGraphFile;
+window.pickHeadersFile = pickHeadersFile;
+window.pickYearFiles = pickYearFiles;
+window.clearSourceData = clearSourceData;
 window.zoomIn = zoomIn;
 window.zoomOut = zoomOut;
 window.zoomReset = zoomReset;
@@ -5893,6 +6912,14 @@ window.clearSelection = clearSelection;
    silently broken by any edit near the end of this file, and a test suite that
    fails for reasons unrelated to the code under test is worse than none. */
 if (typeof window !== 'undefined' && window.__QB_TEST__) {
+  /* The suites run against the dataset the tool used to generate for itself.
+     Installing it here, behind the same flag that publishes the internals,
+     means a real page reaches neither: it opens with no data, and a Source
+     without files refuses to run. See the loader section for why the generator
+     was kept rather than the several hundred assertions written against it
+     being rewritten to talk about the archive instead. */
+  installSyntheticDataset();
+
   window.__qb = {
     // live state
     nodes: function(){ return nodes; },
@@ -5926,6 +6953,31 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     STUDENTS: STUDENTS, COURSES: COURSES, SUBJECTS: SUBJECTS, SPECS: SPECS, YEARS: YEARS,
     COURSE_BY_CODE: COURSE_BY_CODE, CORE_COURSES: CORE_COURSES, COURSES_PER_YEAR: COURSES_PER_YEAR,
     SPEC_SUBJECTS: SPEC_SUBJECTS, SUBJECT_WEIGHTS: SUBJECT_WEIGHTS, subjectWeight: subjectWeight,
+    rebuildRegistries: rebuildRegistries, defaultCourse: defaultCourse,
+    defaultSubject: defaultSubject,
+
+    // loading the archive: admission, parsing, and per-source state
+    DATA_HEADERS_NAME: DATA_HEADERS_NAME, DATA_YEAR_RE: DATA_YEAR_RE,
+    DATA_YEAR_MIN: DATA_YEAR_MIN, DATA_YEAR_MAX: DATA_YEAR_MAX,
+    MAX_DATA_FILE_BYTES: MAX_DATA_FILE_BYTES, MAX_DATA_ROWS: MAX_DATA_ROWS,
+    MAX_FIELD_CHARS: MAX_FIELD_CHARS, MAX_COURSE_POINTS: MAX_COURSE_POINTS,
+    REQUIRED_HEADER_COLUMNS: REQUIRED_HEADER_COLUMNS,
+    dataFileName: dataFileName, headersFileProblem: headersFileProblem,
+    yearFileProblem: yearFileProblem, yearOfFile: yearOfFile,
+    parseHeaderFile: parseHeaderFile, parseYearFile: parseYearFile,
+    calendarYearOf: calendarYearOf, buildDataset: buildDataset,
+    loadHeadersFor: loadHeadersFor, loadYearFilesFor: loadYearFilesFor,
+    clearSourceData: clearSourceData, clearAllSourceData: clearAllSourceData,
+    forgetSourceData: forgetSourceData,
+    datasetFor: datasetFor, hasSourceData: hasSourceData, datasetCfg: datasetCfg,
+    headerFor: headerFor, sourceDataError: sourceDataError, sourceTable: sourceTable,
+    sourceFilesHTML: sourceFilesHTML,
+    sourceData: function(){ return SOURCE_DATA; },
+    pendingHeaders: function(){ return PENDING_HEADERS; },
+    sourceNotice: function(id){ return SOURCE_NOTICE[id] || null; },
+    syntheticDataset: function(){ return SYNTHETIC_DATASET; },
+    setSyntheticDataset: setSyntheticDataset,
+    installSyntheticDataset: installSyntheticDataset,
 
     // table primitives
     COLTYPE: COLTYPE, makeTable: makeTable, colIndex: colIndex, colByKey: colByKey,
@@ -6011,6 +7063,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     serialiseTable: serialiseTable, exportTableFor: exportTableFor, safeName: safeName,
     exportNameOf: exportNameOf, defaultExportName: defaultExportName, markStale: markStale,
     timeStamp: timeStamp, resultHTML: resultHTML, scalarHTML: scalarHTML, tableHTML: tableHTML,
+    courseLabel: courseLabel, courseTitle: courseTitle, courseSelect: courseSelect,
     serialiseGraph: serialiseGraph, deserialiseGraph: deserialiseGraph,
     applyGraph: applyGraph, loadGraphFromText: loadGraphFromText,
     FILE_KIND: FILE_KIND, FILE_VERSION: FILE_VERSION,

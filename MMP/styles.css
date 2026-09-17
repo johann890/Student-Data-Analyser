@@ -356,6 +356,154 @@ select option {
 .crit-range input:focus,
 .crit-range select:focus { border-color: #c9a227; }
 
+
+/* ── THE DATA FILES ON A SOURCE PANEL ─────────────────────────────────────────
+   Two numbered rows, in the order the two steps have to happen in, each showing
+   what the Source is currently holding rather than only offering a button.
+
+   The step numbers are not decoration. A year file cannot be parsed without the
+   column list that names its fields, so the second button is disabled until the
+   first has succeeded, and a numbered pair is the cheapest way to say "these
+   are ordered" before the user discovers it by finding a control greyed out.
+
+   Green when loaded, matching the Source's own colour, so the panel and the
+   circle on the canvas agree at a glance about whether this node can run. */
+.src-files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.src-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 5px;
+  border: 1px solid #242424;
+  border-left: 2px solid #2a2a2a;
+  border-radius: 4px;
+  background: #101010;
+}
+.src-file.done {
+  border-left-color: #2d6640;
+  background: #0a1410;
+}
+
+.src-step {
+  flex-shrink: 0;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 1px solid #2a2a2a;
+  color: #555555;
+  font-size: 8px;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.src-file.done .src-step {
+  border-color: #2d6640;
+  background: #0f2a1a;
+  color: #5ec87a;
+}
+
+/* min-width:0 so a long list of year names truncates inside the row instead of
+   forcing the panel wider — the same reason every other flexed label in this
+   stylesheet carries it. */
+.src-what {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  overflow: hidden;
+}
+.src-what b {
+  font-size: 9.5px;
+  font-weight: 600;
+  color: #9a9a9a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.src-file.done .src-what b { color: #5ec87a; }
+.src-what small {
+  font-size: 8.5px;
+  color: #555555;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.src-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid #2a2a2a;
+  border-radius: 3px;
+  color: #7a7a7a;
+  font-size: 9px;
+  font-family: inherit;
+  padding: 3px 7px;
+  cursor: pointer;
+}
+.src-btn:hover:not(:disabled) { border-color: #2d6640; color: #5ec87a; }
+/* Not merely faded: the cursor says "unavailable" too, because a control that
+   only looks dim reads as a styling choice rather than as a state. */
+.src-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+.src-clear {
+  background: transparent;
+  border: 1px dashed #2a2a2a;
+  border-radius: 4px;
+  color: #484848;
+  font-size: 10px;
+  font-family: inherit;
+  padding: 3px 7px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.src-clear:hover { border-color: #7a2a2a; color: #e06060; }
+
+.src-hint {
+  font-size: 9px;
+  color: #5a5a5a;
+  line-height: 1.35;
+}
+
+/* The outcome of the last load. Banded down the left in the colour of what
+   happened, which is the treatment .cmp-hint.proj-warn already uses for the one
+   hint that warns — a refusal has to be readable as a refusal without being
+   read. word-break, because a refusal quotes the file name that caused it and
+   those are not guaranteed to have spaces in them. */
+.src-notice {
+  font-size: 9px;
+  line-height: 1.4;
+  padding-left: 6px;
+  border-left: 2px solid #2a2a2a;
+  word-break: break-word;
+}
+.src-notice.ok  { border-left-color: #2d6640; color: #78a888; }
+.src-notice.bad { border-left-color: #7a2a2a; color: #e08080; }
+
+/* A Source holding no files, on the canvas. The circle keeps its shape and its
+   colour — it is still a Source — and states the difference in its outline: a
+   dashed ring in a paler green than the solid one a loaded Source wears.
+
+   Green rather than amber because nothing is wrong. The node is unfinished, and
+   colouring it as a warning would put it in the same register as an error while
+   the graph around it is still perfectly worth drawing. Lighter rather than
+   darker for the same reason: unfinished, not disabled.
+
+   The state is carried by the border alone, with no badge in the corner. A dot
+   there shared the spot with the delete button, which made it read as something
+   to click; the outline says the same thing around the whole shape and leaves
+   that corner to the one control that belongs in it. */
+.shape-source.no-data {
+  border-style: dashed;
+  border-color: #6aa87e;
+  background: #0b1a12;
+  color: #9ad4ac;
+}
+
 .criterion-value-sel { /* full-width, sits in its grid cell */ }
 .add-criterion-btn {
   background: transparent;
@@ -670,16 +818,19 @@ body.panel-resizing * { cursor: col-resize !important; }
 
 /* ── PROCESSING DROPDOWN ─────────────────────────────────── */
 .proc-wrap { position: relative; display: inline-flex; }
+.add-btn.reshape,
 .add-btn.processing {
-  border-color: #5a3a7a;
-  color: #b48ce0;
   /* inline-flex so the caret centres on the label's optical midline rather
      than sitting on the text baseline */
   display: inline-flex;
   align-items: center;
   gap: 6px;
 }
-.add-btn.processing:hover { background: #180e22; }
+.add-btn.reshape {
+  border-color: #5a3a7a;
+  color: #b48ce0;
+}
+.add-btn.reshape:hover { background: #180e22; }
 .caret {
   font-size: 13px;
   line-height: 1;
@@ -1582,18 +1733,26 @@ th.cmp-num { color: #383838 !important; }
 .proc-group { opacity: 0.72; }
 
 .proc-item.cat-reshape:hover   { background: #1c1226; }
+.proc-item.cat-expand:hover    { background: #141c08; }
 .proc-item.cat-summarise:hover { background: #0a1e20; }
 .proc-item.cat-branches:hover  { background: #21101a; }
 
-/* The Processing button itself goes neutral. It opens a menu holding all three
-   categories, so painting it violet would say violet is what Processing means —
-   which was true when every processing node was violet and is now false. Grey
-   claims none of the three. */
+/* The Processing button stays neutral, and now for a sharper reason than
+   before. The violet nodes have their own button beside it, so what is left
+   behind Processing is Expand, Summarise and Branches — lime, teal and rose.
+   Painting the button any one of those would promise a menu of that colour.
+   Grey claims none of the three, which is the honest description of a menu
+   holding all three. */
 .add-btn.processing {
   border-color: #3d3d3d;
   color: #9a9a9a;
 }
 .add-btn.processing:hover { background: #1a1a1a; }
+
+/* A one-family menu needs no heading — the button already says Reshape, and a
+   heading repeating it would read as the first of several groups. The rule
+   below restores the padding the absent heading used to provide. */
+#reshapeMenu .proc-item:first-child { margin-top: 2px; }
 
 /* ═══════════════════════════════════════════════════════════
    SAVE DIALOG
