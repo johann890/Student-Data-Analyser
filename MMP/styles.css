@@ -449,6 +449,73 @@ select option {
    only looks dim reads as a styling choice rather than as a state. */
 .src-btn:disabled { opacity: 0.35; cursor: not-allowed; }
 
+/* The year files a Source is holding, one per line under step 2. Indented and
+   banded down the left so they read as the contents of that step rather than as
+   steps of their own — the order they were chosen in carries no meaning, and
+   numbering them would claim it did.
+
+   Each row carries its own remove control, because a collection you can only
+   add to is one you have to tear down and rebuild to correct. */
+.src-years {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 3px 0 0 9px;
+  padding-left: 7px;
+  border-left: 1px solid #1e2e24;
+}
+
+.src-year {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 3px;
+  border-radius: 3px;
+}
+.src-year:hover { background: #0e1a14; }
+
+.src-year-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 9px;
+  color: #6f9a7e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.src-year-count {
+  flex-shrink: 0;
+  font-size: 8.5px;
+  color: #4a4a4a;
+}
+
+/* Present at rest rather than revealed on hover. These sit inside an already
+   busy panel, and a control that appears only under the pointer is a control a
+   keyboard user cannot find — the node's own delete button can be hover-only
+   because the node is the thing under the pointer, which is not true of a row
+   in a list. Dim until hovered, so eight of them do not shout. */
+.src-year-drop {
+  flex-shrink: 0;
+  width: 14px; height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #3f3f3f;
+  font-family: inherit;
+  font-size: 9px;
+  line-height: 1;
+  cursor: pointer;
+}
+.src-year-drop:hover { background: #2a0808; color: #e06060; }
+.src-year-drop:focus-visible { outline: 1px solid #2d6640; color: #8a8a8a; }
+
+/* A year the saved query names but which has not been re-loaded. Listed in the
+   panel's ordinary grey, not the green of something held: it is a request, not
+   a possession. */
+.src-year.wanted .src-year-name { color: #5a5a5a; }
+.src-year.wanted { opacity: 0.85; }
+
 .src-clear {
   background: transparent;
   border: 1px dashed #2a2a2a;

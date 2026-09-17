@@ -229,10 +229,29 @@
                 names on it, so nothing can be read out of one until the tool knows what each
                 position holds.</li>
             <li><b><code>mcs-students-2022</code></b> and friends &mdash; one file per year, named
-                for the year and with <em>no extension</em>. You can choose several at once, and
-                the Source then answers about all of them together, or about one year at a time
-                through its <b>Population</b> setting.</li>
+                for the year and with <em>no extension</em>. Choose as many as you like, in as
+                many goes as you like. The Source then answers about all of them together, or
+                about one year at a time through its <b>Population</b> setting.</li>
           </ol>
+
+          <p><b>One column file, many year files.</b> A Source has a single
+             <code>headers.txt</code>, because one column list describes the shape of every year
+             file. The years themselves are a collection it builds up: <b>Add</b> puts more in
+             beside what is already loaded rather than replacing them, so 2022 and 2023 today and
+             2024 when it arrives is three trips to the picker and no re-choosing.</p>
+
+          <p>Each loaded year is listed under step 2 with its own student count and its own
+             <b>x</b> to take just that one back off. Removing the last of them leaves
+             <code>headers.txt</code> in place, so you can pick different years straight away
+             &mdash; <b>Unload everything</b> is the button that clears both.</p>
+
+          <p>Choosing a year the Source already holds <em>replaces</em> that year, which is what
+             you want when a corrected export arrives; the panel says <q>Replaced 2022</q> rather
+             than making the swap silently. Holding both copies would count that cohort twice.</p>
+
+          <p>If any file in one selection is refused, none of that selection is loaded and whatever
+             the Source already held is left exactly as it was. A part-loaded Source would be
+             answering about a cohort nobody asked for.</p>
 
           <p>The names are not a convention you can bend. A file is only read if it is named exactly
              <code>headers.txt</code>, or exactly <code>mcs-students-</code> followed by a
@@ -246,9 +265,10 @@
              than guessed at.</p>
 
           <div class="help-tip">
-            <b>Each Source owns its files.</b> Two Sources can hold two different years and be
-            compared against each other &mdash; load 2022 into one and 2023 into the other, and wire
-            both into a Compare.
+            <b>Each Source owns its files.</b> Two Sources can hold two different sets of years and
+            be compared against each other &mdash; load 2022 into one and 2023 into the other, and
+            wire both into a Compare. A Source that should span several years just loads several
+            year files instead.
           </div>
 
           <p>Only seven columns are read: the ID, gender, the first major, the year, the course, the

@@ -447,6 +447,13 @@ var MAX_DATA_FILE_BYTES = 32 * 1024 * 1024;
 var MAX_DATA_ROWS   = 250000;
 var MAX_FIELD_CHARS = 512;
 
+/* One Source accumulates year files, so there has to be a ceiling on how many.
+   Fifty is longer than the archive has existed and longer than any question
+   anyone will ask of it, and it matches the cap the saved descriptor applies to
+   the same list — two limits on one thing that disagreed would mean a Source
+   holding a year its own saved query could not name. */
+var MAX_YEAR_FILES = 50;
+
 /* A course is worth points; nothing in this catalogue is worth more than a
    double-weight honours project, and a number outside this range means the
    column has been misread rather than that the course is unusual. */
@@ -775,27 +782,49 @@ function parseYearFile(text, year, header) {
 
 /* ------------------------------------------------------- BUILDING A DATASET */
 
-/* One header plus one or more parsed year files. A student who appears in two
+/* One header plus any number of parsed year files. A student who appears in two
    years is two students here, because they are: a row is a student IN A YEAR,
    which is what makes "the 2022 cohort" and "the 2023 cohort" separately
-   countable and is the granularity every existing node was written against. */
+   countable and is the granularity every existing node was written against.
+
+   `parsed` is kept, not just the totals derived from it. That is what makes a
+   Source's year files a COLLECTION rather than a single snapshot: adding a year
+   or dropping one is this function called again over a different list, so the
+   flattened students, the counts and the warnings can never drift from the
+   files they came from. Deriving them once and then patching them in place is
+   the version of this that goes wrong six months later. */
 function buildDataset(header, parsedYears) {
   var students = [], years = [], files = [], warnings = {};
-  parsedYears.slice().sort(function(a, b){ return a.year - b.year; }).forEach(function(p) {
+  var parsed = parsedYears.slice().sort(function(a, b){ return a.year - b.year; });
+  parsed.forEach(function(p) {
     years.push(p.year);
-    files.push({ name: 'mcs-students-' + p.year, year: p.year,
+    files.push({ name: yearFileNameFor(p.year), year: p.year,
                  rows: p.rows, students: p.students.length });
     p.students.forEach(function(s){ students.push(s); });
     (p.warnings || []).forEach(function(w){ warnings[w] = true; });
   });
   return {
     headers: header,
+    parsed: parsed,
     files: files,
     years: years,
     students: students,
     warnings: Object.keys(warnings),
     loadedAt: new Date().toISOString()
   };
+}
+
+/* The one place a year becomes a file name. The admission rule reads names and
+   this writes them, so a change to the convention is one edit rather than a
+   hunt through the panel, the log and three error messages. */
+function yearFileNameFor(year) { return 'mcs-students-' + year; }
+
+/* The year files a Source is currently holding, as parsed results. Empty for a
+   Source with only a header, and empty for the built-in dataset, which has no
+   files behind it to add to or take away. */
+function parsedYearsOf(nodeId) {
+  var d = SOURCE_DATA[nodeId];
+  return (d && d.parsed) ? d.parsed : [];
 }
 
 /* Install, or take away. Both go through here so that the registries are
@@ -887,9 +916,27 @@ function loadHeadersFor(nodeId, file, done) {
 }
 
 /* THE YEAR STEP.
-   All or nothing across the whole selection. A user who picks three files and
-   gets two of them has a Source that answers about a cohort they did not ask
-   for, and no amount of wording in a notice makes that safe. */
+   ---------------------------------------------------------------------------
+   Year files ACCUMULATE. One header describes the shape of every year file, so
+   a Source has exactly one of those; the years themselves are a collection, and
+   choosing more adds to what is already there rather than replacing it. That is
+   what makes "2022 and 2023, then 2024 when it arrives" an ordinary afternoon
+   rather than a re-pick of all three.
+
+   Two rules keep the accumulation honest:
+
+     ALL OR NOTHING WITHIN A PICK. A user who chooses three files and gets two
+     of them has a Source answering about a cohort they did not ask for, and no
+     wording in a notice makes that safe. If any file in the selection is
+     refused, none of them are added and whatever was already loaded is left
+     exactly as it was.
+
+     ONE FILE PER YEAR. Choosing a year already held REPLACES that year, because
+     the only reason to do it is a corrected export, and holding both would mean
+     counting the cohort twice. The notice says which years were added and which
+     were replaced, so it is never a silent substitution. Two files for the SAME
+     year inside ONE pick is still refused: there is no way to tell which of them
+     was meant.                                                                */
 function loadYearFilesFor(nodeId, fileList, done) {
   done = done || function(){};
   var files = Array.prototype.slice.call(fileList || []);
@@ -902,6 +949,10 @@ function loadYearFilesFor(nodeId, fileList, done) {
     return;
   }
 
+  var existing = parsedYearsOf(nodeId);
+  var held = {};
+  existing.forEach(function(p){ held[p.year] = true; });
+
   var problem = null;
   var seen = {};
   files.forEach(function(f) {
@@ -909,10 +960,21 @@ function loadYearFilesFor(nodeId, fileList, done) {
     problem = yearFileProblem(f);
     if (problem) return;
     var y = yearOfFile(f);
-    if (seen[y]) { problem = 'Two of the chosen files are for ' + y + '.'; return; }
+    if (seen[y]) {
+      problem = 'Two of the chosen files are for ' + y + ', and there is no way to ' +
+        'tell which one was meant. Choose one of them.';
+      return;
+    }
     seen[y] = true;
   });
   if (problem) { failSource(nodeId, problem, done); return; }
+
+  var totalAfter = existing.filter(function(p){ return !seen[p.year]; }).length + files.length;
+  if (totalAfter > MAX_YEAR_FILES) {
+    failSource(nodeId, 'That would give this Source ' + totalAfter + ' year files, past the ' +
+      'limit of ' + MAX_YEAR_FILES + '. Remove some first, or use a second Source.', done);
+    return;
+  }
 
   var parsed = [], pending = files.length, failed = false;
 
@@ -928,38 +990,96 @@ function loadYearFilesFor(nodeId, fileList, done) {
         return;
       }
       parsed[i] = out;
-      if (--pending === 0) finishYearLoad(nodeId, header, parsed, done);
+      if (--pending === 0) finishYearLoad(nodeId, header, existing, parsed, held, done);
     });
   });
 }
 
-function finishYearLoad(nodeId, header, parsed, done) {
-  var dataset = buildDataset(header, parsed);
+/* Merge the accepted pick into what the Source already held, and say what
+   changed. Only reached once every file in the pick has parsed, which is what
+   makes the all-or-nothing rule true rather than merely intended. */
+function finishYearLoad(nodeId, header, existing, added, held, done) {
+  var incoming = {};
+  added.forEach(function(p){ incoming[p.year] = true; });
+
+  var kept = existing.filter(function(p){ return !incoming[p.year]; });
+  var dataset = buildDataset(header, kept.concat(added));
+
   setSourceData(nodeId, dataset);
   delete PENDING_HEADERS[nodeId];
+  applyDatasetToNode(nodeId, dataset);
 
-  var node = findNode(nodeId);
-  if (node) {
-    var d = datasetCfg(node);
-    d.headers = header.name;
-    d.years = dataset.years.slice();
-    /* A population the new files cannot answer would leave the Source silently
-       empty. Falling back to "all students" is the only choice that is right
-       whatever was loaded, and the panel shows the change. */
-    if (node.cfg.pop !== 'all' && dataset.years.indexOf(parseInt(node.cfg.pop, 10)) === -1) {
-      node.cfg.pop = 'all';
-    }
-  }
+  var fresh = added.filter(function(p){ return !held[p.year]; })
+                   .map(function(p){ return p.year; }).sort();
+  var replaced = added.filter(function(p){ return held[p.year]; })
+                      .map(function(p){ return p.year; }).sort();
 
-  var text = 'Loaded ' + dataset.students.length + ' student record' +
-    (dataset.students.length === 1 ? '' : 's') + ' from ' +
-    dataset.files.length + ' year file' + (dataset.files.length === 1 ? '' : 's') + '.';
+  var parts = [];
+  if (fresh.length)    parts.push('Added ' + fresh.join(', '));
+  if (replaced.length) parts.push('Replaced ' + replaced.join(', '));
+  var text = (parts.length ? parts.join('. ') + '. ' : '') +
+    'Now holding ' + dataset.files.length + ' year file' +
+    (dataset.files.length === 1 ? '' : 's') + ' and ' +
+    dataset.students.length + ' student record' +
+    (dataset.students.length === 1 ? '' : 's') + '.';
   if (dataset.warnings.length) {
     text += ' Kept as ungraded: ' + dataset.warnings.join(', ') + '.';
   }
+
   setSourceNotice(nodeId, { kind:'ok', text: text });
   render();
   done(null, dataset);
+}
+
+/* Take one year back off a Source. The counterpart of adding one: a collection
+   you can only add to is a collection you have to tear down and rebuild to
+   correct, which is how a user ends up re-picking four files to drop one.
+
+   Removing the last year leaves the HEADER in place rather than clearing the
+   Source outright. The header is still valid — it describes the shape of files
+   that have not been chosen yet — and throwing it away would make "I picked the
+   wrong year" cost two steps instead of one. */
+function removeSourceYear(nodeId, year) {
+  var header = headerFor(nodeId);
+  var remaining = parsedYearsOf(nodeId).filter(function(p){ return p.year !== year; });
+
+  if (!remaining.length) {
+    setSourceData(nodeId, null);
+    if (header) PENDING_HEADERS[nodeId] = header;
+    applyDatasetToNode(nodeId, null);
+    setSourceNotice(nodeId, { kind:'ok', text:
+      'Removed ' + yearFileNameFor(year) + '. ' + DATA_HEADERS_NAME +
+      ' is still loaded, so choose the year files you want.' });
+  } else {
+    var dataset = buildDataset(header, remaining);
+    setSourceData(nodeId, dataset);
+    applyDatasetToNode(nodeId, dataset);
+    setSourceNotice(nodeId, { kind:'ok', text:
+      'Removed ' + yearFileNameFor(year) + '. Now holding ' +
+      dataset.files.map(function(f){ return f.year; }).join(', ') + '.' });
+  }
+  render();
+}
+
+/* Keep the saved descriptor and the population setting in step with whatever
+   the Source is now holding. Shared by every path that changes the year files,
+   because three copies of this is three chances for the panel to disagree with
+   the data behind it. */
+function applyDatasetToNode(nodeId, dataset) {
+  var node = findNode(nodeId);
+  if (!node) return;
+  var d = datasetCfg(node);
+  var header = headerFor(nodeId);
+  d.headers = header ? header.name : '';
+  d.years = dataset ? dataset.years.slice() : [];
+
+  /* A population the Source can no longer answer would leave it silently empty.
+     Falling back to "all students" is the only choice that is right whatever is
+     held, and the panel shows the change. */
+  var years = dataset ? dataset.years : [];
+  if (node.cfg.pop !== 'all' && years.indexOf(parseInt(node.cfg.pop, 10)) === -1) {
+    node.cfg.pop = 'all';
+  }
 }
 
 /* One refusal path. The Source is left as it was — nothing half-applied — the
@@ -4246,22 +4366,56 @@ function sourceFilesHTML(node) {
       (header ? 'Replace' : 'Choose') + '</button>' +
   '</div>';
 
-  // 2 — the year files
+  /* 2 — the year files.
+     A list rather than one line of comma-separated names, because they are a
+     collection the user adds to and takes from: each one has to be countable on
+     its own and removable on its own. Naming them all in a single label made
+     four files look like one thing that had to be re-picked whole. */
   var files = (data && !data.synthetic) ? data.files : [];
+  var full = files.length >= MAX_YEAR_FILES;
   html += '<div class="src-file' + (files.length ? ' done' : '') + '">' +
     '<span class="src-step">2</span>' +
     '<span class="src-what">' +
       (files.length
-        ? '<b>' + files.map(function(f){ return esc(f.name); }).join(', ') + '</b>' +
+        ? '<b>' + files.length + ' year file' + (files.length === 1 ? '' : 's') + '</b>' +
           '<small>' + files.reduce(function(a, f){ return a + f.rows; }, 0) + ' rows, ' +
           files.reduce(function(a, f){ return a + f.students; }, 0) + ' students</small>'
-        : '<b>mcs-students-' + (want.years.length ? want.years.join(', mcs-students-') : 'YYYY') +
-          '</b><small>' + (want.years.length ? 'wanted by this query' : 'not loaded') + '</small>') +
+        : '<b>' + yearFileNameFor(want.years.length ? want.years[0] : 'YYYY') + '</b>' +
+          '<small>' + (want.years.length
+            ? (want.years.length === 1 ? 'wanted by this query'
+               : want.years.length + ' wanted by this query')
+            : 'not loaded') + '</small>') +
     '</span>' +
-    '<button class="src-btn"' + (header ? '' : ' disabled') +
+    '<button class="src-btn"' + (header && !full ? '' : ' disabled') +
+      ' title="' + (full ? esc('This Source is holding the most year files it can.')
+                         : 'Choose one or more mcs-students-YYYY files') + '"' +
       ' onclick="pickYearFiles(' + id + ')">' +
-      (files.length ? 'Replace' : 'Choose') + '</button>' +
+      (files.length ? 'Add' : 'Choose') + '</button>' +
   '</div>';
+
+  /* Each loaded year, with the control that drops it. Indented under step 2
+     rather than being three more numbered steps: they are the contents of one
+     step, and numbering them would say the order they were chosen in matters. */
+  if (files.length) {
+    html += '<div class="src-years">' + files.map(function(f) {
+      return '<div class="src-year">' +
+        '<span class="src-year-name">' + esc(f.name) + '</span>' +
+        '<span class="src-year-count">' + f.students + ' students</span>' +
+        '<button class="src-year-drop" title="' +
+          esc('Remove ' + f.name + ' from this Source') + '"' +
+          ' onclick="removeSourceYear(' + id + ',' + f.year + ')">x</button>' +
+      '</div>';
+    }).join('') + '</div>';
+  } else if (want.years.length > 1) {
+    // Nothing loaded, but the saved query knows what it wants. Naming all of
+    // them is the difference between re-picking the right files and guessing.
+    html += '<div class="src-years">' + want.years.map(function(y) {
+      return '<div class="src-year wanted">' +
+        '<span class="src-year-name">' + esc(yearFileNameFor(y)) + '</span>' +
+        '<span class="src-year-count">not loaded</span>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
 
   html += '</div>';
 
@@ -4271,7 +4425,7 @@ function sourceFilesHTML(node) {
   }
   if (data && !data.synthetic) {
     html += '<button class="src-clear" onclick="clearSourceData(' + id + ')">' +
-      'Unload these files</button>';
+      'Unload everything, including ' + esc(DATA_HEADERS_NAME) + '</button>';
   }
   if (notice) {
     html += '<div class="src-notice ' + (notice.kind === 'error' ? 'bad' : 'ok') + '">' +
@@ -6895,6 +7049,7 @@ window.openGraphFile = openGraphFile;
 window.pickHeadersFile = pickHeadersFile;
 window.pickYearFiles = pickYearFiles;
 window.clearSourceData = clearSourceData;
+window.removeSourceYear = removeSourceYear;
 window.zoomIn = zoomIn;
 window.zoomOut = zoomOut;
 window.zoomReset = zoomReset;
@@ -6967,6 +7122,9 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     parseHeaderFile: parseHeaderFile, parseYearFile: parseYearFile,
     calendarYearOf: calendarYearOf, buildDataset: buildDataset,
     loadHeadersFor: loadHeadersFor, loadYearFilesFor: loadYearFilesFor,
+    removeSourceYear: removeSourceYear, parsedYearsOf: parsedYearsOf,
+    yearFileNameFor: yearFileNameFor, applyDatasetToNode: applyDatasetToNode,
+    MAX_YEAR_FILES: MAX_YEAR_FILES,
     clearSourceData: clearSourceData, clearAllSourceData: clearAllSourceData,
     forgetSourceData: forgetSourceData,
     datasetFor: datasetFor, hasSourceData: hasSourceData, datasetCfg: datasetCfg,
