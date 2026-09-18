@@ -1,14 +1,16 @@
 /* Test harness.
    Boots the application inside jsdom and exposes its internals to the tests.
 
-   The application is a single IIFE with no module system — deliberate, since it
-   must run from a file:// URL with no build step — so nothing inside it is
-   reachable from outside by default. app.js answers that itself: setting
+   The application is three classic scripts sharing one global scope, with no
+   module system — deliberate, since it must run from a file:// URL with no
+   build step, where module scripts are refused outright. They are loaded here
+   in the same order the page loads them, and the last of them answers the
+   access question itself: setting
    `window.__QB_TEST__ = true` BEFORE it loads makes it publish its internals on
    `window.__qb`. In normal use the flag is undefined and nothing is exported.
 
    This harness used to reach in by rewriting the source text instead, injecting
-   an export block before the closing `})();`. app.js warns against exactly that
+   an export block before the closing `})();`. ui.js warns against exactly that
    ("silently broken by any edit near the end of this file"), and it was: the
    injected block named functions that a later refactor deleted, so every test
    died at boot rather than failing on anything it was testing. The sanctioned
@@ -31,15 +33,20 @@ try {
 /* Locate the application. Defaults to a sibling MMP folder, which is the layout
    this suite was written against, but any folder can be passed explicitly:
        APP_DIR=../some/other/path node run.js                                  */
+/* Load order is the page's load order, and it is load-bearing: ui.js ends with
+   event wiring and the first paint, both of which need the other two parsed. */
+const APP_SCRIPTS = ['data.js', 'engine.js', 'ui.js'];
+
 function findAppDir() {
   if (process.env.APP_DIR) return path.resolve(process.env.APP_DIR);
   const candidates = ['../MMP', '../mmp', '../MVP', '../mvp', '..', '.'];
   for (const c of candidates) {
     const dir = path.resolve(__dirname, '..', c);
-    if (fs.existsSync(path.join(dir, 'app.js')) && findHtml(dir)) return dir;
+    if (APP_SCRIPTS.every(f => fs.existsSync(path.join(dir, f))) && findHtml(dir)) return dir;
   }
   throw new Error(
-    'Could not find the application. Looked for app.js plus an .html file in: ' +
+    'Could not find the application. Looked for ' + APP_SCRIPTS.join(', ') +
+    ' plus an .html file in: ' +
     candidates.join(', ') + '. Set APP_DIR to point at the right folder.');
 }
 
@@ -49,7 +56,7 @@ function findHtml(dir) {
 }
 
 const APP_DIR = findAppDir();
-const APP_JS = path.join(APP_DIR, 'app.js');
+const APP_PATHS = APP_SCRIPTS.map(f => path.join(APP_DIR, f));
 const APP_HTML = findHtml(APP_DIR);
 
 /* The real archive, beside the application rather than inside it. The data
@@ -132,22 +139,22 @@ function boot() {
   const copied = [];
   w.navigator.clipboard = { writeText: (t) => { copied.push(t); return Promise.resolve(); } };
 
-  // The flag must be set before app.js runs: the export block is guarded by it.
+  // The flag must be set before the app runs: the export block is guarded by it.
   w.__QB_TEST__ = true;
-  w.eval(fs.readFileSync(APP_JS, 'utf8'));
+  APP_PATHS.forEach(p => w.eval(fs.readFileSync(p, 'utf8')));
 
   const qb = w.__qb;
   if (!qb) {
     throw new Error(
-      'window.__QB_TEST__ was set but window.__qb is missing. app.js should end ' +
+      'window.__QB_TEST__ was set but window.__qb is missing. ui.js should end ' +
       'with a block guarded by that flag which publishes its internals. If that ' +
       'block was removed, restore it rather than going back to source injection.');
   }
   const app = shim(qb);
 
-  // render() is internal to the IIFE — only the toolbar entry points are on
-  // window. Tests legitimately need to force a redraw, so alias it here rather
-  // than exporting it from production code.
+  // render() lives in ui.js's global scope but is not published on window —
+  // only the toolbar entry points are. Tests legitimately need to force a
+  // redraw, so alias it here rather than exporting it from production code.
   w.render = app.render;
 
   return { w, doc, app, saved, copied, ...helpers(w, doc, app), ...fileHelpers(w, doc, app) };
@@ -301,4 +308,4 @@ function fileHelpers(w, doc, app) {
   return { file, archiveFile, choose, loadHeaders, loadYears, loadArchive, waitFor };
 }
 
-module.exports = { boot, APP_DIR, APP_JS, APP_HTML, DATA_DIR, dataDirFile, hasDataDir };
+module.exports = { boot, APP_DIR, APP_SCRIPTS, APP_PATHS, APP_HTML, DATA_DIR, dataDirFile, hasDataDir };

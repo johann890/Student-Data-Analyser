@@ -78,8 +78,8 @@ shipped code.
 
 ## Where it looks for the application
 
-By default the harness searches sibling folders for one containing `app.js` and
-an `.html` file — `../MMP`, `../mmp`, `../MVP`, `../mvp`, then `..`. To point it
+By default the harness searches sibling folders for one containing `data.js`,
+`engine.js`, `ui.js` and an `.html` file — `../MMP`, `../mmp`, `../MVP`, `../mvp`, then `..`. To point it
 somewhere else:
 
 ```bash
@@ -90,11 +90,14 @@ If nothing is found it fails with a message rather than testing nothing.
 
 ## How the harness reaches inside the application
 
-`app.js` is a single IIFE with no module system. That is deliberate — the tool
-has to run from a `file://` URL with no build step — but it means nothing inside
-is reachable from a test.
+The application is three classic scripts — `data.js`, `engine.js`, `ui.js` —
+sharing one global scope, with no module system. That is deliberate: the tool has
+to run from a `file://` URL with no build step, where a module script is fetched
+with CORS against an opaque origin and refused outright. The harness loads them
+in the page's order, which is load-bearing — `ui.js` ends by wiring events and
+painting the first frame, and needs the other two parsed.
 
-`app.js` solves this itself. Setting `window.__QB_TEST__ = true` **before** it
+`ui.js` solves the access question itself. Setting `window.__QB_TEST__ = true` **before** it
 loads makes it publish its internals on `window.__qb`. In normal use the flag is
 undefined, nothing is exported, and the cost is one branch at start-up.
 
@@ -106,7 +109,8 @@ w.eval(fs.readFileSync(APP_JS, 'utf8'));   // the shipped file, verbatim
 ### Why not source injection
 
 This harness used to rewrite the source instead, splicing an export block in
-before the closing `})();`. `app.js` warns against exactly that, and was right:
+before the closing `})();`. The application warns against exactly that, and was
+right:
 
 > The alternative — having the tests reach in by rewriting the source text — is
 > silently broken by any edit near the end of this file, and a test suite that
@@ -124,7 +128,7 @@ its own line and names it.
 ### Adding to the hook
 
 If a test needs something `__qb` does not expose, add it to the export block at
-the bottom of `app.js` rather than reaching around it. The block is grouped by
+the bottom of `ui.js` rather than reaching around it. The block is grouped by
 subject; put the new entry with its neighbours.
 
 Live state (`nodes`, `connections`, `exportData`, `selection`, `view`) is
