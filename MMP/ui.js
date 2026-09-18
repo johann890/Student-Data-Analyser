@@ -40,6 +40,10 @@ var SHAPE = {
   source:  { w:100, h:100 },
   filter:  { w:106, h:84 },
   compare: { w:112, h:78 },
+  // Taller than every other processing node because it is the only one with
+  // two labelled port stubs down its left edge, and they need room not to
+  // collide with each other or with the shape's own text.
+  selectFor:{ w:118, h:88 },
   sort:    { w:106, h:72 },
   reverse: { w:106, h:72 },
   take:    { w:106, h:72 },
@@ -285,7 +289,14 @@ function deleteSelection() {
    Compare stays output-only. It is superseded, and widening its reach now
    would be work thrown away when it retires. */
 var TABLE_NODES = ['filter', 'sort', 'reverse', 'take', 'unique', 'select', 'project',
-                   'aggregate', 'aggregateColumns', 'aggregateRows', 'combine'];
+                   'aggregate', 'aggregateColumns', 'aggregateRows', 'combine',
+                   /* Both of its ports take an ordinary table, so anything that
+                      produces one may feed it — including another SelectFor,
+                      which is how a breakdown becomes the label set for the
+                      next one. Which port a wire lands on is the port model's
+                      business, not this list's: CONNECT_RULES answers "may
+                      these two node types be joined at all". */
+                   'selectFor'];
 var CONNECT_RULES = {
   source:           TABLE_NODES.concat(['compare', 'output']),
   filter:           TABLE_NODES.concat(['compare', 'output']),
@@ -314,6 +325,7 @@ var CONNECT_RULES = {
      one-column mode of Unique drop it. Those comments were written against this
      day arriving. */
   compare:          TABLE_NODES.concat(['compare', 'output']),
+  selectFor:        TABLE_NODES.concat(['compare', 'output']),
   output:           []
 };
 function canConnect(fromType, toType) {
@@ -360,6 +372,17 @@ var NODE_PORTS = {
   aggregateRows:    SINGLE_IN,
   combine:          [{ key:'in', label:'Tables',   multi:true }],
   compare:          [{ key:'in', label:'Branches', multi:true }],
+  /* The two-input node the port model was generalised for, and the entry is
+     the whole of its declaration — geometry, stub rendering, snap-to-connect,
+     the arity refusal and the save-file port resolution all read this table
+     and needed no case added for it.
+
+     `data` is first, so it is the primary port. That is load-bearing three
+     times over: a version 1 file and any wire that does not name a port land
+     on the rows rather than on the labels, inputSchema() describes the data in
+     the config panel without being told which port to look at, and the schema
+     walk is handed the data header as its inSchema for free. */
+  selectFor:        [{ key:'data', label:'Data' }, { key:'labels', label:'Labels' }],
   output:           SINGLE_IN
 };
 
@@ -510,6 +533,21 @@ function defaultCfg(type) {
   // setting. A node with no options is the honest shape for an operation with
   // no choices in it.
   if (type === 'project') return {};
+  /* `by` empty means "the first field this table can be grouped by", resolved
+     against whatever arrives — the same convention Aggregate's col:'' uses,
+     and for the same reason: an explicit key written at creation time goes
+     stale the moment the node is rewired.
+
+     `stats` is named that rather than `measures` deliberately. Compare owns
+     `measures` and its elements are strings; these are {op, col} objects, and
+     mergeCfg validates that key by resetting anything that is not an array to
+     Compare's string defaults. One key, two element types, one validator is a
+     collision waiting for the first hand-edited file — so they get separate
+     keys and separate guards.
+
+     `labelCol` is which column of the labels branch supplies the values, and
+     is ignored entirely while nothing is wired there. */
+  if (type === 'selectFor') return { by:'', stats:[newStat()], labelCol:'' };
   // cols:null means "every column", the same convention Select uses, so the
   // validator mergeCfg already applies to that key covers this one too.
   if (type === 'output')  return { show:'rows', filename:'', cols:null };
@@ -608,6 +646,17 @@ function setCfg(nodeId, key, value) {
     var k = list[parseInt(sk[1], 10)];
     if (!k) return;
     k[sk[2]] = value;
+    return;
+  }
+  /* Same shape as the sort-key parser above, because it is the same control:
+     an ordered list of rows, each with its own selects. Sharing the shape is
+     what keeps the two panels behaving identically for the user. */
+  var st = key.match(/^stat\.(\d+)\.(op|col)$/);
+  if (st) {
+    var stats = n.cfg.stats || (n.cfg.stats = []);
+    var stat = stats[parseInt(st[1], 10)];
+    if (!stat) return;
+    stat[st[2]] = value;
     return;
   }
   if (key.indexOf('label:') === 0) {
@@ -798,6 +847,30 @@ function removeSortKey(nodeId, idx) {
   if (!n || n.type !== 'sort') return;
   n.cfg.keys.splice(idx, 1);
   if (!n.cfg.keys.length) n.cfg.keys.push(newSortKey());
+  markStale();
+  render();
+  focusCfg(nodeId);
+}
+
+/* SelectFor's measures use the same list shape again — add at the end, first
+   row not removable — so a third panel does not introduce a third set of
+   manners. */
+function addStat(nodeId) {
+  var n = findNode(nodeId);
+  if (!n || n.type !== 'selectFor') return;
+  n.cfg.stats = n.cfg.stats || [];
+  n.cfg.stats.push(newStat());
+  markStale();
+  render();
+  focusCfg(nodeId, 'stat.' + (n.cfg.stats.length - 1) + '.');
+}
+function removeStat(nodeId, idx) {
+  var n = findNode(nodeId);
+  if (!n || n.type !== 'selectFor') return;
+  n.cfg.stats.splice(idx, 1);
+  // A breakdown with no measures is a list of labels, which Unique already
+  // does better. The first row is not removable and this is its backstop.
+  if (!n.cfg.stats.length) n.cfg.stats.push(newStat());
   markStale();
   render();
   focusCfg(nodeId);
@@ -1082,7 +1155,7 @@ var NODE_LABELS = {
   source:'Source', filter:'Filter', sort:'Sort', reverse:'Reverse', take:'Take',
   unique:'Unique', select:'Select', project:'Project',
   aggregate:'Aggregate', aggregateColumns:'Agg. Columns', aggregateRows:'Agg. Rows',
-  combine:'Combine', compare:'Compare', output:'Output'
+  combine:'Combine', compare:'Compare', selectFor:'Select For', output:'Output'
 };
 function upstreamLabel(node) {
   return (NODE_LABELS[node.type] || node.type) + ' #' + node.id;
@@ -1257,6 +1330,100 @@ function configHTML(node, schemas) {
       opt('label', cfg.sort, 'Label A–Z') +
     '</select>' +
     '<div class="cmp-hint">Highest and lowest use the first ticked column.</div>';
+  }
+
+  if (node.type === 'selectFor') {
+    /* `schema` is the DATA port, because data is the primary port. The labels
+       branch is fetched separately and only when something is actually wired
+       to it: inputSchema() falls back to the student header when a port is
+       empty, which is right for a panel describing the rows and wrong for one
+       asking which column holds the labels — it would offer 27 columns of a
+       table that is not there. */
+    var gfields = groupFields(schema);
+    var labelWires = inputsOf(id, 'labels');
+    var gf = groupField(node, schema);
+
+    if (!gfields.length) {
+      html += '<div class="cmp-hint">Nothing to group by — wire a table into ' +
+        '<b>Data</b>.</div>';
+    } else {
+      html += '<div class="cfg-label">For each</div>' +
+        '<select' + ctl(id, 'by') + '>' +
+          gfields.map(function(f) {
+            return opt(f.key, gf ? gf.key : '', f.label);
+          }).join('') +
+        '</select>';
+    }
+
+    /* Where the groups come from is the one thing about this node that is not
+       obvious from its settings, because it is decided by a wire rather than
+       by a control. The panel says which of the two it is in, in a sentence,
+       rather than leaving the user to infer it from the presence of an arrow
+       on the canvas. */
+    if (labelWires.length) {
+      var lschema = inputSchema(node, schemas, 'labels');
+      var lcols = labelCols(lschema);
+      var lchosen = (cfg.labelCol && colByKey(lschema, cfg.labelCol) &&
+                     colByKey(lschema, cfg.labelCol).type !== COLTYPE.COURSES)
+        ? cfg.labelCol
+        : (lcols.length ? lcols[0].key : '');
+      html += '<div class="cfg-label">Groups from the Labels branch</div>' +
+        (lcols.length
+          ? '<select' + ctl(id, 'labelCol') + '>' +
+              lcols.map(function(c){ return opt(c.key, lchosen, c.label); }).join('') +
+            '</select>' +
+            '<div class="cmp-hint">One group per distinct value in that column, ' +
+              'in the order that branch produces them. A value no row matches ' +
+              'still gets a row here, with a count of zero &mdash; which is the ' +
+              'reason to wire labels in rather than let the data name its own ' +
+              'groups.</div>'
+          : '<div class="cmp-hint">That branch has no column that can supply ' +
+              'labels. A nested course list is not a label &mdash; put a ' +
+              '<b>Project</b> in front of it.</div>');
+    } else {
+      html += '<div class="cmp-hint">Groups are the values found in the data. ' +
+        'Wire a one-column table into <b>Labels</b> to name them yourself ' +
+        'instead &mdash; that is how a group with no matching rows still ' +
+        'appears, as a zero.</div>';
+    }
+
+    var stats = statsOf(node);
+    html += '<div class="cfg-label">Measure</div><div class="stat-list">' +
+      stats.map(function(st, si) {
+        var sop = selectForOp(st && st.op);
+        var scol = sop.needsCol ? statCol(st, schema) : null;
+        return '<div class="stat-row">' +
+          '<select class="stat-op"' + ctl(id, 'stat.' + si + '.op') + '>' +
+            SELECTFOR_OPS.map(function(o){ return opt(o.key, sop.key, o.label); }).join('') +
+          '</select>' +
+          // The column select appears only for the measures that take one, so
+          // the row does not carry a control that means nothing for Count.
+          (sop.needsCol
+            ? '<select class="stat-col"' + ctl(id, 'stat.' + si + '.col') + '>' +
+                measurableCols(schema).map(function(c) {
+                  return opt(c.key, scol ? scol.key : '', c.label);
+                }).join('') +
+              '</select>'
+            : '<span class="stat-nocol"></span>') +
+          (si > 0
+            ? '<button class="remove-criterion-btn" onclick="removeStat(' + id + ',' + si + ')">x</button>'
+            : '<span class="stat-nodel"></span>') +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<button class="add-criterion-btn sort-add" onclick="addStat(' + id + ')">+ add measure</button>';
+
+    if (statsOf(node).some(function(st){ return selectForOp(st && st.op).needsCol; }) &&
+        !measurableCols(schema).length) {
+      html += '<div class="cmp-hint">No numeric column upstream — those ' +
+        'measures will come out blank.</div>';
+    }
+
+    // Say what comes out, in the words the header will use, for the same
+    // reason the Aggregate panels do: the shape is the part people get wrong.
+    html += '<div class="cmp-hint">One row per group: ' +
+      selectForColumns(node, schema).map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(', ') +
+      '. Sort or Take it downstream &mdash; this node does not reorder.</div>';
   }
 
   if (node.type === 'sort') {
@@ -1522,7 +1689,7 @@ function configHTML(node, schemas) {
     cfg.show = show;
 
     html += '<div class="cfg-label">Show</div><select' + ctl(id, 'show') + '>';
-    if (compareFeedsOutput(node)) {
+    if (branchesFeedOutput(node)) {
       html += opt('summary', show, 'Summary table') +
               opt('lists',   show, 'Summary + row lists');
     } else {
@@ -1712,6 +1879,18 @@ function shapeHTML(node) {
       '<b></b>' +
       '<span class="cmb-out"><i></i></span></span>';
     return '<div class="node-shape shape-combine">' + removeBtn + cg + 'Combine</div>';
+  }
+  if (node.type === 'selectFor') {
+    /* Three labelled rows, each with its own bar: the output shape drawn
+       literally. Compare's glyph is three bars held apart with nothing naming
+       them, and that is the difference between the two nodes — these groups
+       have names, which is what makes them nameable in one control instead of
+       wired one at a time. */
+    var sfg = '<span class="sf-glyph">' +
+      '<span class="sf-row"><b></b><i style="width:18px"></i></span>' +
+      '<span class="sf-row"><b></b><i style="width:11px"></i></span>' +
+      '<span class="sf-row"><b></b><i style="width:15px"></i></span></span>';
+    return '<div class="node-shape shape-selectfor">' + removeBtn + sfg + 'Select For</div>';
   }
   if (node.type === 'output') return '<div class="node-shape shape-output">' + removeBtn + 'Output</div>';
   return '';
@@ -2260,6 +2439,10 @@ function drawArrows() {
    function.                                                                   */
 
 var DISPLAY_ROW_LIMIT = 50;
+/* How many per-group tables the "summary + row lists" view will draw. Ten is
+   more than a Compare has ever had and few enough that a breakdown by course
+   stays a page rather than a download. */
+var DISPLAY_CARD_LIMIT = 10;
 
 function tableHTML(t, title, badge) {
   if (t.columns.length === 0) {
@@ -2334,13 +2517,31 @@ function resultHTML(node, r) {
   if (show === 'summary' || show === 'lists') {
     var branches = (r.table.meta && r.table.meta.branches) || null;
     if (branches) {
-      // Compare-fed: the summary first, then per-branch detail if asked for
-      var html = tableHTML(t, 'Comparison', branches.length + ' branches');
+      /* Compare-fed or SelectFor-fed: the summary first, then per-branch
+         detail if asked for. The heading comes from the meta rather than
+         being hardcoded, because "Comparison / 12 branches" over a breakdown
+         by course names the node that did not produce it. Compare emits no
+         title and keeps the wording it always had. */
+      var bTitle = (r.table.meta && r.table.meta.title) || 'Comparison';
+      var bUnit  = (r.table.meta && r.table.meta.unit)  ||
+                   (branches.length === 1 ? 'branch' : 'branches');
+      var html = tableHTML(t, bTitle, branches.length + ' ' + bUnit);
       if (show === 'lists') {
-        html += branches.map(function(b) {
+        /* Capped for the reason the rows inside each card are capped, one
+           level up. A Compare has two or three branches and this never binds;
+           a breakdown by course has seventy-eight groups, and rendering a
+           table for each produced most of a megabyte of markup to show
+           something nobody scrolls to. Copy and Save are unaffected — they
+           write every group, which is where an answer that long belongs. */
+        html += branches.slice(0, DISPLAY_CARD_LIMIT).map(function(b) {
           return '<div class="cmp-branch-card">' +
             tableHTML(b.table, b.label, String(b.table.rows.length)) + '</div>';
         }).join('');
+        if (branches.length > DISPLAY_CARD_LIMIT) {
+          html += '<div class="cmp-more-cards">... ' +
+            (branches.length - DISPLAY_CARD_LIMIT) + ' more ' + bUnit +
+            ' not shown — Copy and Save include every one</div>';
+        }
       }
       return html;
     }
@@ -2968,7 +3169,7 @@ function mergeCfg(base, saved) {
   // Scalar settings are read straight into HTML attributes and comparisons, so
   // a file supplying an object or array where a string belongs is coerced
   // rather than trusted.
-  ['pop','show','filename','sort'].forEach(function(k) {
+  ['pop','show','filename','sort','by','labelCol'].forEach(function(k) {
     if (base[k] !== undefined && typeof base[k] !== 'string') {
       base[k] = (base[k] === null || typeof base[k] === 'object') ? '' : String(base[k]);
     }
@@ -2978,6 +3179,26 @@ function mergeCfg(base, saved) {
   }
   if (Object.prototype.hasOwnProperty.call(base, 'measures') && !Array.isArray(base.measures)) {
     base.measures = DEFAULT_MEASURES.slice();
+  }
+  /* SelectFor's measures, which are objects rather than Compare's strings —
+     the reason they are not both called `measures`. Every element is rebuilt
+     from a fresh default rather than patched in place, so a file supplying a
+     number, a string or a nested object where {op, col} belongs cannot put a
+     value into the model that the panel would then read into an attribute.
+     op and col are both resolved against the live table at render and at
+     evaluation anyway, so an unrecognised one falls back rather than breaking
+     — this guard only has to guarantee the SHAPE. */
+  if (Object.prototype.hasOwnProperty.call(base, 'stats')) {
+    var rawStats = Array.isArray(base.stats) ? base.stats : [];
+    base.stats = rawStats.slice(0, 20).map(function(x) {
+      var st = newStat();
+      if (x && typeof x === 'object' && !Array.isArray(x)) {
+        if (typeof x.op === 'string')  st.op  = x.op;
+        if (typeof x.col === 'string') st.col = x.col;
+      }
+      return st;
+    });
+    if (!base.stats.length) base.stats = [newStat()];
   }
   /* The dataset descriptor is a name and a list of years and nothing else. It
      is read straight back into the panel's markup, so a file supplying an
@@ -3830,6 +4051,8 @@ window.removeNode = removeNode;
 window.addCriterion = addCriterion;
 window.addSortKey = addSortKey;
 window.removeSortKey = removeSortKey;
+window.addStat = addStat;
+window.removeStat = removeStat;
 window.removeCriterion = removeCriterion;
 window.clearAll = clearAll;
 window.runQuery = runQuery;
@@ -3953,6 +4176,9 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     rangeKey: rangeKey, isBlank: isBlank,
     newCriterion: newCriterion, defaultCfg: defaultCfg,
     normaliseShow: normaliseShow, outputTable: outputTable, defaultAvgCol: defaultAvgCol,
+    branchesFeedOutput: branchesFeedOutput, BRANCH_NODES: BRANCH_NODES,
+    ROW_SHOWS: ROW_SHOWS, CMP_SHOWS: CMP_SHOWS, branchProducer: branchProducer,
+    DISPLAY_ROW_LIMIT: DISPLAY_ROW_LIMIT, DISPLAY_CARD_LIMIT: DISPLAY_CARD_LIMIT,
     meanOf: meanOf, MEASURES: MEASURES,
 
     // sort
@@ -3979,6 +4205,15 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     aggregateRowsIdx: aggregateRowsIdx, applyAggregateRows: applyAggregateRows,
     outputCols: outputCols,
     columnValues: columnValues,
+
+    // select for
+    SELECTFOR_OPS: SELECTFOR_OPS, selectForOp: selectForOp,
+    groupFields: groupFields, groupField: groupField, groupColumn: groupColumn,
+    statsOf: statsOf, newStat: newStat, defaultStats: defaultStats, statCol: statCol,
+    selectForColumns: selectForColumns, evaluateSelectFor: evaluateSelectFor,
+    labelCols: labelCols, labelsFromTable: labelsFromTable,
+    labelsFromData: labelsFromData, rowsForLabel: rowsForLabel,
+    addStat: addStat, removeStat: removeStat,
 
     // unique
     uniqueCols: uniqueCols, uniqueCol: uniqueCol, uniqueCellKey: uniqueCellKey,

@@ -63,6 +63,10 @@
         <span class="proc-desc">One value per row, one column out</span>
       </button>
       <div class="proc-group cat-branches">Branches</div>
+      <button class="proc-item cat-branches" onclick="addProcNode('selectFor')">
+        <span class="proc-name">Select For</span>
+        <span class="proc-desc">One row per group &mdash; name the column to split on</span>
+      </button>
       <button class="proc-item cat-branches" onclick="addProcNode('combine')">
         <span class="proc-name">Combine</span>
         <span class="proc-desc">Stack rows, or join columns side by side</span>
@@ -491,7 +495,7 @@
         <!-- ── NODE REFERENCE ──────────────────────────────── -->
         <section id="help-nodes">
           <h3>Node reference</h3>
-          <p>Two menus hold the eleven nodes that sit between a Source and an Output, split by what
+          <p>Two menus hold the twelve nodes that sit between a Source and an Output, split by what
              each does to the shape of the table. The colour of a node on the canvas is its group, so
              you can read an unfamiliar graph at a glance: where it narrows, where it multiplies,
              where it collapses, where branches meet.</p>
@@ -502,7 +506,7 @@
              Summarise replaces many rows with one, and Branches pulls several tables into one.</p>
 
           <figure class="help-fig help-fig-narrow">
-            <svg viewBox="0 0 340 576" xmlns="http://www.w3.org/2000/svg" role="img"
+            <svg viewBox="0 0 340 610" xmlns="http://www.w3.org/2000/svg" role="img"
                  aria-label="The Reshape menu, and the Processing menu with its three colour-coded groups">
               <rect x="8" y="8" width="92" height="22" rx="5" fill="none" stroke="#5a3a7a"/>
               <text x="54" y="23" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Reshape &#9662;</text>
@@ -520,7 +524,7 @@
 
               <rect x="8" y="244" width="104" height="22" rx="5" fill="none" stroke="#3d3d3d"/>
               <text x="60" y="259" fill="#9a9a9a" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Processing &#9662;</text>
-              <rect x="8" y="274" width="324" height="292" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <rect x="8" y="274" width="324" height="326" rx="6" fill="#141414" stroke="#2a2a2a"/>
               <text x="22" y="296" fill="#a8d050" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">EXPAND</text>
               <text x="24" y="316" fill="#a8d050" font-size="11" font-family="system-ui, sans-serif">Project</text>
               <text x="24" y="329" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row per course</text>
@@ -532,10 +536,12 @@
               <text x="24" y="444" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Rows</text>
               <text x="24" y="457" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One value per row, one column out</text>
               <text x="22" y="484" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
-              <text x="24" y="504" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
-              <text x="24" y="517" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
-              <text x="24" y="538" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
-              <text x="24" y="551" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
+              <text x="24" y="504" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Select For</text>
+              <text x="24" y="517" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row per group, named by a column</text>
+              <text x="24" y="538" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
+              <text x="24" y="551" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
+              <text x="24" y="572" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
+              <text x="24" y="585" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
             </svg>
           </figure>
 
@@ -632,6 +638,25 @@
           <p class="help-note">Several tables in, one out. These are the only nodes that take more
              than one wire.</p>
           <dl class="help-defs">
+            <dt>Select For</dt>
+            <dd>A breakdown: one row per group, with the measures you pick alongside. Name the
+                column to split on &mdash; <i>For each Year</i>, <i>For each Degree</i> &mdash; and
+                it runs that split once per value, so &ldquo;how many in each year, and their
+                average mark&rdquo; is one node rather than one branch per year.
+                <br>It groups by the things a <b>Filter</b> can test, which includes the ones that
+                are not columns: <i>Took course</i> and <i>Took subject</i> reach inside a
+                student's course list, so you can break a cohort down by course without a
+                <b>Project</b> first &mdash; a row stays a student and a count stays a count of
+                students.
+                <br>It has a second input, <b>Labels</b>, and leaving it empty is the common case:
+                the groups are then whatever values are in the data. Wire a one-column table in
+                and those values become the groups instead, which does two things the data cannot.
+                A group nothing matches still gets a row, with a count of zero &mdash; a course
+                nobody took this year is the row you are looking for, and grouping by the data
+                alone can never produce it. And the groups can come from a different branch
+                entirely: the courses that ran in 2022 against the enrolments of 2024.
+                <br>It does not reorder. Put a <b>Sort</b> after it, and a <b>Take</b> after that,
+                for the largest few.</dd>
             <dt>Combine</dt>
             <dd>Four modes, in two kinds. <b>Merge</b> adds vertically: branches stack into one
                 longer table, so their columns have to match, and duplicates are kept unless you ask
@@ -646,9 +671,14 @@
                 two branches carry the same column name, the incoming one is renamed with the node
                 it came from rather than overwriting what is there.</dd>
             <dt>Compare</dt>
-            <dd>Puts branches beside each other instead, one column per branch, with a row per
+            <dd>Puts branches beside each other instead, one row per branch, with a column per
                 measure. Use it to hold two populations up against one another rather than to pool
-                them.</dd>
+                them &mdash; two branches that are not a split of anything, which is the case
+                <b>Select For</b> cannot cover.
+                <br>Where the branches <i>are</i> a split of one column &mdash; a branch per year,
+                a branch per degree &mdash; <b>Select For</b> says the same thing in one node
+                instead of one wire per group, and says it for values that are not in the data
+                yet. Compare is kept for the other case, and for queries already built on it.</dd>
           </dl>
 
           <h4 class="help-cat help-cat-output">Output</h4>

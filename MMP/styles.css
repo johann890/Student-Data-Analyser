@@ -1725,6 +1725,7 @@ th.cmp-num { color: #383838 !important; }
 
 /* ── BRANCHES ── rose ───────────────────────────────────── */
 .shape-combine,
+.shape-selectfor,
 .shape-compare {
   border-color: #7a2f52;
   background: #170a11;
@@ -1752,6 +1753,8 @@ th.cmp-num { color: #383838 !important; }
 .cmb-in i,
 .cmb-out i,
 .cmb-glyph b,
+.sf-row i,
+.sf-row b,
 .cmp-glyph i {
   background: currentColor;
 }
@@ -2232,4 +2235,72 @@ th.cmp-num { color: #383838 !important; }
   }
   .help-navitem { white-space: nowrap; flex-shrink: 0; }
   .help-body { padding: 14px 16px 30px; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SELECT FOR
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Taller than its Branches sibling because it is the only node carrying two
+   labelled port stubs. The numbers here and in SHAPE are checked against each
+   other by 17-shape-styling — the model measures this box for snap-to-connect
+   and zoomToFit, and a stylesheet that disagrees puts the arrowheads slightly
+   off a shape nobody notices is the wrong size. */
+.shape-selectfor {
+  width: 118px; height: 88px;
+  border-radius: 3px;
+  /* The family colour, written out rather than left to the Branches rule to
+     supply. That rule sets border-COLOR and this block is appended after it,
+     so a shorthand `border:` here would win on source order and quietly paint
+     this node violet among the rose ones — which is what it did, and what the
+     styling suite could not see, because the suite only asked whether the
+     class was named in a rule setting the colour and not whether that rule
+     won. It asks the stronger question now. */
+  border: 2.5px solid #7a2f52;
+  background: #170a11;
+  color: #e089ae;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-selectfor:active { cursor: grabbing; }
+
+/* Three rows, each a dot and a bar of its own length: named groups with a
+   measure each. Compare's glyph is the same three bars with no dots, which is
+   exactly the difference — Compare's branches are wired and anonymous, these
+   are named by a column. */
+.sf-glyph { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.sf-row { display: flex; align-items: center; gap: 3px; }
+.sf-row b { display: block; width: 3px; height: 3px; border-radius: 50%; opacity: 0.9; }
+.sf-row i { display: block; height: 3px; border-radius: 1px; opacity: 0.6; }
+
+/* ── SELECT FOR CONFIG PANEL ─────────────────────────────── */
+/* The same list shape as the sort keys, one column narrower: a measure is an
+   operation and a column, with no priority rank to show because measures are
+   independent of one another and their order is only the column order. */
+.stat-list { display: flex; flex-direction: column; gap: 4px; }
+.stat-row {
+  display: grid;
+  /* operation | column | delete */
+  grid-template-columns: 1fr 1fr 16px;
+  gap: 4px;
+  align-items: center;
+}
+.stat-op, .stat-col { font-size: 10px; min-width: 0; }
+/* Placeholders keeping row 1's two selects on the same vertical lines as every
+   other row's, whether or not the row can be deleted and whether or not its
+   measure takes a column. */
+.stat-nodel { display: block; }
+.stat-nocol { display: block; }
+
+/* The "n more groups not shown" line under a capped set of per-group cards.
+   Styled as the row-cap note inside a table is, because it says the same
+   thing about a different axis. */
+.cmp-more-cards {
+  font-size: 10px;
+  color: #5a5a5a;
+  padding: 6px 2px 2px;
+  text-align: center;
 }

@@ -31,7 +31,8 @@ const CLASS = {
   sort: 'shape-sort', reverse: 'shape-reverse', take: 'shape-take',
   unique: 'shape-unique', select: 'shape-select', project: 'shape-project',
   aggregate: 'shape-aggregate', aggregateColumns: 'shape-aggcols',
-  aggregateRows: 'shape-aggrows', combine: 'shape-combine', output: 'shape-output'
+  aggregateRows: 'shape-aggrows', combine: 'shape-combine',
+  selectFor: 'shape-selectfor', output: 'shape-output'
 };
 
 /* The family each node belongs to, and the colour that family is drawn in.
@@ -43,7 +44,12 @@ const FAMILY = {
      its colour and its own menu group are two of the ways it says so. */
   expand:    { colour: '#4a6a1e', types: ['project'] },
   summarise: { colour: '#1f6a6a', types: ['aggregate', 'aggregateColumns', 'aggregateRows'] },
-  branches:  { colour: '#7a2f52', types: ['combine', 'compare'] }
+  /* SelectFor joins Branches rather than Summarise, though it does summarise.
+     The family is read off the canvas as "this node takes more than one wire",
+     and it is the only node with two different ports — putting it in teal
+     would say it behaves like Aggregate, which takes one table and cannot be
+     fed a label set at all. */
+  branches:  { colour: '#7a2f52', types: ['combine', 'compare', 'selectFor'] }
 };
 
 function declaredSize(cls) {
@@ -110,6 +116,39 @@ module.exports = ({ describe, test }) => {
         types.forEach(t =>
           assert.includes(named, '.' + CLASS[t],
             CLASS[t] + ' is in no rule setting ' + colour + ', so it keeps the base colour'));
+      });
+    });
+
+    test('the family colour is the one that actually wins', () => {
+      /* The check above asks whether a class is NAMED in a rule setting its
+         family colour. That is not the same question as what gets drawn, and
+         SelectFor shipped for an afternoon proving it: its own block, appended
+         to the end of the stylesheet, carried a `border:` shorthand in the
+         violet of the block it was copied from, and won on source order over
+         the Branches rule above it. The node rendered violet among the rose
+         ones with this suite green — the AggregateRows bug exactly, wearing
+         the one disguise the suite had no eye for.
+
+         So: walk every rule that sets a border colour on a shape class and
+         keep the LAST one for each. These selectors are all single classes of
+         equal specificity, so source order is the whole cascade here. */
+      const winner = {};
+      const re = /([^{}]*)\{([^}]*)\}/g;
+      let m;
+      while ((m = re.exec(CSS))) {
+        const decl = /border(?:-color)?:[^;]*?(#[0-9a-f]{3,8})/i.exec(m[2]);
+        if (!decl) continue;
+        m[1].split(',').forEach(sel => {
+          const cls = /\.(shape-[a-z]+)\s*$/i.exec(sel.trim());
+          if (cls) winner[cls[1]] = decl[1].toLowerCase();
+        });
+      }
+      Object.keys(FAMILY).forEach(fam => {
+        FAMILY[fam].types.forEach(t => {
+          assert.equal(winner[CLASS[t]], FAMILY[fam].colour,
+            CLASS[t] + ' is drawn ' + winner[CLASS[t]] + ', not the ' + fam +
+            ' colour ' + FAMILY[fam].colour + ' — a later rule is overriding it');
+        });
       });
     });
 
