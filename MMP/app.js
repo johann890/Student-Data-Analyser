@@ -5997,17 +5997,56 @@ function writeClipboard(text, btn) {
   }
 }
 
-function downloadFile(name, content, mime) {
+/* WRITING A FILE FROM A PAGE THAT IS NOT BEING SERVED.
+
+   This tool is opened from a file:// URL with no build step, and that makes
+   saving harder than it looks. Three separate things went wrong here, and the
+   first two fixes each traded one failure for another:
+
+   1. The anchor was removed and the object URL revoked 1s after .click().
+      WebKit starts a download asynchronously and reads the blob AFTER the
+      handler returns, so a revoke on a timer is a race against the browser.
+      Losing it produces exactly "WebKitBlobResource error 1" on a blob:null
+      URL — the blob is not missing because the origin is opaque, it is missing
+      because we threw it away while WebKit was still fetching it.
+
+   2. Swapping the blob for a data: URI avoided the race but introduced a size
+      ceiling. A saved query is 2-10KB and rode under it; a CSV export of a year
+      file is ~320KB, and ~460KB once percent-encoded into a URL. That is why
+      Save Query worked and Save CSV did not — the same code, told to carry
+      fifty times as much.
+
+   3. A CSV announced as text/csv is something Safari knows how to display, so
+      it displays it: the tab fills with rows and no file is written. WebKit
+      weighs its own idea of the type against the download attribute and wins.
+
+   So: a blob, which has no size ceiling and does not inflate; typed as
+   application/octet-stream, which leaves nothing to render, so a download is
+   the only thing left to do with the bytes; and torn down long after the click
+   rather than in a race with it. The 40 second delay is what FileSaver.js
+   settled on for the same reason.
+
+   Nothing downstream reads that type. The extension on the download attribute
+   decides the file on disk and what opens it, and that is still .csv. */
+var FORCE_DOWNLOAD_TYPE = 'application/octet-stream';
+var DOWNLOAD_TEARDOWN_MS = 40000;
+
+function downloadFile(name, content) {
   try {
-    var blob = new Blob([content], { type: mime + ';charset=utf-8' });
-    var url = URL.createObjectURL(blob);
+    var url = URL.createObjectURL(new Blob([content], { type: FORCE_DOWNLOAD_TYPE }));
     var a = document.createElement('a');
     a.href = url;
     a.download = name;
+    a.rel = 'noopener';
+    a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
-    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    /* Both the anchor and the URL outlive the click, because the download that
+       reads them has not necessarily started yet. */
+    setTimeout(function () {
+      if (a.parentNode) a.parentNode.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, DOWNLOAD_TEARDOWN_MS);
     return true;
   } catch (err) { return false; }
 }
@@ -6039,7 +6078,7 @@ function saveOutput(id, btn) {
   var e = exportEntry(id, btn);
   if (!e) return;
   var name = safeName(e.name) + '.csv';
-  flashBtn(btn, downloadFile(name, serialiseTable(exportTableFor(e), ',', true), 'text/csv')
+  flashBtn(btn, downloadFile(name, serialiseTable(exportTableFor(e), ',', true))
     ? 'Saved ✓' : 'Save failed');
 }
 
@@ -6217,7 +6256,7 @@ function confirmSaveGraph() {
 function writeQueryFile(name, btn) {
   if (nodes.length === 0) { flashBtn(btn, 'Nothing to save'); return; }
   var json = JSON.stringify(serialiseGraph(), null, 2);
-  flashBtn(btn, downloadFile(name, json, 'application/json') ? 'Saved ✓' : 'Save failed');
+  flashBtn(btn, downloadFile(name, json) ? 'Saved ✓' : 'Save failed');
 }
 
 /* Validation is deliberately forgiving about detail and strict about structure.

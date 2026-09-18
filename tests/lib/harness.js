@@ -99,17 +99,31 @@ function boot() {
   const w = dom.window;
   const doc = w.document;
 
-  // Downloads: capture instead of performing, so save paths are assertable
+  /* Downloads: capture instead of performing, so save paths are assertable.
+
+     What is captured is read off the anchor the application actually built, so
+     these tests see what a browser would be handed. downloadFile() keeps the
+     anchor in the document and revokes the object URL forty seconds later
+     rather than immediately, because WebKit reads the blob after the click
+     handler returns — so the anchor is still there to be read when click()
+     fires, which is the whole point of the change. */
   const saved = [];
   w.URL.createObjectURL = () => 'blob:test';
   w.URL.revokeObjectURL = () => {};
   let pendingContent = null;
   w.Blob = class { constructor(parts) { pendingContent = parts.join(''); } };
+  const hrefContent = (href) => {
+    const comma = String(href || '').indexOf(',');
+    if (!String(href).startsWith('data:') || comma === -1) return pendingContent;
+    return decodeURIComponent(String(href).slice(comma + 1));
+  };
   const realCreate = doc.createElement.bind(doc);
   doc.createElement = function (tag) {
     const el = realCreate(tag);
     if (tag === 'a') {
-      el.click = function () { saved.push({ name: el.download, content: pendingContent }); };
+      el.click = function () {
+        saved.push({ name: el.download, content: hrefContent(el.href), href: el.href });
+      };
     }
     return el;
   };
