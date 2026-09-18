@@ -13,7 +13,14 @@ module.exports = ({ describe, test }) => {
       assert.includes(R.source, 'filter');
       assert.includes(R.source, 'output');
       assert.includes(R.filter, 'filter');
-      assert.deepEqual(R.compare, ['output'], 'a comparison table cannot be filtered again');
+      /* Compare was output-only. That was reversed: a comparison is the only
+         labelled multi-row answer the tool can currently produce, and refusing
+         to let it be aggregated made "count per year, then average those
+         counts" unbuildable through it — the exact case app.js:212 cites. */
+      assert.includes(R.compare, 'output');
+      assert.includes(R.compare, 'aggregate', 'a comparison must be aggregatable');
+      assert.deepEqual(R.compare, R.filter,
+        'Compare now goes wherever any other table-producing node goes');
     });
 
     test('every node type appears in the rule table', () => {
@@ -98,13 +105,13 @@ module.exports = ({ describe, test }) => {
       h.app.connect(c.id, o.id);
       h.w.render();
       h.set(o.id, 'show', 'count');
-      h.set(f1.id, 'crit.0.op:gradeAvg', 'gte'); h.set(f1.id, 'crit.0.value:gradeAvg', '80');
-      h.set(f2.id, 'crit.0.op:gradeAvg', 'gte'); h.set(f2.id, 'crit.0.value:gradeAvg', '70');
+      h.set(f1.id, 'crit.0.op:gpa', 'gte'); h.set(f1.id, 'crit.0.value:gpa', '80');
+      h.set(f2.id, 'crit.0.op:gpa', 'gte'); h.set(f2.id, 'crit.0.value:gpa', '70');
       h.w.render();
       h.set(c.id, 'dedupe', true);
       h.w.runQuery();
       // Everyone >= 80 is also >= 70, so a deduped union is exactly the wider set
-      assert.equal(Number(h.bigNum()), h.app.STUDENTS.filter(x => x.gradeAvg >= 70).length);
+      assert.equal(Number(h.bigNum()), h.app.STUDENTS.filter(x => x.gpa >= 70).length);
       assert.includes(h.text('.query-log').toUpperCase(), 'COMBINE');
     });
 
@@ -117,11 +124,11 @@ module.exports = ({ describe, test }) => {
       h.app.connect(c.id, o.id);
       h.w.render();
       h.set(o.id, 'show', 'count');
-      ['crit.0.op:gradeAvg', 'crit.0.value:gradeAvg'].forEach(() => {});
-      h.set(f1.id, 'crit.0.op:gradeAvg', 'gte'); h.set(f1.id, 'crit.0.value:gradeAvg', '80');
-      h.set(f2.id, 'crit.0.op:gradeAvg', 'gte'); h.set(f2.id, 'crit.0.value:gradeAvg', '80');
+      ['crit.0.op:gpa', 'crit.0.value:gpa'].forEach(() => {});
+      h.set(f1.id, 'crit.0.op:gpa', 'gte'); h.set(f1.id, 'crit.0.value:gpa', '80');
+      h.set(f2.id, 'crit.0.op:gpa', 'gte'); h.set(f2.id, 'crit.0.value:gpa', '80');
       h.w.runQuery();
-      const n = h.app.STUDENTS.filter(x => x.gradeAvg >= 80).length;
+      const n = h.app.STUDENTS.filter(x => x.gpa >= 80).length;
       assert.equal(Number(h.bigNum()), n * 2, 'merge stacks; dropping duplicates is opt-in');
     });
 
@@ -134,7 +141,7 @@ module.exports = ({ describe, test }) => {
       h.app.connect(sel.id, c.id);      // a narrowed one
       h.app.connect(c.id, o.id);
       h.w.render();
-      h.set(sel.id, 'column:gradeAvg', false);
+      h.set(sel.id, 'column:gpa', false);
       h.w.runQuery();
       const err = h.text('.error-box');
       assert.ok(err, 'a ragged table would otherwise be produced silently');

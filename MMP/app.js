@@ -4,20 +4,194 @@
 var EDGE_PALETTE = ['#ffffff','#30d87a','#4aaff0','#e060b0','#a0d040','#9080e0'];
 var edgeColorIndex = 0;
 
-/* TEST DATASET */
-var SPECS = ["Software Engineering","Computer Science","Information Technology","Data Science","Cybersecurity","Artificial Intelligence"];
+/* ============================================================================
+   THE DATASET REGISTRIES
+   ============================================================================
+   Six arrays and one map, declared empty and filled from whatever files the
+   Source nodes are given. Nothing is generated at start-up any more: the tool
+   opens with no data at all, and a Source that has not been handed its files
+   refuses to run rather than quietly answering about a fictional cohort.
+
+   They are MUTATED IN PLACE, never reassigned, and that is load-bearing.
+   STUDENT_COLUMNS captures `values:SPECS` and `values:YEARS` by reference, and
+   enrolmentColumns() captures SUBJECTS and COURSES the same way, so a Filter
+   dropdown offers whatever is currently loaded without a single one of those
+   definitions knowing that data arrives from a file. Reassigning would leave
+   every column pointing at the empty array it was built from.
+
+   They are the UNION across every Source. Rows stay per-Source — two Sources
+   holding two different exports each answer about their own — but a dropdown
+   that offered only one Source's courses would be wrong for the graph as a
+   whole, and the alternative (a per-node schema pass) buys nothing: offering a
+   course no rows contain costs an empty result, which is the honest answer.  */
+var STUDENTS       = [];   // every loaded student, all Sources
+var SPECS          = [];   // maj1 codes, as the archive writes them
+var DEGREES        = [];   // deg1 codes: BSC, BEHONS, BCA
+var YEARS          = [];   // calendar years, ascending
+var SUBJECTS       = [];   // four-letter course prefixes, first-seen order
+var LEVELS         = [];   // course levels present, ascending: 1, 2, 3, 4
+var COURSES        = [];   // { code, name, subject, level, points }
+var COURSE_BY_CODE = {};
+
+/* Rebuilt from scratch on every load or clear, because a registry that only
+   ever grows would keep offering a course from a file that has since been
+   unloaded. Cheap enough to do wholesale — a few thousand enrolments — and a
+   great deal easier to reason about than incremental bookkeeping. */
+function rebuildRegistries() {
+  var seenSpec = {}, seenDeg = {}, seenYear = {}, seenSubj = {}, seenLvl = {}, seenCode = {};
+  STUDENTS.length = 0; SPECS.length = 0; DEGREES.length = 0; YEARS.length = 0;
+  SUBJECTS.length = 0; LEVELS.length = 0; COURSES.length = 0;
+  Object.keys(COURSE_BY_CODE).forEach(function(k){ delete COURSE_BY_CODE[k]; });
+
+  loadedDatasets().forEach(function(d) {
+    d.students.forEach(function(s) {
+      STUDENTS.push(s);
+      if (s.specialisation && !seenSpec[s.specialisation]) {
+        seenSpec[s.specialisation] = true; SPECS.push(s.specialisation);
+      }
+      if (s.degree && !seenDeg[s.degree]) {
+        seenDeg[s.degree] = true; DEGREES.push(s.degree);
+      }
+      if (!seenYear[s.year]) { seenYear[s.year] = true; YEARS.push(s.year); }
+      s.courses.forEach(function(e) {
+        if (e.subject && !seenSubj[e.subject]) {
+          seenSubj[e.subject] = true; SUBJECTS.push(e.subject);
+        }
+        if (e.level !== null && e.level !== undefined && !seenLvl[e.level]) {
+          seenLvl[e.level] = true; LEVELS.push(e.level);
+        }
+        if (!seenCode[e.code]) {
+          seenCode[e.code] = true;
+          var c = { code:e.code, name:e.name, subject:e.subject,
+                    level:e.level, points:e.points };
+          COURSES.push(c);
+          COURSE_BY_CODE[e.code] = c;
+        }
+      });
+    });
+  });
+
+  SPECS.sort();
+  DEGREES.sort();
+  YEARS.sort(function(a, b){ return a - b; });
+  SUBJECTS.sort();
+  LEVELS.sort(function(a, b){ return a - b; });
+  COURSES.sort(function(a, b){ return a.code < b.code ? -1 : a.code > b.code ? 1 : 0; });
+}
+
+/* The catalogue's first course, for a fresh Filter criterion to point at. A
+   constant before, because the catalogue was a constant; a function now,
+   because at the moment a criterion is created there may be no catalogue at
+   all. Empty string is a criterion that matches nothing, which is the right
+   behaviour for "took course ___" with no courses known. */
+function defaultCourse() { return COURSES.length ? COURSES[0].code : ''; }
+function defaultSubject() { return SUBJECTS.length ? SUBJECTS[0] : ''; }
+function defaultLevel()   { return LEVELS.length ? LEVELS[0] : ''; }
+
+/* THE LEVEL A COURSE IS TAUGHT AT, read from its own code: SWEN421 is a
+   400-level course, CGRA151 a 100-level one. The first digit is the level, and
+   the rest of the number distinguishes courses within it.
+
+   Derived rather than stored, because the archive has no level column and the
+   code is the only place the fact lives. That is the same reasoning `subject`
+   already follows — both are properties OF the code, and reading them out of it
+   keeps them true for a course this catalogue has never seen.
+
+   Worth having because the archive is not the honours-only year the built-in
+   dataset pretended: 2022 alone carries 697 enrolments at 100-level and 454 at
+   400-level. Averaging those together without being able to see the difference
+   is the kind of answer that is wrong without looking wrong. */
+function courseLevel(code) {
+  var m = /\d/.exec(String(code == null ? '' : code));
+  return m ? parseInt(m[0], 10) : null;
+}
+
+/* SYNTHETIC DATASET — reachable only from the test harness
+   ---------------------------------------------------------------------------
+   This was the dataset the tool shipped with, and it is now what the suites run
+   against: several hundred assertions are written in terms of its forty
+   students a year, its six specialisation names and its seeded GPAs, and
+   rewriting them against the archive would have changed what those tests say
+   rather than what they check.
+
+   installSyntheticDataset() is called from the __QB_TEST__ block at the foot of
+   this file and from nowhere else, so a production page never reaches any of
+   it. The Source falls back to it only when it holds no files of its own —
+   which, with the flag unset, is a fallback to null and therefore an error. */
+var SYN_SPECS = ["Software Engineering","Computer Science","Information Technology","Data Science","Cybersecurity","Artificial Intelligence"];
 var G22 = [78,82,91,65,88,72,95,55,83,70,61,79,86,73,90,68,77,84,62,92,75,80,58,87,71,94,66,85,76,89,63,74,81,93,69,78,85,72,60,88];
 var G23 = [82,85,78,70,91,76,88,60,86,74,65,83,89,77,92,71,80,87,66,95,78,84,62,90,75,97,70,88,80,93,67,78,84,96,73,82,88,76,63,91];
+
+/* THE GRADE MODEL
+   The archive records a letter Grade and the course's Pts. It does not record a
+   percentage mark, so there is no numeric column to average. Every numeric
+   question about attainment — "average grade", "better than", "in this range" —
+   therefore has to be answered in the grade points the university itself
+   assigns, not in marks the data does not contain.
+
+   Te Herenga Waka's scale is nine points, and its GPA is weighted by course
+   points: sum(gradePoint x points) / sum(points). Every failing grade is worth
+   zero, which is why D, E and K share a value: they are different reasons for
+   the same outcome. The letter travels alongside the number so the reason is
+   never lost — sorting still distinguishes a D from an E even though averaging
+   cannot. */
+var GRADE_POINTS = {
+  'A+':9, 'A':8, 'A-':7,
+  'B+':6, 'B':5, 'B-':4,
+  'C+':3, 'C':2, 'C-':1,
+  'D':0,  'E':0, 'K':0
+};
 
 /* Best to worst. Declared once and attached to every letterGrade column so a
    Sort can order grades the way a reader means them: as text, 'A+' falls
    between 'A' and 'A-' because '+' precedes '-' in ASCII. */
-var GRADE_ORDER = ['A+','A','A-','B+','B','B-','C+','C','D'];
+var GRADE_ORDER = ['A+','A','A-','B+','B','B-','C+','C','C-','D','E','K'];
 
-function letterGrade(g) {
+/* null, never 0, for anything ungraded. A blank Grade in the archive is a
+   course still in progress or withdrawn from, and scoring it zero would drag an
+   average down to report a result that does not exist yet. Ungraded enrolments
+   are left out of the GPA entirely — which is what the university does, and
+   what the supervisor confirmed. */
+function gradePoint(g) {
+  var p = GRADE_POINTS[String(g === undefined || g === null ? '' : g).trim()];
+  return p === undefined ? null : p;
+}
+
+/* Points-weighted, so a 30-point ENGR489 counts twice a 15-point course.
+   Rounded to two places because a GPA is a summary and the third decimal is
+   noise. A student with nothing graded has no GPA at all — null for the same
+   reason a blank grade is not a zero. */
+function gpaOf(enrolments) {
+  var pts = 0, weighted = 0;
+  (enrolments || []).forEach(function(e) {
+    var gp = gradePoint(e.letterGrade);
+    if (gp === null) return;
+    var w = Number(e.points) || 0;
+    pts += w;
+    weighted += gp * w;
+  });
+  return pts === 0 ? null : Math.round((weighted / pts) * 100) / 100;
+}
+
+/* A GPA read back as a letter, for the overall standing shown on a student row.
+   Indexed by grade point, so the array position IS the value — 7 is an A-, the
+   way the university describes a 7.0 GPA. Every failing grade is worth zero, so
+   zero can only come back as one of them; D is the least specific claim of the
+   three and therefore the honest one to make from a number alone. */
+var GRADE_BY_POINT = ['D','C-','C','C+','B-','B','B+','A-','A','A+'];
+function gradeFromGpa(g) {
+  if (g === null || g === undefined || isNaN(g)) return '';
+  return GRADE_BY_POINT[Math.max(0, Math.min(9, Math.round(g)))];
+}
+
+/* Generator-private. The real data has no marks, so nothing outside the
+   synthetic dataset may call this: it exists only to turn a latent ability
+   score into a plausible letter, and it dies with the built-in dataset. */
+function gradeFromMark(g) {
   if (g>=90) return 'A+'; if (g>=85) return 'A'; if (g>=80) return 'A-';
   if (g>=75) return 'B+'; if (g>=70) return 'B'; if (g>=65) return 'B-';
-  if (g>=60) return 'C+'; if (g>=55) return 'C'; return 'D';
+  if (g>=60) return 'C+'; if (g>=55) return 'C'; if (g>=50) return 'C-';
+  if (g>=45) return 'D';  return 'E';
 }
 
 /* COURSE CATALOGUE
@@ -28,8 +202,10 @@ function letterGrade(g) {
    The subject list is derived from the codes rather than hardcoded, so
    replacing this array with the real catalogue — more courses, new prefixes —
    requires no other change: the filter dropdowns, the subject criterion and
-   the breakdown tables all read from it. */
-var COURSES = [
+   the breakdown tables all read from it. That replacement has now happened for
+   real: COURSES is built from the Crse column of the loaded files, and this
+   array is only the synthetic generator's private catalogue. */
+var SYN_COURSES = [
   { code:'SWEN421', name:'Formal Foundations of Software Engineering' },
   { code:'SWEN422', name:'Human Computer Interaction' },
   { code:'SWEN423', name:'Software Design and Architecture' },
@@ -58,15 +234,17 @@ var COURSES = [
 var COURSE_POINTS = 15;   // every 400-level course in the catalogue
 var COURSES_PER_YEAR = 8; // 8 x 15 = 120 points, a full Honours year
 
-var SUBJECTS = [];        // derived from the codes, in first-seen order
-var COURSE_BY_CODE = {};
-COURSES.forEach(function(c) {
+SYN_COURSES.forEach(function(c) {
   c.subject = c.code.slice(0, 4);
+  c.level = courseLevel(c.code);
   c.points = COURSE_POINTS;
-  COURSE_BY_CODE[c.code] = c;
-  if (SUBJECTS.indexOf(c.subject) === -1) SUBJECTS.push(c.subject);
 });
-var DEFAULT_COURSE = COURSES[0].code;
+var SYN_COURSE_BY_CODE = {};
+SYN_COURSES.forEach(function(c){ SYN_COURSE_BY_CODE[c.code] = c; });
+var SYN_SUBJECTS = [];
+SYN_COURSES.forEach(function(c) {
+  if (SYN_SUBJECTS.indexOf(c.subject) === -1) SYN_SUBJECTS.push(c.subject);
+});
 
 // Taken by everyone regardless of specialisation — the project and the
 // professional-practice course are core to the Honours year.
@@ -107,8 +285,8 @@ function makeRng(seed) {
 
 // Weighted sampling without replacement, seeded from the student's own id.
 function pickCourses(rand, spec) {
-  var chosen = CORE_COURSES.filter(function(code){ return COURSE_BY_CODE[code]; });
-  var pool = COURSES.filter(function(c){ return chosen.indexOf(c.code) === -1; });
+  var chosen = CORE_COURSES.filter(function(code){ return SYN_COURSE_BY_CODE[code]; });
+  var pool = SYN_COURSES.filter(function(c){ return chosen.indexOf(c.code) === -1; });
   var weights = pool.map(function(c){ return subjectWeight(spec, c.subject); });
 
   while (chosen.length < COURSES_PER_YEAR && pool.length) {
@@ -133,9 +311,10 @@ function clampMark(m) { return Math.max(MARK_MIN, Math.min(MARK_MAX, m)); }
 function sumOf(a) { return a.reduce(function(x, y){ return x + y; }, 0); }
 
 /* Marks that scatter around the student's overall average and then sum back to
-   it exactly. Keeping the mean intact means gradeAvg stays the number it was
-   before courses existed, so every previously-recorded query result still
-   holds — the course detail is added underneath it, not instead of it. */
+   it exactly. The mark itself never reaches a table — it is the latent ability
+   score the letter grade is drawn from, the same way a real generator would
+   work — so keeping the mean intact is what makes the resulting GPA land near
+   the student's intended standing. */
 function marksAround(rand, target, n) {
   var m = [], i;
   for (i = 0; i < n; i++) {
@@ -156,47 +335,870 @@ function buildEnrolments(id, spec, year, target) {
   var codes = pickCourses(rand, spec);
   var marks = marksAround(rand, target, codes.length);
   return codes.map(function(code, i) {
-    var c = COURSE_BY_CODE[code];
+    var c = SYN_COURSE_BY_CODE[code];
     return {
       code: c.code,
       name: c.name,
       subject: c.subject,
+      level: c.level,
       points: c.points,
       year: year,
-      mark: marks[i],
-      letterGrade: letterGrade(marks[i])
+      letterGrade: gradeFromMark(marks[i]),
+      gradePoints: gradePoint(gradeFromMark(marks[i]))
     };
   });
 }
 
-var STUDENTS = [];
-var baseId = 1001;
-[G22, G23].forEach(function(arr, yi) {
-  arr.forEach(function(g, i) {
-    var id = baseId++;
-    var year = 2022 + yi;
-    var spec = SPECS[i % SPECS.length];
-    var enrolments = buildEnrolments(id, spec, year, g);
-    // Derived from the enrolments, not stored alongside them, so the two can
-    // never disagree.
-    var avg = Math.round(sumOf(enrolments.map(function(e){ return e.mark; })) / enrolments.length);
-    STUDENTS.push({
-      id: id,
-      gender: i % 2 === 0 ? 'M' : 'F',
-      year: year,
-      specialisation: spec,
-      courses: enrolments,
-      gradeAvg: avg,
-      letterGrade: letterGrade(avg)
+/* The generator's output, in the same shape parseYearFile() produces: one
+   object per student, enrolments nested. Both paths therefore hand the rest of
+   the tool the identical thing, which is what lets the suites go on exercising
+   every node against synthetic students while the Source itself only ever sees
+   a dataset it was given. */
+function buildSyntheticStudents() {
+  var out = [];
+  var baseId = 1001;
+  [G22, G23].forEach(function(arr, yi) {
+    arr.forEach(function(g, i) {
+      var id = baseId++;
+      var year = 2022 + yi;
+      var spec = SYN_SPECS[i % SYN_SPECS.length];
+      var enrolments = buildEnrolments(id, spec, year, g);
+      // Derived from the enrolments, not stored alongside them, so the two can
+      // never disagree.
+      var avg = gpaOf(enrolments);
+      out.push({
+        id: id,
+        gender: i % 2 === 0 ? 'M' : 'F',
+        year: year,
+        /* The generator's catalogue is a single honours year, so every
+           synthetic student is on the one programme the built-in dataset was
+           ever about. Stating it beats leaving the column undefined: the two
+           paths have to hand the rest of the tool the same shape, and a suite
+           asserts that they do. */
+        degree: 'BEHONS',
+        specialisation: spec,
+        courses: enrolments,
+        gpa: avg,
+        letterGrade: gradeFromGpa(avg)
+      });
     });
   });
-});
+  return out;
+}
 
 /* These student-object lookups (courseMark, takesCourse, courseStats, ...) were
    removed in the table refactor: course predicates now go through
    coursesColIndex() like every other table operation. They worked on arrays of
    student objects, which no longer travel anywhere. */
 
+
+
+/* ============================================================================
+   LOADING THE ARCHIVE — admission, parsing, and what a Source holds
+   ============================================================================
+   The tool ships with no data. A Source is handed two things, in this order:
+
+     headers.txt          the column names, and the 1..N index line under them
+     mcs-students-YYYY    one file per year, tab separated, one row per
+                          enrolment, with no extension at all
+
+   Both names are fixed by the archive, and BOTH ARE ENFORCED HERE rather than
+   left to the file picker. `accept` on an <input type=file> filters what the
+   dialog shows and binds nothing: every browser offers "All files", a file can
+   be dragged in, and a file can be renamed. The same reasoning already governs
+   graphFileProblem() for saved queries; this is that rule applied to the data.
+
+   WHY ADMISSION IS A SECURITY CONCERN AND NOT MERELY TIDINESS
+   ---------------------------------------------------------------------------
+   Every cell that survives this module reaches the DOM — the results table, the
+   edge preview, a filter dropdown, an exported CSV. A file read without
+   question is arbitrary attacker-chosen content given a path to all four. The
+   checks below are therefore layered, cheapest first, and each one refuses
+   rather than repairs:
+
+     1. NAME      exact for headers.txt, anchored for a year file, and the year
+                  has to be a plausible calendar year. Any directory component
+                  is stripped before matching, so a hand-built object claiming
+                  "../../etc/passwd" is judged on its last segment and then
+                  refused for not being one of the two names.
+     2. SIZE      empty is refused, and so is anything past MAX_DATA_FILE_BYTES,
+                  before a single byte is read. The archive's year files are
+                  ~300 KB; the cap is a hundred times that and still far below
+                  what would hang the tab.
+     3. SHAPE     a year file's every row must carry exactly as many tab
+                  separated fields as headers.txt declares. This is the check
+                  that makes the pair a pair: a file with the right name but
+                  another archive's columns is refused on line one rather than
+                  silently read into the wrong fields.
+     4. CONTENT   NUL and other C0 control characters are refused outright — no
+                  legitimate export contains them, and they are how a payload
+                  hides from a reader. Fields are capped, rows are capped, the
+                  ID must be digits, Pts must be a small non-negative number,
+                  and the Year column must agree with the year in the FILE NAME.
+                  That last one is the integrity check with teeth: a file called
+                  mcs-students-2022 whose rows say 202301 is not the 2022 data
+                  and is not treated as though it were.
+
+   None of this replaces escaping — esc() still runs on every value on its way
+   into markup, because defence at the boundary and defence at the sink are
+   different jobs. What it does is keep the boundary narrow enough to describe
+   in a sentence: two file names, a fixed column count, and printable text.
+
+   WHY PER SOURCE
+   ---------------------------------------------------------------------------
+   A Source owns its files. Two Sources can hold two different exports and each
+   answers about its own rows, which is what makes "last year's archive against
+   this year's" a graph rather than two sessions. The registries above are the
+   union across all of them, for dropdowns only — see rebuildRegistries().
+
+   WHY THE DATA IS NEVER SAVED
+   ---------------------------------------------------------------------------
+   A saved query records the NAMES of the files a Source was given and not one
+   byte of their contents. Three reasons, and the first is sufficient on its
+   own: the archive is student records, and a query file gets emailed around.
+   The second is that a query is meant to be re-run against next year's data, so
+   baking in a snapshot defeats the point. The third is that a .json file is
+   trusted no further than any other input — data pasted into it would arrive
+   already parsed, past every check in this module.
+
+   So loading a query re-creates the graph and clears the data, and the Source
+   panel then names the files it wants. That is not an inconvenience to be
+   engineered away; it is the file-picker grant being asked for again, by the
+   user, for files this session has not been given.                           */
+
+var DATA_HEADERS_NAME = 'headers.txt';
+var DATA_YEAR_RE      = /^mcs-students-(\d{4})$/;
+var DATA_YEAR_MIN     = 1990;
+var DATA_YEAR_MAX     = 2099;
+
+/* 32 MB. The archive's year files are about 300 KB each, so this is two orders
+   of magnitude of headroom for a bigger cohort or a longer field list, and
+   still small enough that a refusal happens instantly rather than after the tab
+   has swallowed the file. */
+var MAX_DATA_FILE_BYTES = 32 * 1024 * 1024;
+
+/* Row and field caps. A quarter of a million enrolments is far more than any
+   single year of one school, and 512 characters is far more than any field in
+   this archive — the longest is an email address. Both exist so that a file
+   which passed the name check cannot still arrive as a denial of service or as
+   a single cell that unbalances every table it appears in. */
+var MAX_DATA_ROWS   = 250000;
+var MAX_FIELD_CHARS = 512;
+
+/* One Source accumulates year files, so there has to be a ceiling on how many.
+   Fifty is longer than the archive has existed and longer than any question
+   anyone will ask of it, and it matches the cap the saved descriptor applies to
+   the same list — two limits on one thing that disagreed would mean a Source
+   holding a year its own saved query could not name. */
+var MAX_YEAR_FILES = 50;
+
+/* A course is worth points; nothing in this catalogue is worth more than a
+   double-weight honours project, and a number outside this range means the
+   column has been misread rather than that the course is unusual. */
+var MAX_COURSE_POINTS = 200;
+
+/* The columns this tool reads. `deg1` joined them when the archive turned out
+   to hold three degrees rather than the single honours programme the built-in
+   dataset assumed, and it is a student-level fact: no student in either year
+   carries two of them, or changes between years. Everything else in the file —
+   the names, the usernames, the email addresses, the ethnicity — is parsed past
+   and dropped on the floor. It is not needed to answer any of the supervisor's questions, and
+   the least exposed way to hold personal data is not to hold it. */
+var REQUIRED_HEADER_COLUMNS = ['ID', 'gender', 'deg1', 'maj1', 'Year', 'Crse', 'Grade', 'Pts'];
+
+/* C0 controls except tab, newline and carriage return, plus DEL. Tested against
+   the whole file before it is split, because the cheapest place to refuse a
+   file is before it has become anything more structured than a string. */
+var CONTROL_CHAR_RE = new RegExp('[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]');
+
+/* PER-SOURCE STATE — deliberately not part of the node model
+   ---------------------------------------------------------------------------
+   Keyed by node id and reset by applyGraph(), so it cannot travel through a
+   saved file or survive a load. Keeping it out of `node.cfg` is what makes
+   "the query is saved, the data is not" true by construction rather than by
+   remembering to strip a field on the way out. */
+var SOURCE_DATA = {};
+
+/* A header accepted but not yet paired with any year file. Held apart from
+   SOURCE_DATA because a header on its own is not a dataset — there is nothing
+   to run a query against until a year file arrives — and the panel should say
+   so rather than showing a Source that looks ready. */
+var PENDING_HEADERS = {};
+
+/* The last thing that happened on this Source, shown under its file list: an
+   error to fix, or a confirmation of what went in. Transient, per node, and
+   never serialised. */
+var SOURCE_NOTICE = {};
+
+/* The synthetic dataset, installed only under __QB_TEST__ and null otherwise.
+   A Source with no files of its own falls back to it, which in a real page is a
+   fallback to nothing — and therefore the error this feature exists to raise. */
+var SYNTHETIC_DATASET = null;
+
+function loadedDatasets() {
+  var out = [];
+  if (SYNTHETIC_DATASET) out.push(SYNTHETIC_DATASET);
+  Object.keys(SOURCE_DATA).forEach(function(k) {
+    if (SOURCE_DATA[k]) out.push(SOURCE_DATA[k]);
+  });
+  return out;
+}
+
+function datasetFor(node) {
+  if (!node) return null;
+  return SOURCE_DATA[node.id] || SYNTHETIC_DATASET || null;
+}
+
+function hasSourceData(node) { return !!datasetFor(node); }
+
+/* The descriptor that DOES travel: names only. Read back out of cfg on load, so
+   the panel can say which files this query was built against without having
+   seen them. */
+function datasetCfg(node) {
+  var cfg = node.cfg = node.cfg || defaultCfg('source');
+  if (!cfg.dataset || typeof cfg.dataset !== 'object' || Array.isArray(cfg.dataset)) {
+    cfg.dataset = { headers:'', years:[] };
+  }
+  if (typeof cfg.dataset.headers !== 'string') cfg.dataset.headers = '';
+  if (!Array.isArray(cfg.dataset.years)) cfg.dataset.years = [];
+  return cfg.dataset;
+}
+
+/* ---------------------------------------------------------------- ADMISSION */
+
+/* A File's name never carries a directory, but this function is also handed
+   objects the tests build and, in principle, anything a future drag-and-drop
+   path produces. Judging the last segment means a name that tries to be a path
+   is answered by the ordinary "that is not one of the two names" refusal rather
+   than by a special case for traversal. */
+function dataFileName(file) {
+  var n = (file && file.name) != null ? String(file.name) : '';
+  return n.split(/[\\/]/).pop();
+}
+
+function sizeProblem(file, label) {
+  var size = Number(file && file.size);
+  if (!isFinite(size)) return null;   // a harness object that declares no size
+  if (size === 0) return 'The ' + label + ' is empty.';
+  if (size > MAX_DATA_FILE_BYTES) {
+    return 'The ' + label + ' is ' + Math.round(size / 1048576) + ' MB, past the ' +
+      Math.round(MAX_DATA_FILE_BYTES / 1048576) + ' MB limit, so it has not been read.';
+  }
+  return null;
+}
+
+function headersFileProblem(file) {
+  if (!file) return 'No file was chosen.';
+  var name = dataFileName(file);
+  if (name.toLowerCase() !== DATA_HEADERS_NAME) {
+    return 'The column file has to be named exactly "' + DATA_HEADERS_NAME +
+      '", and "' + name + '" is not. Nothing has been read from it.';
+  }
+  return sizeProblem(file, 'column file');
+}
+
+/* The year lives in the name, and the name is the only place the tool will take
+   it from. Deriving it from the contents instead would mean trusting the file
+   to say which year it is — and then the agreement check in parseYearFile()
+   would be comparing a value with itself. */
+function yearFileProblem(file) {
+  if (!file) return 'No file was chosen.';
+  var name = dataFileName(file);
+  var m = DATA_YEAR_RE.exec(name);
+  if (!m) {
+    return 'A year file has to be named "mcs-students-" followed by a four-digit ' +
+      'year and nothing else, like "mcs-students-2022", with no extension. "' + name +
+      '" is not, so nothing has been read from it.';
+  }
+  var year = parseInt(m[1], 10);
+  if (year < DATA_YEAR_MIN || year > DATA_YEAR_MAX) {
+    return '"' + name + '" claims the year ' + year + ', which is outside ' +
+      DATA_YEAR_MIN + ' to ' + DATA_YEAR_MAX + '. Nothing has been read from it.';
+  }
+  return sizeProblem(file, 'year file "' + name + '"');
+}
+
+function yearOfFile(file) {
+  var m = DATA_YEAR_RE.exec(dataFileName(file));
+  return m ? parseInt(m[1], 10) : null;
+}
+
+/* ------------------------------------------------------------------ PARSING */
+
+function controlCharProblem(text, label) {
+  if (CONTROL_CHAR_RE.test(text)) {
+    return 'The ' + label + ' contains control characters, which no export from ' +
+      'the archive does. It has been refused rather than read.';
+  }
+  return null;
+}
+
+/* headers.txt is two lines: the names, space separated and space aligned, and
+   under them the numbers 1..N naming each column's position. Both are used. The
+   names say which column holds what; the index line is checked against them,
+   because a file whose names and numbers disagree is a file that has been
+   edited by hand and should not be guessed at. */
+function parseHeaderFile(text, name) {
+  var problem = controlCharProblem(text, 'column file');
+  if (problem) return { error: problem };
+
+  var lines = String(text).split(/\r?\n/).filter(function(l){ return l.trim() !== ''; });
+  if (!lines.length) return { error: 'The column file has no column names in it.' };
+
+  var names = lines[0].trim().split(/\s+/);
+  if (names.length < REQUIRED_HEADER_COLUMNS.length) {
+    return { error: 'The column file declares only ' + names.length +
+      ' columns, which is too few to be the archive header.' };
+  }
+
+  /* The index line is optional — a header trimmed to its names alone is still a
+     usable header — but if it is there it has to be right. Present and wrong is
+     the case worth refusing: it means the two halves of the file describe
+     different things, and picking one of them would be a guess. */
+  if (lines.length > 1) {
+    var idx = lines[1].trim().split(/\s+/);
+    var numeric = idx.every(function(v){ return /^\d+$/.test(v); });
+    if (numeric) {
+      if (idx.length !== names.length) {
+        return { error: 'The column file names ' + names.length + ' columns but numbers ' +
+          idx.length + ' of them. It has been refused rather than guessed at.' };
+      }
+      for (var i = 0; i < idx.length; i++) {
+        if (parseInt(idx[i], 10) !== i + 1) {
+          return { error: 'The column file numbering is out of order at position ' +
+            (i + 1) + ', where it reads ' + idx[i] + '. It has been refused rather ' +
+            'than guessed at.' };
+        }
+      }
+    }
+  }
+
+  /* Duplicate names are expected, not an error: the archive carries maj1 and
+     maj2 twice, once for each degree. First occurrence wins, which is the first
+     degree — the one every other column on the row is about. */
+  var byName = {};
+  names.forEach(function(n, i) { if (!(n in byName)) byName[n] = i; });
+
+  var missing = REQUIRED_HEADER_COLUMNS.filter(function(c){ return !(c in byName); });
+  if (missing.length) {
+    return { error: 'The column file is missing ' + missing.join(', ') +
+      ', which the tool needs in order to read a year file.' };
+  }
+
+  return { name: dataFileName({ name: name }), columns: names, byName: byName };
+}
+
+/* The Year column reads 202201: a calendar year and a trimester. Only the year
+   half is used — the trimester is already in Sem — and it has to be the year
+   the FILE NAME claims. */
+function calendarYearOf(raw) {
+  var v = String(raw == null ? '' : raw).trim();
+  if (!/^\d{4}(\d{2})?$/.test(v)) return null;
+  return parseInt(v.slice(0, 4), 10);
+}
+
+/* One year file to a list of students, enrolments nested — the same shape the
+   synthetic generator produces, so nothing downstream can tell which it was
+   handed.
+
+   Errors name the line. A message that says only "the file is malformed" leaves
+   the user to bisect a two thousand line export by hand, and the line number is
+   free to carry. */
+function parseYearFile(text, year, header) {
+  var problem = controlCharProblem(text, 'year file');
+  if (problem) return { error: problem };
+
+  var lines = String(text).split(/\r?\n/);
+  var width = header.columns.length;
+  var at = header.byName;
+
+  var byId = {}, order = [], rows = 0;
+  var warnings = {};
+
+  for (var ln = 0; ln < lines.length; ln++) {
+    var line = lines[ln];
+    if (line === '' || line.trim() === '') continue;
+
+    if (++rows > MAX_DATA_ROWS) {
+      return { error: 'The year file holds more than ' + MAX_DATA_ROWS +
+        ' rows, which is past what this tool will read.' };
+    }
+
+    var f = line.split('\t');
+    if (f.length !== width) {
+      return { error: 'Line ' + (ln + 1) + ' has ' + f.length + ' tab-separated fields ' +
+        'but the column file declares ' + width + '. The two files do not describe the ' +
+        'same export, so neither has been loaded.' };
+    }
+
+    var i;
+    for (i = 0; i < f.length; i++) {
+      if (f[i].length > MAX_FIELD_CHARS) {
+        return { error: 'Line ' + (ln + 1) + ' has a field longer than ' + MAX_FIELD_CHARS +
+          ' characters, which no column in this archive is. It has been refused.' };
+      }
+    }
+
+    var id = f[at.ID].trim();
+    if (!/^\d{1,12}$/.test(id)) {
+      return { error: 'Line ' + (ln + 1) + ' has "' + id + '" where a student ID belongs. ' +
+        'An ID is digits only, so the file has been refused.' };
+    }
+
+    var rowYear = calendarYearOf(f[at.Year]);
+    if (rowYear === null) {
+      return { error: 'Line ' + (ln + 1) + ' has "' + String(f[at.Year]).trim() +
+        '" in the Year column, which is not a year. The file has been refused.' };
+    }
+    if (rowYear !== year) {
+      return { error: 'The file is named for ' + year + ' but line ' + (ln + 1) +
+        ' is a ' + rowYear + ' enrolment. A file is only loaded as the year it is ' +
+        'named for, so it has been refused.' };
+    }
+
+    var ptsRaw = f[at.Pts].trim();
+    if (!/^\d+(\.\d+)?$/.test(ptsRaw)) {
+      return { error: 'Line ' + (ln + 1) + ' has "' + ptsRaw + '" where a course’s ' +
+        'points belong. The file has been refused.' };
+    }
+    var pts = parseFloat(ptsRaw);
+    if (pts > MAX_COURSE_POINTS) {
+      return { error: 'Line ' + (ln + 1) + ' says a course is worth ' + pts +
+        ' points, which is past anything the catalogue holds. The file has been refused.' };
+    }
+
+    var code = f[at.Crse].trim();
+    if (!/^[A-Za-z]{2,6}\d{1,4}[A-Za-z]?$/.test(code)) {
+      return { error: 'Line ' + (ln + 1) + ' has "' + code + '" where a course code belongs. ' +
+        'The file has been refused.' };
+    }
+
+    var grade = f[at.Grade].trim();
+    /* An unrecognised grade is a warning, not a refusal. gradePoint() already
+       answers null for anything off the scale — the same answer it gives a
+       dropped course's blank — so the row is safe to keep and the GPA stays
+       honest. Refusing the file would be refusing real data over a code this
+       tool has not been told about yet, which is a worse failure than saying so
+       and carrying on. */
+    if (grade !== '' && gradePoint(grade) === null) warnings['grade "' + grade + '"'] = true;
+
+    var s = byId[id];
+    if (!s) {
+      s = byId[id] = { id: parseInt(id, 10), gender: f[at.gender].trim(), year: year,
+                       degree: f[at.deg1].trim(), specialisation: f[at.maj1].trim(),
+                       courses: [] };
+      order.push(id);
+    }
+
+    s.courses.push({
+      code: code,
+      /* The archive records a course by code and never by title, so the name IS
+         the code. Saying so plainly beats inventing a title, and courseTitle()
+         prints one of them rather than "AIML427 - AIML427". */
+      name: code,
+      subject: code.slice(0, 4).toUpperCase(),
+      level: courseLevel(code),
+      points: pts,
+      year: year,
+      letterGrade: grade,
+      gradePoints: gradePoint(grade)
+    });
+  }
+
+  if (!order.length) {
+    return { error: 'The year file has no enrolment rows in it.' };
+  }
+
+  var students = order.map(function(k) {
+    var s = byId[k];
+    // Derived from the enrolments rather than stored beside them, exactly as
+    // the generator does it, so the two can never disagree.
+    s.courses.sort(function(a, b){ return a.code < b.code ? -1 : a.code > b.code ? 1 : 0; });
+    var avg = gpaOf(s.courses);
+    s.gpa = avg;
+    s.letterGrade = gradeFromGpa(avg);
+    return s;
+  });
+
+  return { year: year, rows: rows, students: students, warnings: Object.keys(warnings) };
+}
+
+/* ------------------------------------------------------- BUILDING A DATASET */
+
+/* One header plus any number of parsed year files. A student who appears in two
+   years is two students here, because they are: a row is a student IN A YEAR,
+   which is what makes "the 2022 cohort" and "the 2023 cohort" separately
+   countable and is the granularity every existing node was written against.
+
+   `parsed` is kept, not just the totals derived from it. That is what makes a
+   Source's year files a COLLECTION rather than a single snapshot: adding a year
+   or dropping one is this function called again over a different list, so the
+   flattened students, the counts and the warnings can never drift from the
+   files they came from. Deriving them once and then patching them in place is
+   the version of this that goes wrong six months later. */
+function buildDataset(header, parsedYears) {
+  var students = [], years = [], files = [], warnings = {};
+  var parsed = parsedYears.slice().sort(function(a, b){ return a.year - b.year; });
+  parsed.forEach(function(p) {
+    years.push(p.year);
+    files.push({ name: yearFileNameFor(p.year), year: p.year,
+                 rows: p.rows, students: p.students.length });
+    p.students.forEach(function(s){ students.push(s); });
+    (p.warnings || []).forEach(function(w){ warnings[w] = true; });
+  });
+  return {
+    headers: header,
+    parsed: parsed,
+    files: files,
+    years: years,
+    students: students,
+    warnings: Object.keys(warnings),
+    loadedAt: new Date().toISOString()
+  };
+}
+
+/* The one place a year becomes a file name. The admission rule reads names and
+   this writes them, so a change to the convention is one edit rather than a
+   hunt through the panel, the log and three error messages. */
+function yearFileNameFor(year) { return 'mcs-students-' + year; }
+
+/* The year files a Source is currently holding, as parsed results. Empty for a
+   Source with only a header, and empty for the built-in dataset, which has no
+   files behind it to add to or take away. */
+function parsedYearsOf(nodeId) {
+  var d = SOURCE_DATA[nodeId];
+  return (d && d.parsed) ? d.parsed : [];
+}
+
+/* Install, or take away. Both go through here so that the registries are
+   rebuilt exactly once per change and there is one place that knows a dataset
+   change invalidates the results on screen. */
+function setSourceData(nodeId, dataset) {
+  if (dataset) SOURCE_DATA[nodeId] = dataset;
+  else delete SOURCE_DATA[nodeId];
+  rebuildRegistries();
+  markStale();
+}
+
+function clearSourceData(nodeId) {
+  var node = findNode(nodeId);
+  setSourceData(nodeId, null);
+  if (node) {
+    var d = datasetCfg(node);
+    d.headers = ''; d.years = [];
+  }
+  delete PENDING_HEADERS[nodeId];
+  setSourceNotice(nodeId, null);
+  render();
+}
+
+/* Every Source forgets its files. Called by applyGraph() — see the note at the
+   top of this section about why a loaded query starts with no data — and by
+   clearAll(), which is starting over in every other respect too. */
+function clearAllSourceData() {
+  Object.keys(SOURCE_DATA).forEach(function(k){ delete SOURCE_DATA[k]; });
+  Object.keys(PENDING_HEADERS).forEach(function(k){ delete PENDING_HEADERS[k]; });
+  Object.keys(SOURCE_NOTICE).forEach(function(k){ delete SOURCE_NOTICE[k]; });
+  rebuildRegistries();
+}
+
+function setSourceNotice(nodeId, notice) {
+  if (notice) SOURCE_NOTICE[nodeId] = notice;
+  else delete SOURCE_NOTICE[nodeId];
+}
+
+function headerFor(nodeId) {
+  var d = SOURCE_DATA[nodeId];
+  return (d && d.headers) || PENDING_HEADERS[nodeId] || null;
+}
+
+/* ------------------------------------------------------------- READING FILES
+
+   Callbacks rather than promises, to match the rest of the file, and because
+   the failure path has to be as visible as the success one: a FileReader that
+   errors must leave the Source exactly as it was, not half loaded.           */
+
+function readFileText(file, cb) {
+  var reader = new FileReader();
+  reader.onload  = function(){ cb(null, String(reader.result)); };
+  reader.onerror = function(){ cb('Could not read "' + dataFileName(file) + '".'); };
+  try { reader.readAsText(file); }
+  catch (e) { cb('Could not read "' + dataFileName(file) + '".'); }
+}
+
+/* THE HEADER STEP.
+   Accepting a new header discards any year files already loaded on this Source.
+   They were parsed against the old column list, and keeping them would leave a
+   Source whose rows and whose header came from different exports — the precise
+   thing the field-count check exists to prevent, arrived at by a different
+   route. */
+function loadHeadersFor(nodeId, file, done) {
+  done = done || function(){};
+  var problem = headersFileProblem(file);
+  if (problem) { failSource(nodeId, problem, done); return; }
+
+  readFileText(file, function(err, text) {
+    if (err) { failSource(nodeId, err, done); return; }
+    var header = parseHeaderFile(text, dataFileName(file));
+    if (header.error) { failSource(nodeId, header.error, done); return; }
+
+    PENDING_HEADERS[nodeId] = header;
+    setSourceData(nodeId, null);
+    var node = findNode(nodeId);
+    if (node) {
+      var d = datasetCfg(node);
+      d.headers = header.name;
+      d.years = [];
+    }
+    setSourceNotice(nodeId, { kind:'ok', text:
+      'Read ' + header.columns.length + ' columns from ' + header.name +
+      '. Now choose the year files.' });
+    render();
+    done(null, header);
+  });
+}
+
+/* THE YEAR STEP.
+   ---------------------------------------------------------------------------
+   Year files ACCUMULATE. One header describes the shape of every year file, so
+   a Source has exactly one of those; the years themselves are a collection, and
+   choosing more adds to what is already there rather than replacing it. That is
+   what makes "2022 and 2023, then 2024 when it arrives" an ordinary afternoon
+   rather than a re-pick of all three.
+
+   Two rules keep the accumulation honest:
+
+     ALL OR NOTHING WITHIN A PICK. A user who chooses three files and gets two
+     of them has a Source answering about a cohort they did not ask for, and no
+     wording in a notice makes that safe. If any file in the selection is
+     refused, none of them are added and whatever was already loaded is left
+     exactly as it was.
+
+     ONE FILE PER YEAR. Choosing a year already held REPLACES that year, because
+     the only reason to do it is a corrected export, and holding both would mean
+     counting the cohort twice. The notice says which years were added and which
+     were replaced, so it is never a silent substitution. Two files for the SAME
+     year inside ONE pick is still refused: there is no way to tell which of them
+     was meant.                                                                */
+function loadYearFilesFor(nodeId, fileList, done) {
+  done = done || function(){};
+  var files = Array.prototype.slice.call(fileList || []);
+  if (!files.length) { done(null, null); return; }
+
+  var header = headerFor(nodeId);
+  if (!header) {
+    failSource(nodeId, 'Load ' + DATA_HEADERS_NAME + ' first. A year file cannot be ' +
+      'read without the column list that says what its fields are.', done);
+    return;
+  }
+
+  var existing = parsedYearsOf(nodeId);
+  var held = {};
+  existing.forEach(function(p){ held[p.year] = true; });
+
+  var problem = null;
+  var seen = {};
+  files.forEach(function(f) {
+    if (problem) return;
+    problem = yearFileProblem(f);
+    if (problem) return;
+    var y = yearOfFile(f);
+    if (seen[y]) {
+      problem = 'Two of the chosen files are for ' + y + ', and there is no way to ' +
+        'tell which one was meant. Choose one of them.';
+      return;
+    }
+    seen[y] = true;
+  });
+  if (problem) { failSource(nodeId, problem, done); return; }
+
+  var totalAfter = existing.filter(function(p){ return !seen[p.year]; }).length + files.length;
+  if (totalAfter > MAX_YEAR_FILES) {
+    failSource(nodeId, 'That would give this Source ' + totalAfter + ' year files, past the ' +
+      'limit of ' + MAX_YEAR_FILES + '. Remove some first, or use a second Source.', done);
+    return;
+  }
+
+  var parsed = [], pending = files.length, failed = false;
+
+  files.forEach(function(file, i) {
+    readFileText(file, function(err, text) {
+      if (failed) return;
+      if (err) { failed = true; failSource(nodeId, err, done); return; }
+
+      var out = parseYearFile(text, yearOfFile(file), header);
+      if (out.error) {
+        failed = true;
+        failSource(nodeId, dataFileName(file) + ': ' + out.error, done);
+        return;
+      }
+      parsed[i] = out;
+      if (--pending === 0) finishYearLoad(nodeId, header, existing, parsed, held, done);
+    });
+  });
+}
+
+/* Merge the accepted pick into what the Source already held, and say what
+   changed. Only reached once every file in the pick has parsed, which is what
+   makes the all-or-nothing rule true rather than merely intended. */
+function finishYearLoad(nodeId, header, existing, added, held, done) {
+  var incoming = {};
+  added.forEach(function(p){ incoming[p.year] = true; });
+
+  var kept = existing.filter(function(p){ return !incoming[p.year]; });
+  var dataset = buildDataset(header, kept.concat(added));
+
+  setSourceData(nodeId, dataset);
+  delete PENDING_HEADERS[nodeId];
+  applyDatasetToNode(nodeId, dataset);
+
+  var fresh = added.filter(function(p){ return !held[p.year]; })
+                   .map(function(p){ return p.year; }).sort();
+  var replaced = added.filter(function(p){ return held[p.year]; })
+                      .map(function(p){ return p.year; }).sort();
+
+  var parts = [];
+  if (fresh.length)    parts.push('Added ' + fresh.join(', '));
+  if (replaced.length) parts.push('Replaced ' + replaced.join(', '));
+  var text = (parts.length ? parts.join('. ') + '. ' : '') +
+    'Now holding ' + dataset.files.length + ' year file' +
+    (dataset.files.length === 1 ? '' : 's') + ' and ' +
+    dataset.students.length + ' student record' +
+    (dataset.students.length === 1 ? '' : 's') + '.';
+  if (dataset.warnings.length) {
+    text += ' Kept as ungraded: ' + dataset.warnings.join(', ') + '.';
+  }
+
+  setSourceNotice(nodeId, { kind:'ok', text: text });
+  render();
+  done(null, dataset);
+}
+
+/* Take one year back off a Source. The counterpart of adding one: a collection
+   you can only add to is a collection you have to tear down and rebuild to
+   correct, which is how a user ends up re-picking four files to drop one.
+
+   Removing the last year leaves the HEADER in place rather than clearing the
+   Source outright. The header is still valid — it describes the shape of files
+   that have not been chosen yet — and throwing it away would make "I picked the
+   wrong year" cost two steps instead of one. */
+function removeSourceYear(nodeId, year) {
+  var header = headerFor(nodeId);
+  var remaining = parsedYearsOf(nodeId).filter(function(p){ return p.year !== year; });
+
+  if (!remaining.length) {
+    setSourceData(nodeId, null);
+    if (header) PENDING_HEADERS[nodeId] = header;
+    applyDatasetToNode(nodeId, null);
+    setSourceNotice(nodeId, { kind:'ok', text:
+      'Removed ' + yearFileNameFor(year) + '. ' + DATA_HEADERS_NAME +
+      ' is still loaded, so choose the year files you want.' });
+  } else {
+    var dataset = buildDataset(header, remaining);
+    setSourceData(nodeId, dataset);
+    applyDatasetToNode(nodeId, dataset);
+    setSourceNotice(nodeId, { kind:'ok', text:
+      'Removed ' + yearFileNameFor(year) + '. Now holding ' +
+      dataset.files.map(function(f){ return f.year; }).join(', ') + '.' });
+  }
+  render();
+}
+
+/* Keep the saved descriptor and the population setting in step with whatever
+   the Source is now holding. Shared by every path that changes the year files,
+   because three copies of this is three chances for the panel to disagree with
+   the data behind it. */
+function applyDatasetToNode(nodeId, dataset) {
+  var node = findNode(nodeId);
+  if (!node) return;
+  var d = datasetCfg(node);
+  var header = headerFor(nodeId);
+  d.headers = header ? header.name : '';
+  d.years = dataset ? dataset.years.slice() : [];
+
+  /* A population the Source can no longer answer would leave it silently empty.
+     Falling back to "all students" is the only choice that is right whatever is
+     held, and the panel shows the change. */
+  var years = dataset ? dataset.years : [];
+  if (node.cfg.pop !== 'all' && years.indexOf(parseInt(node.cfg.pop, 10)) === -1) {
+    node.cfg.pop = 'all';
+  }
+}
+
+/* One refusal path. The Source is left as it was — nothing half-applied — the
+   reason is shown on the node rather than in the results panel, because that is
+   where the button that caused it lives, and the caller is told. */
+function failSource(nodeId, message, done) {
+  setSourceNotice(nodeId, { kind:'error', text: message });
+  render();
+  (done || function(){})(message);
+}
+
+/* ---------------------------------------------------- THE PICKERS THEMSELVES
+
+   Two inputs, not one, because the two steps are genuinely ordered: a year file
+   cannot be parsed without the column list. `accept` is set on the header input
+   as a courtesy to the dialog and trusted by neither check above — and on the
+   year picker it is absent, since the archive's year files carry no extension
+   for a filter to match on.                                                  */
+
+function pickHeadersFile(nodeId) {
+  var input = document.getElementById('headersFile');
+  if (!input) return;
+  input.value = '';          // or choosing the same file twice fires no change
+  input._node = nodeId;
+  input.click();
+}
+
+function pickYearFiles(nodeId) {
+  var input = document.getElementById('yearFiles');
+  if (!input) return;
+  input.value = '';
+  input._node = nodeId;
+  input.click();
+}
+
+function onHeadersChosen(e) {
+  var input = e.target;
+  var nodeId = input._node;
+  var file = input.files && input.files[0];
+  if (!file || nodeId == null) return;
+  loadHeadersFor(nodeId, file);
+}
+
+function onYearFilesChosen(e) {
+  var input = e.target;
+  var nodeId = input._node;
+  if (nodeId == null || !input.files || !input.files.length) return;
+  loadYearFilesFor(nodeId, input.files);
+}
+
+/* Installed by the test harness and by nothing else. Kept beside the loader
+   rather than at the foot of the file so that the one call site and the thing
+   it switches on are readable together. */
+/* Stand the fallback down, so a Source is in exactly the position a Source on a
+   real page is in: no files, no built-in dataset, nothing to answer with. Used
+   by the suite that tests the refusal, because a refusal tested with a fallback
+   still in place is not the refusal a user would meet. Test-only, alongside
+   installSyntheticDataset() and exported from the same guarded block. */
+function setSyntheticDataset(dataset) {
+  SYNTHETIC_DATASET = dataset || null;
+  rebuildRegistries();
+}
+
+function installSyntheticDataset() {
+  var students = buildSyntheticStudents();
+  SYNTHETIC_DATASET = {
+    headers: { name:'(built in)', columns:[], byName:{} },
+    files: [{ name:'(built in)', year:2022, rows:students.length, students:students.length }],
+    years: [2022, 2023],
+    students: students,
+    warnings: [],
+    loadedAt: null,
+    synthetic: true
+  };
+  rebuildRegistries();
+}
 
 /* ============================================================================
    TABLE — the single data type carried on every wire
@@ -276,16 +1278,16 @@ function coursesColIndex(t) {
    different questions — so the Source says which it emits and every downstream
    node adapts through the schema rather than through special cases. */
 
-var YEARS = STUDENTS.map(function(s){ return s.year; })
-  .filter(function(v, i, a){ return a.indexOf(v) === i; })
-  .sort();
-
 var STUDENT_COLUMNS = [
   { key:'id',             label:'ID',             type:COLTYPE.NUMBER, def:'1001' },
   { key:'gender',         label:'Gender',         type:COLTYPE.ENUM,   values:['M','F'] },
   { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS },
+  /* Degree sits beside Specialisation because they are the same kind of fact at
+     two widths — BSC and BEHONS are programmes, SWEN and CYBR are majors within
+     them — and a question about one is nearly always a question about both. */
+  { key:'degree',         label:'Degree',         type:COLTYPE.ENUM,   values:DEGREES },
   { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
-  { key:'gradeAvg',       label:'Avg',            type:COLTYPE.NUMBER, def:'70' },
+  { key:'gpa',            label:'GPA',            type:COLTYPE.NUMBER, def:'5' },
   { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT,   order:GRADE_ORDER },
   { key:'courses',        label:'Courses',        type:COLTYPE.COURSES }
 ];
@@ -293,9 +1295,17 @@ var STUDENT_COLUMNS = [
 /* The one table builder: every Source produces this shape, and a row is a
    student. The student's courses ride along nested in the last cell rather than
    being flattened into rows of their own. */
+/* Built from the COLUMN LIST rather than from a hand-written array, because the
+   two were positional and could disagree — and did, the moment Degree was added
+   to STUDENT_COLUMNS and the row builder was not updated with it. Every cell
+   shifted one place left, and a Filter on Specialisation started reading grades.
+
+   Driving both from `key` means a column added tomorrow needs no second edit,
+   and the invariant the suite asserts — one cell per column, in order — is true
+   by construction instead of by vigilance. */
 function studentsTable(list) {
   return makeTable(STUDENT_COLUMNS, list.map(function(s) {
-    return [s.id, s.gender, s.year, s.specialisation, s.gradeAvg, s.letterGrade, s.courses];
+    return STUDENT_COLUMNS.map(function(c){ return s[c.key]; });
   }));
 }
 
@@ -306,17 +1316,25 @@ function studentsTable(list) {
 function fmtCell(col, v) {
   if (v === undefined || v === null) return '';
   if (col.type === COLTYPE.COURSES) return String((v || []).length);
-  if (col.type === COLTYPE.NUMBER && typeof v === 'number' && !isNumInt(v)) return v.toFixed(1);
+  if (col.type === COLTYPE.NUMBER && typeof v === 'number' && !isNumInt(v)) return fmtNum(v);
   return String(v);
 }
 function isNumInt(v) { return Math.abs(v - Math.round(v)) < 1e-9; }
+
+/* Two decimal places, with trailing zeros dropped — not toFixed, which pads.
+   Two because a GPA is quoted to two ("a 6.25 average") and one place would
+   round it to a different grade band; dropping the padding because a count of
+   6.5 courses should not read as 6.50. Rounding at all is the point: averaging
+   grade points produces 6.233749999999999, and showing that says the tool
+   cannot do arithmetic. */
+function fmtNum(v) { return String(Math.round(v * 100) / 100); }
 
 function exportCell(col, v) {
   if (v === undefined || v === null) return '';
   if (col.type === COLTYPE.COURSES) {
     return (v || []).map(function(c){ return c.code; }).join(';');
   }
-  if (col.type === COLTYPE.NUMBER && typeof v === 'number' && !isNumInt(v)) return v.toFixed(1);
+  if (col.type === COLTYPE.NUMBER && typeof v === 'number' && !isNumInt(v)) return fmtNum(v);
   return String(v);
 }
 
@@ -355,11 +1373,14 @@ var SHAPE = {
   filter:  { w:106, h:84 },
   compare: { w:112, h:78 },
   sort:    { w:106, h:72 },
+  reverse: { w:106, h:72 },
   take:    { w:106, h:72 },
   unique:  { w:106, h:72 },
   select:  { w:106, h:72 },
+  project: { w:106, h:72 },
   aggregate:        { w:106, h:72 },
   aggregateColumns: { w:112, h:72 },
+  aggregateRows:    { w:112, h:72 },
   combine:          { w:106, h:72 },
   output:  { w:106, h:66 }
 };
@@ -572,6 +1593,8 @@ function selectBranch(id) { setSelection(connectedComponent(id)); }
 function deleteSelection() {
   if (!selection.length) return;
   var doomed = selection.slice();
+  doomed.forEach(forgetSourceData);
+  rebuildRegistries();
   nodes = nodes.filter(function(n){ return doomed.indexOf(n.id) === -1; });
   connections = connections.filter(function(c) {
     return doomed.indexOf(c.from) === -1 && doomed.indexOf(c.to) === -1;
@@ -593,19 +1616,36 @@ function deleteSelection() {
 
    Compare stays output-only. It is superseded, and widening its reach now
    would be work thrown away when it retires. */
-var TABLE_NODES = ['filter', 'sort', 'take', 'unique', 'select',
-                   'aggregate', 'aggregateColumns', 'combine'];
+var TABLE_NODES = ['filter', 'sort', 'reverse', 'take', 'unique', 'select', 'project',
+                   'aggregate', 'aggregateColumns', 'aggregateRows', 'combine'];
 var CONNECT_RULES = {
   source:           TABLE_NODES.concat(['compare', 'output']),
   filter:           TABLE_NODES.concat(['compare', 'output']),
   sort:             TABLE_NODES.concat(['compare', 'output']),
+  reverse:          TABLE_NODES.concat(['compare', 'output']),
   take:             TABLE_NODES.concat(['compare', 'output']),
   unique:           TABLE_NODES.concat(['compare', 'output']),
   select:           TABLE_NODES.concat(['compare', 'output']),
+  project:          TABLE_NODES.concat(['compare', 'output']),
   aggregate:        TABLE_NODES.concat(['compare', 'output']),
   aggregateColumns: TABLE_NODES.concat(['compare', 'output']),
+  aggregateRows:    TABLE_NODES.concat(['compare', 'output']),
   combine:          TABLE_NODES.concat(['compare', 'output']),
-  compare:          ['output'],
+  /* Compare was output-only, on the grounds that it is superseded by SelectFor
+     and widening its reach would be work thrown away. That reasoning held while
+     the cost was hypothetical. It is not: a Compare's result is the only
+     labelled multi-row answer the tool can currently produce — "how many in
+     each year", "the average for each branch" — and refusing to let it be
+     aggregated made "count per year, then average those counts" unbuildable
+     through it. That is the exact example app.js:212 cites as the thing the
+     table refactor existed to fix.
+
+     Nothing downstream needed changing. Every row node already decides for
+     itself whether a Compare's branch metadata still describes its rows, and
+     says so where it does it — Sort and Take carry meta, Select and the
+     one-column mode of Unique drop it. Those comments were written against this
+     day arriving. */
+  compare:          TABLE_NODES.concat(['compare', 'output']),
   output:           []
 };
 function canConnect(fromType, toType) {
@@ -642,11 +1682,14 @@ var NODE_PORTS = {
   source:           [],
   filter:           SINGLE_IN,
   sort:             SINGLE_IN,
+  reverse:          SINGLE_IN,
   take:             SINGLE_IN,
   unique:           SINGLE_IN,
   select:           SINGLE_IN,
+  project:          SINGLE_IN,
   aggregate:        SINGLE_IN,
   aggregateColumns: SINGLE_IN,
+  aggregateRows:    SINGLE_IN,
   combine:          [{ key:'in', label:'Tables',   multi:true }],
   compare:          [{ key:'in', label:'Branches', multi:true }],
   output:           SINGLE_IN
@@ -763,11 +1806,18 @@ function resolveDirection(a, b) {
    contains every key a node uses and loading never depends on defaults that
    may have changed since the file was written. */
 function defaultCfg(type) {
-  if (type === 'source')  return { pop:'all' };
+  /* `dataset` records the NAMES of the files this Source was given, and never
+     their contents — see the loader section. It is the one cfg key whose value
+     is a description of state held outside the model, which is exactly what
+     makes a saved query re-openable without carrying student records in it. */
+  if (type === 'source')  return { pop:'all', dataset:{ headers:'', years:[] } };
   if (type === 'filter')  return { criteria:[newCriterion()] };
   if (type === 'compare') return { measures:DEFAULT_MEASURES.slice(), sort:'wired', labels:{} };
   if (type === 'sort')    return { keys: [newSortKey()] };
   if (type === 'take')    return { n: String(TAKE_DEFAULT) };
+  // Reverse has nothing to configure: it takes no column, no direction and no
+  // count. An empty cfg is the honest answer, not a placeholder key.
+  if (type === 'reverse') return {};
   // col:'' means all columns — whole-row deduplication. Naming a column
   // switches to the label-producing mode and rewrites the header.
   if (type === 'unique')  return { col: '' };
@@ -777,6 +1827,10 @@ function defaultCfg(type) {
   // Source granularity is changed underneath it.
   if (type === 'aggregate')        return { op: AGG_DEFAULT_OP, col: '' };
   if (type === 'aggregateColumns') return { op: 'sum' };
+  // Same shape, and sum for the same reason: totalling is the measure a row of
+  // measures is usually wanted for, and it is the one that is obviously wrong
+  // if the input is not a row of measures.
+  if (type === 'aggregateRows')    return { op: 'sum' };
   // dedupe defaults off: merge stacks rows, and discarding identical rows is a
   // decision the user makes rather than one the node makes quietly.
   if (type === 'combine') return { mode: 'merge', dedupe: false, base: '', key: '' };
@@ -784,7 +1838,13 @@ function defaultCfg(type) {
   // only becomes a narrowing once the user unticks something. An explicit list
   // of every key would go stale the moment the node was rewired.
   if (type === 'select')  return { cols: null };
-  if (type === 'output')  return { show:'rows', filename:'' };
+  // Nothing to configure: what it unfolds is decided by the data, not by a
+  // setting. A node with no options is the honest shape for an operation with
+  // no choices in it.
+  if (type === 'project') return {};
+  // cols:null means "every column", the same convention Select uses, so the
+  // validator mergeCfg already applies to that key covers this one too.
+  if (type === 'output')  return { show:'rows', filename:'', cols:null };
   return {};
 }
 
@@ -794,18 +1854,64 @@ function defaultCfg(type) {
    any table schema — including ones with columns that did not exist when it was
    created. */
 function newCriterion() {
-  return { field:'gradeAvg', values:{}, ops:{}, course:DEFAULT_COURSE };
+  return { field:'gpa', values:{}, ops:{}, course:defaultCourse() };
 }
 
 function critValue(c, field, col) {
   if (c.values && c.values[field] !== undefined) return c.values[field];
   if (col && col.def !== undefined) return col.def;
   if (col && col.values && col.values.length) return String(col.values[0]);
+  /* A column can declare an order without declaring a value set — letterGrade
+     carries GRADE_ORDER and nothing else — and that order is just as good a
+     source of a default. Without this the control renders with nothing
+     selected, the browser shows option one, and the model still says "", which
+     is precisely the disagreement between panel and model that the sort keys
+     go out of their way to avoid. */
+  if (col && col.order && col.order.length) return String(col.order[0]);
   return '';
 }
 function critOp(c, field, fallback) {
   if (c.ops && c.ops[field] !== undefined) return c.ops[field];
   return fallback;
+}
+
+/* THE SECOND BOUND
+   A range needs two values where every other comparison needs one. It is stored
+   under a derived key in the same per-field map — "gpa" holds the low bound
+   and "gpa:max" the high one — which means no change to the criterion
+   shape, no change to the save format, and no change to setCfg: a control named
+   `crit.0.value:gpa:max` already routes to values['gpa:max'] through
+   the parser that was there.
+
+   Keeping the low bound under the plain key is what makes switching operators
+   feel continuous. "At least 70" then "between" carries the 70 in as the floor,
+   rather than resetting to a default the user has to retype. */
+function rangeKey(field) { return field + ':max'; }
+
+/* The high bound defaults to the top of a declared order, and to the low bound
+   where there is no top to reach for. Both are shown in the panel and stated in
+   the hint, so neither default is a surprise the user discovers from an empty
+   result. */
+function critHigh(c, field, col) {
+  if (c.values && c.values[rangeKey(field)] !== undefined) return c.values[rangeKey(field)];
+  if (col && col.order && col.order.length) return String(col.order[col.order.length - 1]);
+  if (col && col.values && col.values.length) return String(col.values[col.values.length - 1]);
+  return critValue(c, field, col);
+}
+
+/* The pair, ranked and put the right way round. A user who types the bounds in
+   the other order means the band between them: refusing, or returning nothing,
+   would be a technicality rather than an answer. The log prints what was
+   actually applied, so the swap is visible rather than silent. */
+function critRange(c, field, col) {
+  var rankOf = rankerFor(col);
+  var loRaw = critValue(c, field, col);
+  var hiRaw = critHigh(c, field, col);
+  var lo = rankOf(loRaw), hi = rankOf(hiRaw);
+  var swapped = lo !== null && hi !== null && lo > hi;
+  return swapped
+    ? { lo: hi, hi: lo, loRaw: hiRaw, hiRaw: loRaw, swapped: true }
+    : { lo: lo, hi: hi, loRaw: loRaw, hiRaw: hiRaw, swapped: false };
 }
 
 /* CONFIG WRITES
@@ -939,15 +2045,31 @@ function addNode(type) {
   render();
 }
 
+/* Deleting a Source deletes what it was holding. Node ids are handed out by a
+   counter that resets on load, so leaving the data behind would let a later
+   node inherit a cohort it was never given — and in the meantime its rows would
+   still be feeding the registries from nowhere. */
+function forgetSourceData(id) {
+  delete SOURCE_DATA[id];
+  delete PENDING_HEADERS[id];
+  delete SOURCE_NOTICE[id];
+}
+
 function removeNode(id) {
   nodes = nodes.filter(function(n){ return n.id !== id; });
   connections = connections.filter(function(c){ return c.from !== id && c.to !== id; });
   selection = selection.filter(function(x){ return x !== id; });
+  forgetSourceData(id);
+  rebuildRegistries();
   markStale();
   render();
 }
 
 function clearAll() {
+  // Clearing the canvas clears the data with it: the Sources that held it are
+  // about to stop existing, and leaving it behind would leak a cohort into the
+  // registries with no node on screen accounting for it.
+  clearAllSourceData();
   nodes = []; connections = []; edgeColorIndex = 0;
   exportData = {}; resultsFresh = false;
   // Clear starts a new query, so the name of the old one should not follow it
@@ -1025,9 +2147,100 @@ var OP_FNS = {
   eq:  function(a,b){ return a == b; },   // deliberate ==: '2022' from a <select> must match 2022
   ne:  function(a,b){ return a != b; }
 };
-var OP_SYM = { gt:'>', gte:'>=', lt:'<', lte:'<=', eq:'=', ne:'!=' };
-var NUM_OPS  = ['gt','gte','lt','lte','eq','ne'];
+/* `between` takes three operands where every other comparison takes two. Rather
+   than give it a different calling convention, every call site passes three and
+   the binary functions ignore the one they do not want — JavaScript drops extra
+   arguments, so `OP_FNS.gt(a, lo, hi)` is still `a > lo`. One call shape for
+   every operator is what keeps applyCriterion free of a special case.
+
+   The bounds are inclusive at both ends. "Between 70 and 80" asks a question
+   about a band of marks, and a band that silently excluded 80 would be wrong in
+   the way that is hardest to notice — the count is nearly right. */
+OP_FNS.between = function(a, lo, hi) { return a >= lo && a <= hi; };
+
+var OP_SYM = { gt:'>', gte:'>=', lt:'<', lte:'<=', eq:'=', ne:'!=', between:'in' };
+
+/* What the operator dropdown says, where that differs from what the log says.
+   A log line wants the terse form — "gpa in [5 .. 7]" reads well — but a
+   control has to be findable, and "in" sitting last among six comparator
+   symbols was not: it looks like a seventh comparator, and gives no hint that
+   it is the one operator needing two values. The dropdown says so in words. */
+var OP_LABEL = { between: 'in range' };
+function opLabel(o) { return OP_LABEL[o] || OP_SYM[o] || o; }
+
+/* The comparators are one idea and the range is another, so the dropdown says
+   that too. A group heading is the cheapest way to make an option findable by
+   someone who does not already know it is there — and the field selector above
+   already groups its own options the same way, so the pattern is not new. */
+function opGroups(ops) {
+  var cmp = ops.filter(function(o){ return o !== 'between'; });
+  var rng = ops.filter(function(o){ return o === 'between'; });
+  return [{ label:'Compare', ops:cmp }, { label:'Range', ops:rng }]
+    .filter(function(g){ return g.ops.length; });
+}
+var NUM_OPS  = ['gt','gte','lt','lte','eq','ne','between'];
 var ENUM_OPS = ['eq','ne'];
+/* An ordered category — a year, a letter grade — compares the same way a number
+   does once its values are ranked, so it gets the range operator too. It does
+   not get < and >, which would read as arithmetic on something that is not a
+   number. */
+var ORDERED_OPS = ['eq','ne','between'];
+
+/* WHICH COLUMNS CAN CARRY A RANGE
+   A range needs a meaningful order, and "has a declared list of values" is not
+   the same thing as "is ordered". Sort treats any ENUM's declared values as an
+   order, which is defensible there — some order beats lexical order, and the
+   user can see the result. A range is a claim: "between Cybersecurity and Data
+   Science" would look like a question and mean nothing, because the order it
+   ranges over is the order somebody happened to type the list in.
+
+   So a range is offered where the order is real:
+     - a number, which is ordered by being a number;
+     - a column with an explicit `order`, which is a deliberate statement about
+       ranking (letterGrade declares GRADE_ORDER, best to worst);
+     - an ENUM whose values are all numeric, which is how Year arrives — the
+       supervisor's use cases group by year ranges, and Year is an ENUM because
+       its values are a small fixed set, not because they are unordered.
+
+   Gender and Specialisation therefore have no range, and gain one the day
+   somebody declares what their order means. */
+function numericValues(vals) {
+  return !!(vals && vals.length) && vals.every(function(v) {
+    return v !== '' && v !== null && isFinite(Number(v));
+  });
+}
+
+function isRangeable(col) {
+  if (!col) return false;
+  if (col.type === COLTYPE.NUMBER) return true;
+  if (col.order && col.order.length) return true;
+  return col.type === COLTYPE.ENUM && numericValues(col.values);
+}
+
+/* A cell to a position on that order, so one comparison serves all three cases.
+   Numbers rank as themselves; a declared order ranks by index. A value absent
+   from a declared order has no position, so it cannot be inside any band — the
+   same reading comparatorFor() takes, where an undeclared value sorts last. */
+function rankerFor(col) {
+  if (col && col.order && col.order.length) {
+    var rank = {};
+    col.order.forEach(function(v, i){ rank[String(v)] = i; });
+    return function(v) {
+      var r = rank[String(v)];
+      return r === undefined ? null : r;
+    };
+  }
+  return function(v) {
+    /* Blank first, because Number('') is 0. Without this an upper bound the
+       user had cleared ranked as zero rather than as missing, the bounds were
+       then put "the right way round", and "between 70 and (nothing)" quietly
+       became "between 0 and 70" — a different question, answered confidently,
+       with a log line reading "[ .. 70]" as the only clue. */
+    if (isBlank(v)) return null;
+    var n = Number(v);
+    return isFinite(n) ? n : null;
+  };
+}
 
 function topoSort() {
   var inDeg = {}, adj = {};
@@ -1067,19 +2280,49 @@ function logText(e) {
   return e.kw + '  ' + e.parts.map(function(p){ return p.s; }).join(' ');
 }
 
-/* SOURCE */
+/* SOURCE
+   Reads THIS node's dataset, not a global one. A Source with no files is not an
+   empty result but an error: an empty table would travel down the graph and
+   come out as "0 students", which is a claim about the cohort rather than about
+   the tool, and the two are not the same answer.
+
+   The log names the files as well as the population, because a query that was
+   run against last year's export and one run against this year's are different
+   queries with the same graph, and the log is the record of what was run. */
 function sourceTable(node, log) {
   var cfg = node.cfg || defaultCfg('source');
+  var data = datasetFor(node);
+  if (!data) return { error: sourceDataError(node) };
+
   var pop = cfg.pop || 'all';
-  var list = STUDENTS;
+  var list = data.students;
   if (pop !== 'all') {
     var yr = parseInt(pop, 10);
-    list = STUDENTS.filter(function(s){ return s.year === yr; });
+    list = list.filter(function(s){ return s.year === yr; });
     log.push(logEntry('SOURCE', [{s:'year'}, {c:'op', s:'='}, {c:'val', s:yr}]));
   } else {
     log.push(logEntry('SOURCE', [{s:'all_students'}]));
   }
-  return studentsTable(list);
+  if (data.files && data.files.length) {
+    log.push(logEntry('FROM', data.files.map(function(f, i) {
+      return { c:'val', s: f.name + (i === data.files.length - 1 ? '' : ',') };
+    })));
+  }
+  return { table: studentsTable(list) };
+}
+
+/* Why this Source cannot run, in the terms the user is in a position to act on.
+   A query loaded from a file knows which files it wants and says so; one built
+   from scratch does not, and asking for "the data files" is as specific as it
+   can honestly be. */
+function sourceDataError(node) {
+  var want = node.cfg && node.cfg.dataset;
+  var named = want && want.headers && want.years && want.years.length
+    ? ' This query was built against ' + want.headers + ' and ' +
+      want.years.map(function(y){ return 'mcs-students-' + y; }).join(', ') + '.'
+    : '';
+  return 'Source #' + node.id + ' has no data. Open its panel and load ' +
+    DATA_HEADERS_NAME + ', then the year files.' + named;
 }
 
 /* ROW IDENTITY AND UNION
@@ -1142,7 +2385,13 @@ function courseFields() {
     // which is what the same filter does at enrolment granularity.
     { key:'courses.subject', label:'Took subject',   kind:'courseSubject' },
     { key:'courses.code',    label:'Took course',    kind:'courseCode' },
-    { key:'courses.mark',    label:'Mark in course', kind:'courseMark' }
+    /* Named the same way, and a NUMBER rather than a set, so the operators come
+       with it: "took a course at level 400" is the equality case, and "at 300
+       or above" — the progression question — is the one that needed the
+       ordering. Without this, asking it at student granularity means a Project
+       first, which changes what a row is and therefore what a count counts. */
+    { key:'courses.level',   label:'Took level',     kind:'courseLevel' },
+    { key:'courses.gradePoints', label:'Grade in course', kind:'courseGrade' }
   ];
 }
 
@@ -1189,13 +2438,19 @@ function fieldByKey(schema, key) {
   return null;
 }
 
-function opsFor(kind) {
-  if (kind === COLTYPE.NUMBER || kind === 'courseMark') return NUM_OPS;
-  if (kind === COLTYPE.TEXT) return ENUM_OPS;
+function opsFor(kind, col) {
+  if (kind === COLTYPE.NUMBER || kind === 'courseGrade' || kind === 'courseLevel') return NUM_OPS;
+  // Passed the column where there is one, because whether a category can carry
+  // a range is a property of that column rather than of its type.
+  if (isRangeable(col)) return ORDERED_OPS;
   return ENUM_OPS;
 }
 function defaultOpFor(kind) {
-  if (kind === COLTYPE.NUMBER || kind === 'courseMark') return 'gt';
+  if (kind === COLTYPE.NUMBER || kind === 'courseGrade') return 'gt';
+  // Levels are a handful of small integers, so the common question is "did they
+  // take one at THIS level" rather than "above it" — the ordering is there when
+  // it is wanted, but equality is the honest default.
+  if (kind === 'courseLevel') return 'eq';
   return 'eq';
 }
 
@@ -1228,7 +2483,7 @@ function applyCriterion(t, c, f, log) {
   if (f.kind === 'courseSubject' || f.kind === 'courseCode') {
     if (coursesIdx === -1) return { table: t };
     var want = critValue(c, f.key, null) ||
-               (f.kind === 'courseSubject' ? SUBJECTS[0] : DEFAULT_COURSE);
+               (f.kind === 'courseSubject' ? defaultSubject() : defaultCourse());
     var prop = f.kind === 'courseSubject' ? 'subject' : 'code';
     var rows = t.rows.filter(function(r) {
       var list = r[coursesIdx] || [];
@@ -1241,26 +2496,80 @@ function applyCriterion(t, c, f, log) {
     return { table: makeTable(t.columns, rows) };
   }
 
-  if (f.kind === 'courseMark') {
+  /* Keeps a STUDENT who took at least one course matching the test, with all
+     their enrolments intact — the same row semantics "Took subject" has, and
+     the reason these are named for what they do to a row. A student who took a
+     100-level and a 400-level course satisfies both "level = 1" and
+     "level = 4", because they genuinely did both. */
+  if (f.kind === 'courseLevel') {
+    if (coursesIdx === -1) return { table: t };
+    var lvlCol = { def: String(defaultLevel() || 4) };
+    var lop = critOp(c, f.key, 'eq');
+    var lrange = critRange(c, f.key, lvlCol);
+    var lfn = OP_FNS[lop] || OP_FNS.eq;
+
+    if (lop === 'between' && (lrange.lo === null || lrange.hi === null)) {
+      return { error: 'A level range needs a number at both ends.' };
+    }
+    if (lop !== 'between' && isNaN(parseFloat(critValue(c, f.key, lvlCol)))) {
+      return { error: 'Course level must be a number.' };
+    }
+    var lwant = parseFloat(critValue(c, f.key, lvlCol));
+
+    var lrows = t.rows.filter(function(r) {
+      return (r[coursesIdx] || []).some(function(e) {
+        if (e.level === null || e.level === undefined) return false;
+        return lop === 'between'
+          ? (e.level >= lrange.lo && e.level <= lrange.hi)
+          : lfn(e.level, lwant);
+      });
+    });
+
+    log.push(logEntry('FILTER', lop === 'between'
+      ? [{s:'student'}, {c:'op', s:'took'}, {s:'level'},
+         {c:'op', s:'between'}, {c:'val', s:lrange.loRaw}, {s:'and'}, {c:'val', s:lrange.hiRaw}]
+      : [{s:'student'}, {c:'op', s:'took'}, {s:'level'},
+         {c:'op', s:OP_SYM[lop] || lop}, {c:'val', s:lwant}]));
+    return { table: makeTable(t.columns, lrows) };
+  }
+
+  if (f.kind === 'courseGrade') {
     // Two conditions in one: enrolled in the course AND the mark passes. A
     // student who never took it is excluded rather than treated as zero, which
     // would silently satisfy every "less than" test.
     if (coursesIdx === -1) return { table: t };
-    var code = c.course || DEFAULT_COURSE;
-    var num = parseFloat(critValue(c, f.key, { def:'70' }));
+    var code = c.course || defaultCourse();
+    var num = parseFloat(critValue(c, f.key, { def:'5' }));
     if (isNaN(num)) return { error: 'Course mark must be a number.' };
     var op = critOp(c, f.key, 'gte');
     var fn = OP_FNS[op] || OP_FNS.gte;
+    /* The mark field offers the numeric operators, and `between` is now one of
+       them, so the upper bound has to be read here too. Without it the range
+       would compare against an undefined ceiling and quietly match nobody —
+       the worst way for an unsupported combination to fail, because it looks
+       like an answer. */
+    var hi = num;
+    if (op === 'between') {
+      hi = parseFloat(critHigh(c, f.key, { def:'5' }));
+      if (isNaN(hi)) return { error: 'Course grade range needs two grade points.' };
+      if (hi < num) { var tmp = num; num = hi; hi = tmp; }
+    }
     var mrows = t.rows.filter(function(r) {
       var list = r[coursesIdx] || [];
       for (var i = 0; i < list.length; i++) {
-        if (list[i].code === code) return fn(list[i].mark, num);
+        // An ungraded enrolment answers no comparison — not "below", which is
+        // what a null coerced to 0 would silently claim.
+        if (list[i].code === code) {
+          var gp = gradePoint(list[i].letterGrade);
+          return gp === null ? false : fn(gp, num, hi);
+        }
       }
       return false;
     });
     log.push(logEntry('FILTER', [
-      {s:'student'}, {c:'op', s:'took'}, {s: code + '.mark'},
-      {c:'op', s:(OP_SYM[op] || '>=')}, {c:'val', s:num}
+      {s:'student'}, {c:'op', s:'took'}, {s: code + '.gradePoints'},
+      {c:'op', s:(OP_SYM[op] || '>=')},
+      {c:'val', s:(op === 'between' ? '[' + num + ' .. ' + hi + ']' : num)}
     ]));
     return { table: makeTable(t.columns, mrows) };
   }
@@ -1270,6 +2579,33 @@ function applyCriterion(t, c, f, log) {
   var opk = critOp(c, f.key, defaultOpFor(f.kind));
   var fnc = OP_FNS[opk] || OP_FNS.eq;
   var raw = critValue(c, f.key, col);
+
+  /* One branch for both kinds of range. rankerFor() turns a cell into a
+     position — itself for a number, its index for a declared order — so
+     "between 70 and 80" and "between A+ and B" are the same comparison on
+     different rankings, rather than two implementations that could disagree
+     about whether the ends are included. */
+  if (opk === 'between') {
+    var rng = critRange(c, f.key, col);
+    if (rng.lo === null || rng.hi === null) {
+      return { error: col.type === COLTYPE.NUMBER
+        ? col.label + ' range needs two numbers.'
+        : col.label + ' range needs two values from the column.' };
+    }
+    var rankOf = rankerFor(col);
+    var brows = t.rows.filter(function(r) {
+      // A value with no position cannot be inside any band. For a declared
+      // order that means a value nobody declared, which is the same reading
+      // comparatorFor() takes when it sorts such a value last.
+      var v = rankOf(r[idx]);
+      return v !== null && fnc(v, rng.lo, rng.hi);
+    });
+    log.push(logEntry('FILTER', [
+      {s:col.key}, {c:'op', s:'in'},
+      {c:'val', s:'[' + rng.loRaw + ' .. ' + rng.hiRaw + ']'}
+    ]));
+    return { table: makeTable(t.columns, brows) };
+  }
 
   if (col.type === COLTYPE.NUMBER) {
     var n = parseFloat(raw);
@@ -1373,7 +2709,7 @@ function dirLabel(col, dir) {
 function newSortKey() { return { col:'', dir:'asc' }; }
 
 /* Resolve the configured keys against a table. A key naming a column that is
-   no longer there — rewire a Source from students to enrolments and 'gradeAvg'
+   no longer there — rewire a Source from students to enrolments and 'gpa'
    simply stops existing — is reported rather than silently dropped, because a
    sort that quietly stopped happening looks identical to one that ran. */
 function resolveSortKeys(node, t) {
@@ -1445,6 +2781,37 @@ function applySort(node, t, log) {
      reorder a sibling branch's data as a side effect — and the bug would only
      appear on graphs that fork. */
   return makeTable(t.columns, decorated.map(function(d){ return d.row; }), t.meta);
+}
+
+/* REVERSE
+   Flips row order. Its reason for existing is Take: Take deliberately keeps the
+   FIRST N rows and does not rank, so "the last N" and "the bottom 10" had no
+   expression at all. Sort, Reverse, Take says it in three nodes that each do
+   one thing, rather than growing Take a direction setting that would duplicate
+   what Sort already decides.
+
+   Sort with the direction flipped covers most of the same ground, but not all
+   of it: reversing needs no column, so it works on a table whose order came
+   from somewhere other than a sort — the order rows arrived from a Combine, or
+   the order a Compare's branches were wired in. Those have no key to sort on.
+
+   Like Take it is a pure row operation: no column is added, removed, renamed or
+   retyped, so the outgoing header is the incoming header and the schema pass
+   needs nothing but passthroughSchema.
+
+   meta is carried through for the same reason Sort and Take carry it — the rows
+   are the same rows in a different order, so whatever a producer upstream
+   recorded about them is still true.                                          */
+function applyReverse(node, t, log) {
+  var n = t.rows.length;
+  log.push(logEntry('REVERSE', n
+    ? [{s:'row order of'}, {c:'val', s:n}, {s:'rows'}]
+    : [{s:'no rows to reverse'}]));
+  /* slice() first: reverse() is in place, and one node's result object is read
+     by every node wired downstream of it, so reversing t.rows directly would
+     reorder a sibling branch's data as a side effect. Sort guards the same way
+     and for the same reason — the bug would only show up on graphs that fork. */
+  return makeTable(t.columns, t.rows.slice().reverse(), t.meta);
 }
 
 /* TAKE
@@ -1551,7 +2918,7 @@ function uniqueCol(node, t) {
    column. */
 function uniqueCellKey(col, v) {
   if (col && col.type === COLTYPE.COURSES) {
-    return (v || []).map(function(e){ return e.code + ':' + e.mark; }).join(',');
+    return (v || []).map(function(e){ return e.code + ':' + e.letterGrade; }).join(',');
   }
   return String(v);
 }
@@ -1680,11 +3047,11 @@ function measuresOf(node) {
 }
 
 /* Which column "average" refers to, chosen from the table rather than assumed.
-   gradeAvg on a student table, mark on an enrolment table, otherwise the first
-   numeric column that is not an identifier. */
+   gpa on a student table, gradePoints on an enrolment table, otherwise the
+   first numeric column that is not an identifier. */
 function defaultAvgCol(t) {
-  if (hasCol(t, 'gradeAvg')) return 'gradeAvg';
-  if (hasCol(t, 'mark')) return 'mark';
+  if (hasCol(t, 'gpa')) return 'gpa';
+  if (hasCol(t, 'gradePoints')) return 'gradePoints';
   var nums = numericCols(t).filter(function(c) {
     return c.key !== 'id' && c.key !== 'studentId' && c.key !== 'points';
   });
@@ -1819,6 +3186,28 @@ function normaliseShow(node) {
   return (v === 'lists') ? 'rows' : 'count';
 }
 
+/* COLUMN SELECTION ON AN OUTPUT
+   ---------------------------------------------------------------------------
+   A deliberate duplication of what Select does, and worth being explicit about
+   why, because the Output's other shortcuts were removed for being exactly
+   this. Average and the course breakdown were removed because they COMPUTED —
+   they hid steps that changed the answer, and hid them somewhere the query log
+   could not describe. Choosing which columns to look at changes no answer. It
+   is a property of the view, which is what an Output is.
+
+   The supervisor put it as a question: one could always wire a Select in front,
+   but so many Outputs would need the pair that the duplication earns its place.
+   Both routes stay open, and they compose — a Select upstream narrows what
+   arrives, this narrows what is shown of it.
+
+   Applied to the row view alone. A count is a count of rows however many
+   columns are on them, and a Compare's summary already has the measure
+   checkboxes on the Compare itself; offering a second way to hide those would
+   be the duplication that is not worth it. */
+function outputCols(node, t) {
+  return selectedCols(node, t);
+}
+
 function outputTable(node, t) {
   var show = normaliseShow(node);
 
@@ -1826,7 +3215,165 @@ function outputTable(node, t) {
     return makeTable([{ key:'count', label:'Count', type:COLTYPE.NUMBER }],
                      [[t.rows.length]]);
   }
-  return t; // 'rows', 'summary' and 'lists' all display the incoming table
+  if (show !== 'rows') return t;   // 'summary' and 'lists' display as they arrive
+
+  var keep = outputCols(node, t);
+  if (keep.length === t.columns.length) return t;   // same table, so meta survives
+
+  var idx = keep.map(function(c){ return colIndex(t, c.key); });
+  /* meta is dropped for the reason Select drops it: branch tables carry the
+     header that arrived, and keeping them past a narrowing would leave the
+     summary and its branches disagreeing about what columns exist. */
+  return makeTable(keep, t.rows.map(function(r) {
+    return idx.map(function(i){ return r[i]; });
+  }));
+}
+
+/* ============================================================================
+   PROJECT — unfold the nested enrolments into rows of their own
+   ============================================================================
+   The one node that makes a row mean something different on the way out than it
+   meant on the way in. Everywhere else a row is a student; after a Project a row
+   is a single enrolment, so one student becomes eight rows and a count counts
+   course registrations rather than people.
+
+   That used to be a setting on the Source — "one per student" or "one per
+   enrolment" — and it was removed because a granularity switch hidden in a
+   dropdown made "count students" wrong by a factor of eight with nothing on
+   screen to say so. app.js:238 recorded what should replace it:
+
+     Nothing unfolds nested enrolments into their own rows any more. If that is
+     wanted later it should be a node on the canvas, where the change in row
+     identity is visible, rather than a setting hidden on the Source.
+
+   This is that node, and "where the change is visible" is its whole design
+   brief rather than a nicety:
+     - it is a node, so the step appears on the canvas and in the query log;
+     - it has its own colour and its own group in the menu, because it is not
+       the same kind of operation as the ones that narrow or reorder;
+     - it renames `id` to `studentId`, because after the unfold that column no
+       longer identifies a row — the same student now owns eight of them;
+     - its panel states the multiplication, and says what it does to a count.
+
+   Without it, nothing in the tool can reach a mark or a grade in a particular
+   course as a VALUE. Filter can already ask "did this student take SWEN421",
+   because it reads inside the nesting, but the mark itself can never become a
+   column, so a distribution of grades in one course is unaskable. That is use
+   case (f), and (g) on top of it.
+
+   The header is a function of the incoming header alone — the enrolment columns
+   are fixed, and which student columns come across is decided by their keys —
+   so computeSchemas answers without seeing a single row, and the registry
+   invariant holds with no special case.                                        */
+
+/* The columns an enrolment contributes. Fixed, because an enrolment has the
+   shape the data file gives it. */
+/* Derived from enrolmentColumns() rather than written beside it, so the unfold
+   and the header it claims to produce cannot disagree. */
+function enrolmentKeys() {
+  return enrolmentColumns().map(function(c){ return c.key; });
+}
+
+function enrolmentColumns() {
+  return [
+    { key:'code',        label:'Course',      type:COLTYPE.ENUM,   values:COURSES.map(function(c){ return c.code; }) },
+    { key:'name',        label:'Course name', type:COLTYPE.TEXT },
+    { key:'subject',     label:'Subject',     type:COLTYPE.ENUM,   values:SUBJECTS },
+    /* A number rather than an enum, so it can be averaged, maximised and
+       compared. "The highest level this student reached" is an Aggregate over
+       this column, and it is the closest thing the archive has to a year of
+       study — which is what use cases (h) and (i) have been waiting on. */
+    { key:'level',       label:'Level',       type:COLTYPE.NUMBER, def:'4' },
+    { key:'points',      label:'Points',      type:COLTYPE.NUMBER, def:'15' },
+    { key:'gradePoints', label:'Grade points',type:COLTYPE.NUMBER, def:'5' },
+    { key:'letterGrade', label:'Grade',       type:COLTYPE.TEXT,   order:GRADE_ORDER }
+  ];
+}
+
+/* Whether this node has anything to do. A table with no nested column has
+   nothing to unfold, and a Project wired behind an Aggregate is a mistake worth
+   reporting rather than an error worth stopping for — the same treatment a
+   Filter gives a criterion whose column has gone. */
+function canProject(t) { return coursesColIndex(t) !== -1; }
+
+/* Which of the incoming columns survive the unfold, and under what names.
+
+   The nested column itself goes, having become rows. `id` is renamed, because
+   after the unfold it identifies a student rather than a row and leaving it
+   called "ID" invites exactly the miscount this node exists to make visible.
+
+   A column whose key an enrolment also uses is dropped rather than carried: a
+   student row's `letterGrade` is their average grade, an enrolment's is their
+   grade in that course, and on a table of enrolments the second is the one the
+   name should mean. The log names what was replaced, so nothing vanishes
+   quietly. Derived by key rather than from a fixed list, so a column added to
+   the Source schema tomorrow is carried without this function changing. */
+function projectCarried(t) {
+  var taken = {};
+  enrolmentColumns().forEach(function(c){ taken[c.key] = true; });
+  return t.columns.filter(function(c) {
+    return c.type !== COLTYPE.COURSES && !taken[c.key];
+  });
+}
+
+function projectColumns(t) {
+  return projectCarried(t).map(function(c) {
+    // Same column, new name where the name would now mislead.
+    return c.key === 'id'
+      ? { key:'studentId', label:'Student', type:c.type, def:c.def, values:c.values, filter:c.filter }
+      : c;
+  }).concat(enrolmentColumns());
+}
+
+function projectSchema(node, inSchema) {
+  if (!canProject(inSchema)) return inSchema;
+  return makeTable(projectColumns(inSchema), []);
+}
+
+function applyProject(node, t, log) {
+  if (!canProject(t)) {
+    log.push(logEntry('PROJECT', [{s:'nothing to expand — no course data on this table'}]));
+    return t;
+  }
+
+  var ci = coursesColIndex(t);
+  var carry = projectCarried(t);
+  var carryIdx = carry.map(function(c){ return colIndex(t, c.key); });
+  var cols = projectColumns(t);
+  var eKeys = enrolmentKeys();   // hoisted: this is per unfold, not per row
+
+  var rows = [];
+  t.rows.forEach(function(r) {
+    var prefix = carryIdx.map(function(i){ return r[i]; });
+    var list = r[ci] || [];
+    list.forEach(function(e) {
+      /* Read out of the enrolment BY KEY, in the order enrolmentColumns()
+         declares, rather than as a hand-written array in the same order. The
+         two were positional and drifted the moment Level was added: every cell
+         after Subject shifted, so Grade points held a letter and Grade held
+         nothing. Same failure studentsTable() had, same fix — the column list
+         is the single statement of what a row holds. */
+      rows.push(prefix.concat(eKeys.map(function(k){ return e[k]; })));
+    });
+  });
+
+  /* The row count is the message. Saying "80 rows -> 640 rows, one per course"
+     in the log puts the multiplication in the same place every other step
+     reports itself, so a count that looks eight times too large downstream has
+     an explanation one line above it. */
+  log.push(logEntry('PROJECT', [
+    {c:'val', s:t.rows.length}, {s:'rows'}, {c:'op', s:'->'},
+    {c:'val', s:rows.length}, {s:'rows, one per course'}
+  ]));
+
+  var replaced = t.columns.filter(function(c) {
+    return c.type !== COLTYPE.COURSES && carry.indexOf(c) === -1;
+  });
+  if (replaced.length) {
+    log.push(logEntry('PROJECT', [{s:'replaced by course values:'},
+      {c:'val', s:replaced.map(function(c){ return c.label; }).join(', ')}]));
+  }
+  return makeTable(cols, rows);
 }
 
 /* ============================================================================
@@ -2022,6 +3569,75 @@ function applyAggregateColumns(node, t, log) {
     log.push(logEntry('AGGREGATE COLUMNS', [{s:'left blank:'}, {c:'val', s:skipped.join(', ')}]));
   }
   return makeTable(out.columns, [row]);
+}
+
+/* ---- AggregateRows: one row -> one value, per row ------------------------- */
+
+/* The third member of the family, and the one that runs the other way. Aggregate
+   collapses a table to a cell; AggregateColumns collapses each column to a cell
+   and emits one row; AggregateRows collapses each ROW to a cell and emits one
+   column. Row count is preserved, which is what makes it the counterpart of
+   AggregateColumns rather than a second spelling of it:
+
+     AggregateColumns   N rows x M cols  ->  1 row  x M cols   (down each column)
+     AggregateRows      N rows x M cols  ->  N rows x 1 col    (across each row)
+
+   THE WHOLE ROW IS REPLACED, not appended to. The settled position is that row
+   aggregation assumes a row of measures: totalling a row that still carries a
+   student id is not a meaningful operation, so the question of whether the
+   answer replaces the row or joins it never arises. Narrowing to the measures
+   first is a Select, which is a node that exists — so the composition is
+   Select then AggregateRows, and neither node grows a column picker for the
+   other's benefit.
+
+   The cost is that a label column goes with everything else: total a histogram
+   of one row per year and the years are not in the result. That is the honest
+   consequence of the rule above rather than an oversight, and the fix, if it is
+   ever wanted, is the general "say which columns are aggregated" approach the
+   supervisor described and explicitly deferred. */
+function aggregateRowsColumn(node) {
+  var op = aggOp(node);
+  // No single input column to name, so the measure names itself. Keyed on the
+  // op so two of these in series produce distinguishable headers.
+  return { key: op.key, label: op.label, type: COLTYPE.NUMBER };
+}
+
+function aggregateRowsSchema(node, inSchema) {
+  return makeTable([aggregateRowsColumn(node)], []);
+}
+
+/* Which cells of a row feed the measure. The same rule AggregateColumns uses,
+   applied along the other axis: Count asks how many values are present and any
+   column can answer that, while the arithmetic measures take only the columns
+   that hold a number and are not an identifier. Resolved once for the table
+   rather than per row, since the header does not change between rows. */
+function aggregateRowsIdx(node, t) {
+  var op = aggOp(node);
+  var idx = [];
+  t.columns.forEach(function(c, i) {
+    if (op.key === 'count' || isMeasurable(t, c)) idx.push(i);
+  });
+  return idx;
+}
+
+function applyAggregateRows(node, t, log) {
+  var op = aggOp(node);
+  var out = aggregateRowsColumn(node);
+  var idx = aggregateRowsIdx(node, t);
+
+  var rows = t.rows.map(function(r) {
+    return [reduceValues(op.key, idx.map(function(i){ return r[i]; }))];
+  });
+
+  var skipped = t.columns.length - idx.length;
+  log.push(logEntry('AGGREGATE ROWS', [{s:op.label.toLowerCase() + ' across'},
+                                       {c:'val', s:idx.length},
+                                       {s:'column' + (idx.length === 1 ? '' : 's') + ', per row'}]));
+  if (skipped > 0) {
+    log.push(logEntry('AGGREGATE ROWS', [{s:'ignored'}, {c:'val', s:skipped},
+      {s:'non-measure column' + (skipped === 1 ? '' : 's')}]));
+  }
+  return makeTable([out], rows);
 }
 
 /* ============================================================================
@@ -2367,7 +3983,9 @@ var NODE_SPEC = {
       return headerOnly(makeTable(STUDENT_COLUMNS, []));
     },
     evaluate: function(node, ctx) {
-      return { table: sourceTable(node, ctx.log), hasSource: true };
+      var out = sourceTable(node, ctx.log);
+      if (out.error) return { error: out.error };
+      return { table: out.table, hasSource: true };
     }
   },
 
@@ -2379,6 +3997,12 @@ var NODE_SPEC = {
   sort: {
     schema: passthroughSchema,
     rows: function(node, t, log) { return { table: applySort(node, t, log) }; }
+  },
+
+  reverse: {
+    // Nothing to declare: same header out as in, and no config to read.
+    schema: passthroughSchema,
+    rows: function(node, t, log) { return { table: applyReverse(node, t, log) }; }
   },
 
   take: {
@@ -2404,6 +4028,15 @@ var NODE_SPEC = {
     rows: function(node, t, log) { return { table: applySelect(node, t, log) }; }
   },
 
+  project: {
+    // The only node that changes what a ROW means. Its header still follows
+    // from the incoming header alone — the enrolment columns are fixed and the
+    // carried ones are chosen by key — so it needs no more of the registry than
+    // any other node, however different its effect.
+    schema: projectSchema,
+    rows: function(node, t, log) { return { table: applyProject(node, t, log) }; }
+  },
+
   aggregate: {
     schema: aggregateSchema,
     rows: function(node, t, log) { return { table: applyAggregate(node, t, log) }; }
@@ -2412,6 +4045,13 @@ var NODE_SPEC = {
   aggregateColumns: {
     schema: aggregateColumnsSchema,
     rows: function(node, t, log) { return { table: applyAggregateColumns(node, t, log) }; }
+  },
+
+  aggregateRows: {
+    // Header depends only on the chosen measure, never on the incoming columns,
+    // so the schema walk knows it without looking at anything upstream.
+    schema: aggregateRowsSchema,
+    rows: function(node, t, log) { return { table: applyAggregateRows(node, t, log) }; }
   },
 
   combine: {
@@ -2465,11 +4105,16 @@ var NODE_SPEC = {
 
   output: {
     /* An Output's result IS its input: outputTable() applies the chosen view at
-       render time, not here, so the count/average/breakdown reshaping is not
-       part of the graph. Nothing reads downstream of an Output — CONNECT_RULES
-       gives it no outgoing edges — so the distinction costs nothing today. If
-       an Output ever becomes chainable, this is the entry that has to grow a
-       real schema, and outputTable() is already the function to call. */
+       render time, not here, so neither the count reshaping nor the column
+       narrowing is part of the graph. Nothing reads downstream of an Output —
+       CONNECT_RULES gives it no outgoing edges — so the distinction costs
+       nothing today, and passthroughSchema stays honest because no node ever
+       asks what an Output produces.
+
+       If an Output ever becomes chainable this is the entry that has to grow a
+       real schema, and it is now a real piece of work rather than a formality:
+       the header depends on the view AND on the column selection, so the answer
+       is makeTable(outputTable(node, inSchema).columns, []). */
     schema: passthroughSchema
   }
 };
@@ -2595,15 +4240,24 @@ function opt(val, cur, label) {
   return '<option value="' + esc(val) + '"' + (String(cur) === String(val) ? ' selected' : '') + '>' +
     esc(label === undefined ? val : label) + '</option>';
 }
+/* The archive names a course by code and never by title, so a loaded catalogue
+   has name === code and there is nothing to append. Saying "AIML427" beats
+   saying "AIML427 — AIML427", and the synthetic catalogue, which does carry
+   titles, still gets both. One function, because the course dropdown and its
+   tooltip must not disagree about how a course is written. */
+function courseLabel(c) {
+  if (!c) return '';
+  return (c.name && c.name !== c.code) ? c.code + ' — ' + c.name : c.code;
+}
 function courseTitle(code) {
   var c = COURSE_BY_CODE[code];
-  return c ? c.code + ' — ' + c.name : String(code);
+  return c ? courseLabel(c) : String(code);
 }
 
 // Grouped by subject so a 31-course catalogue stays navigable and a longer real
 // one degrades gracefully instead of becoming a single flat list.
 function courseSelect(nodeId, key, cur) {
-  var sel = cur || DEFAULT_COURSE;
+  var sel = cur || defaultCourse();
   var html = '<select class="course-sel" title="' + esc(courseTitle(sel)) + '"' + ctl(nodeId, key) + '>';
   SUBJECTS.forEach(function(subj) {
     var inSubj = COURSES.filter(function(c){ return c.subject === subj; });
@@ -2611,7 +4265,7 @@ function courseSelect(nodeId, key, cur) {
     html += '<optgroup label="' + esc(subj) + '">';
     inSubj.forEach(function(c) {
       html += '<option value="' + c.code + '"' + (sel === c.code ? ' selected' : '') + '>' +
-        esc(c.code + ' — ' + c.name) + '</option>';
+        esc(courseLabel(c)) + '</option>';
     });
     html += '</optgroup>';
   });
@@ -2619,13 +4273,69 @@ function courseSelect(nodeId, key, cur) {
 }
 
 function opSelect(nodeId, key, ops, cur) {
-  return '<select' + ctl(nodeId, key) + '>' +
-    ops.map(function(o){ return opt(o, cur, OP_SYM[o]); }).join('') +
-  '</select>';
+  var groups = opGroups(ops);
+  // Only worth grouping when there is something to separate. A field with no
+  // range on offer gets a plain list, as before.
+  var body = groups.length < 2
+    ? ops.map(function(o){ return opt(o, cur, opLabel(o)); }).join('')
+    : groups.map(function(g) {
+        return '<optgroup label="' + esc(g.label) + '">' +
+          g.ops.map(function(o){ return opt(o, cur, opLabel(o)); }).join('') +
+        '</optgroup>';
+      }).join('');
+  /* Marked when the range is chosen so the row can give the control room for
+     its longer label. "in range" will not fit the 38px column the comparator
+     symbols live in, and the value box it would have shared that row with has
+     moved into the band below anyway. */
+  var wide = cur === 'between' ? ' class="op-wide"' : '';
+  return '<select' + wide + ctl(nodeId, key) + '>' + body + '</select>';
 }
 
 /* One criterion row. Its shape follows the field's type, and the field list
    follows the incoming table — so this function knows nothing about students. */
+/* THE RANGE BAND
+   A range is the one criterion that needs a second value, and squeezing it into
+   the same row as the first would leave three controls and two numbers fighting
+   over 220px. It gets its own strip below the row instead, banded down the left
+   the way a criterion is banded, so it reads as part of that criterion rather
+   than as a new one — and coloured, so a filter carrying a band is visibly
+   doing something different from one that is not.
+
+   It exists only while `between` is the operator. Choosing it adds the band and
+   choosing anything else takes it away, which is the whole of the "add it or
+   not": there is no separate switch to get out of step with the operator.
+
+   The colour is the one this interface already uses for a state worth noticing
+   — the amber of the stale-results notice — rather than a new hue invented for
+   one control. */
+function rangeBandHTML(nid, ci, cur, c, renderBound) {
+  var rng = critRange(c, cur.key, cur.column);
+  var hiKey = 'crit.' + ci + '.value:' + rangeKey(cur.key);
+  return '<div class="crit-range">' +
+    '<span class="crit-range-tag">range</span>' +
+    '<div class="crit-range-pair">' +
+      renderBound('crit.' + ci + '.value:' + cur.key, rng.loRaw) +
+      '<span class="crit-range-to">to</span>' +
+      renderBound(hiKey, rng.hiRaw) +
+    '</div>' +
+    '<div class="crit-range-note">' +
+      (rng.lo === null || rng.hi === null
+        ? (cur.column && cur.column.type === COLTYPE.NUMBER
+            ? 'Both ends have to be numbers. The query will not run until they are.'
+            : 'Both ends have to be values this column holds.')
+        : rng.lo === rng.hi
+        /* The two bounds start equal on a plain number column, which has no
+           declared span to open the band across. Saying so, and saying what to
+           do, beats leaving the user to work out why a range behaves like an
+           equals. */
+        ? 'Both ends are ' + esc(String(rng.loRaw)) + ', so this keeps only ' +
+          'rows equal to it. Change one end to widen the band.'
+        : 'Keeps rows from ' + esc(String(rng.loRaw)) + ' to ' + esc(String(rng.hiRaw)) +
+          ', both included.' + (rng.swapped ? ' (Bounds read the other way round.)' : '')) +
+    '</div>' +
+  '</div>';
+}
+
 function criterionHTML(node, ci, c, schema) {
   var fields = filterFields(schema);
   if (!fields.length) {
@@ -2651,42 +4361,93 @@ function criterionHTML(node, ci, c, schema) {
   if (cur.kind === 'courseSubject') {
     body = '<div class="criterion-controls two-col">' + fieldSel +
       '<select' + ctl(nid, vKey) + '>' +
-        SUBJECTS.map(function(s){ return opt(s, critValue(c, cur.key, null) || SUBJECTS[0]); }).join('') +
+        SUBJECTS.map(function(s){ return opt(s, critValue(c, cur.key, null) || defaultSubject()); }).join('') +
       '</select></div>';
 
   } else if (cur.kind === 'courseCode') {
     body = '<div class="criterion-controls stack">' + fieldSel +
-      courseSelect(nid, vKey, critValue(c, cur.key, null) || DEFAULT_COURSE) + '</div>';
+      courseSelect(nid, vKey, critValue(c, cur.key, null) || defaultCourse()) + '</div>';
 
-  } else if (cur.kind === 'courseMark') {
+  } else if (cur.kind === 'courseLevel') {
+    /* A select rather than a number box: the levels are the handful the loaded
+       files actually contain, and offering a free number invites "level 7",
+       which every file answers with nothing. */
+    var lOp = critOp(c, cur.key, 'eq');
+    var lvlDef = { def: String(defaultLevel() || 4) };
+    var lvlBox = function(key, val) {
+      return '<select' + ctl(nid, key) + '>' +
+        (LEVELS.length ? LEVELS : [1, 2, 3, 4]).map(function(v) {
+          return opt(String(v), String(val), v + '00-level');
+        }).join('') + '</select>';
+    };
+    body = (lOp === 'between'
+      ? '<div class="criterion-controls two-col">' + fieldSel +
+          opSelect(nid, oKey, NUM_OPS, lOp) + '</div>' +
+        rangeBandHTML(nid, ci, { key: cur.key, column: lvlDef }, c, lvlBox)
+      : '<div class="criterion-controls">' + fieldSel +
+          opSelect(nid, oKey, NUM_OPS, lOp) +
+          lvlBox(vKey, critValue(c, cur.key, lvlDef)) +
+        '</div>');
+
+  } else if (cur.kind === 'courseGrade') {
+    var mOp = critOp(c, cur.key, 'gte');
+    var markBox = function(key, val) {
+      return '<input type="number" min="0" max="9" value="' + esc(val) + '"' + ctl(nid, key) + '>';
+    };
     body = '<div class="criterion-controls stack">' + fieldSel +
       courseSelect(nid, 'crit.' + ci + '.course', c.course) +
-      '<div class="cc-pair">' +
-        opSelect(nid, oKey, NUM_OPS, critOp(c, cur.key, 'gte')) +
-        '<input type="number" min="0" max="100" value="' + esc(critValue(c, cur.key, { def:'70' })) + '"' +
-          ctl(nid, vKey) + '></div></div>';
+      (mOp === 'between'
+        ? opSelect(nid, oKey, NUM_OPS, mOp)
+        : '<div class="cc-pair">' + opSelect(nid, oKey, NUM_OPS, mOp) +
+            markBox(vKey, critValue(c, cur.key, { def:'5' })) + '</div>') +
+      '</div>' +
+      (mOp === 'between'
+        ? rangeBandHTML(nid, ci, { key: cur.key, column: { def:'5' } }, c, markBox)
+        : '');
 
   } else if (cur.kind === COLTYPE.NUMBER) {
-    body = '<div class="criterion-controls">' + fieldSel +
-      opSelect(nid, oKey, NUM_OPS, critOp(c, cur.key, 'gt')) +
-      '<input type="number" value="' + esc(critValue(c, cur.key, cur.column)) + '"' + ctl(nid, vKey) + '>' +
-    '</div>';
+    var nOp = critOp(c, cur.key, 'gt');
+    var numBox = function(key, val) {
+      return '<input type="number" value="' + esc(val) + '"' + ctl(nid, key) + '>';
+    };
+    // The single box gives way to the band rather than sitting beside it — two
+    // places to type a lower bound would be one too many — so with the range on
+    // the row has only two cells and the operator can have the spare width.
+    body = (nOp === 'between'
+      ? '<div class="criterion-controls two-col">' + fieldSel +
+          opSelect(nid, oKey, NUM_OPS, nOp) + '</div>' +
+        rangeBandHTML(nid, ci, cur, c, numBox)
+      : '<div class="criterion-controls">' + fieldSel +
+          opSelect(nid, oKey, NUM_OPS, nOp) +
+          numBox(vKey, critValue(c, cur.key, cur.column)) +
+        '</div>');
 
-  } else if (cur.kind === COLTYPE.ENUM) {
-    var vals = (cur.column && cur.column.values) || [];
+  } else if (cur.kind === COLTYPE.ENUM || isRangeable(cur.column)) {
+    var vals = (cur.column && cur.column.values) || (cur.column && cur.column.order) || [];
     // Enum criteria carry an operator too. Without one, "specialisation is NOT
     // Data Science" is unaskable — the engine has always supported it, but
     // there was no control to reach it with.
-    var enumOp = opSelect(nid, oKey, ENUM_OPS, critOp(c, cur.key, 'eq'));
-    var valSel = '<select' + ctl(nid, vKey) + '>' +
-      vals.map(function(v){ return opt(v, critValue(c, cur.key, cur.column)); }).join('') + '</select>';
+    var eOps = opsFor(cur.kind, cur.column);
+    var eOp = critOp(c, cur.key, 'eq');
+    if (eOps.indexOf(eOp) === -1) eOp = eOps[0];
+    var enumOp = opSelect(nid, oKey, eOps, eOp);
+    var pick = function(key, val) {
+      return '<select' + ctl(nid, key) + '>' +
+        vals.map(function(v){ return opt(v, String(val)); }).join('') + '</select>';
+    };
+    var valSel = pick(vKey, critValue(c, cur.key, cur.column));
     // Long option text (specialisations, course names) will not survive the
     // 80px field column, so those wrap onto their own row.
     var wide = vals.some(function(v){ return String(v).length > 8; });
-    body = wide
+    body = (eOp === 'between'
+      // Both bounds live in the band, so the row is field and operator only —
+      // and the operator gets the width its label needs, wide values or not.
+      ? '<div class="criterion-controls two-col">' + fieldSel + enumOp + '</div>' +
+        rangeBandHTML(nid, ci, cur, c, pick)
+      : wide
       ? '<div class="criterion-controls stack">' + fieldSel +
           '<div class="cc-pair">' + enumOp + valSel + '</div></div>'
-      : '<div class="criterion-controls">' + fieldSel + enumOp + valSel + '</div>';
+      : '<div class="criterion-controls">' + fieldSel + enumOp + valSel + '</div>');
 
   } else {
     body = '<div class="criterion-controls">' + fieldSel +
@@ -2703,13 +4464,115 @@ function criterionHTML(node, ci, c, schema) {
    that produced them, which needs results; this is needed at render time,
    before anything has run, so it names the node instead. */
 var NODE_LABELS = {
-  source:'Source', filter:'Filter', sort:'Sort', take:'Take',
-  unique:'Unique', select:'Select',
-  aggregate:'Aggregate', aggregateColumns:'Agg. Columns',
+  source:'Source', filter:'Filter', sort:'Sort', reverse:'Reverse', take:'Take',
+  unique:'Unique', select:'Select', project:'Project',
+  aggregate:'Aggregate', aggregateColumns:'Agg. Columns', aggregateRows:'Agg. Rows',
   combine:'Combine', compare:'Compare', output:'Output'
 };
 function upstreamLabel(node) {
   return (NODE_LABELS[node.type] || node.type) + ' #' + node.id;
+}
+
+/* THE FILE SECTION ON A SOURCE PANEL
+   ---------------------------------------------------------------------------
+   Two rows, in the order the two steps have to happen in, each showing what is
+   currently held rather than only offering a button. A Source that says
+   "headers.txt, 27 columns" and "mcs-students-2022, 2170 rows" is a Source
+   whose answer can be checked against the files on disk, which is the whole
+   reason the names are shown at all.
+
+   The year button is disabled until a header is in hand. The ordering is a real
+   constraint rather than a stylistic one — a year file is a list of fields with
+   no names on it — so the control says so by being unavailable, and the hint
+   underneath says why. */
+function sourceFilesHTML(node) {
+  var id = node.id;
+  var data = datasetFor(node);
+  var header = headerFor(id);
+  var want = datasetCfg(node);
+  var notice = SOURCE_NOTICE[id];
+
+  var html = '<div class="cfg-label">Data files</div><div class="src-files">';
+
+  // 1 — the column file
+  html += '<div class="src-file' + (header ? ' done' : '') + '">' +
+    '<span class="src-step">1</span>' +
+    '<span class="src-what">' +
+      (header
+        ? '<b>' + esc(header.name) + '</b><small>' +
+            (header.columns.length ? header.columns.length + ' columns' : 'built in') + '</small>'
+        : '<b>' + esc(DATA_HEADERS_NAME) + '</b><small>not loaded</small>') +
+    '</span>' +
+    '<button class="src-btn" onclick="pickHeadersFile(' + id + ')">' +
+      (header ? 'Replace' : 'Choose') + '</button>' +
+  '</div>';
+
+  /* 2 — the year files.
+     A list rather than one line of comma-separated names, because they are a
+     collection the user adds to and takes from: each one has to be countable on
+     its own and removable on its own. Naming them all in a single label made
+     four files look like one thing that had to be re-picked whole. */
+  var files = (data && !data.synthetic) ? data.files : [];
+  var full = files.length >= MAX_YEAR_FILES;
+  html += '<div class="src-file' + (files.length ? ' done' : '') + '">' +
+    '<span class="src-step">2</span>' +
+    '<span class="src-what">' +
+      (files.length
+        ? '<b>' + files.length + ' year file' + (files.length === 1 ? '' : 's') + '</b>' +
+          '<small>' + files.reduce(function(a, f){ return a + f.rows; }, 0) + ' rows, ' +
+          files.reduce(function(a, f){ return a + f.students; }, 0) + ' students</small>'
+        : '<b>' + yearFileNameFor(want.years.length ? want.years[0] : 'YYYY') + '</b>' +
+          '<small>' + (want.years.length
+            ? (want.years.length === 1 ? 'wanted by this query'
+               : want.years.length + ' wanted by this query')
+            : 'not loaded') + '</small>') +
+    '</span>' +
+    '<button class="src-btn"' + (header && !full ? '' : ' disabled') +
+      ' title="' + (full ? esc('This Source is holding the most year files it can.')
+                         : 'Choose one or more mcs-students-YYYY files') + '"' +
+      ' onclick="pickYearFiles(' + id + ')">' +
+      (files.length ? 'Add' : 'Choose') + '</button>' +
+  '</div>';
+
+  /* Each loaded year, with the control that drops it. Indented under step 2
+     rather than being three more numbered steps: they are the contents of one
+     step, and numbering them would say the order they were chosen in matters. */
+  if (files.length) {
+    html += '<div class="src-years">' + files.map(function(f) {
+      return '<div class="src-year">' +
+        '<span class="src-year-name">' + esc(f.name) + '</span>' +
+        '<span class="src-year-count">' + f.students + ' students</span>' +
+        '<button class="src-year-drop" title="' +
+          esc('Remove ' + f.name + ' from this Source') + '"' +
+          ' onclick="removeSourceYear(' + id + ',' + f.year + ')">x</button>' +
+      '</div>';
+    }).join('') + '</div>';
+  } else if (want.years.length > 1) {
+    // Nothing loaded, but the saved query knows what it wants. Naming all of
+    // them is the difference between re-picking the right files and guessing.
+    html += '<div class="src-years">' + want.years.map(function(y) {
+      return '<div class="src-year wanted">' +
+        '<span class="src-year-name">' + esc(yearFileNameFor(y)) + '</span>' +
+        '<span class="src-year-count">not loaded</span>' +
+      '</div>';
+    }).join('') + '</div>';
+  }
+
+  html += '</div>';
+
+  if (!header) {
+    html += '<div class="src-hint">A year file has no column names in it, so ' +
+      esc(DATA_HEADERS_NAME) + ' has to come first.</div>';
+  }
+  if (data && !data.synthetic) {
+    html += '<button class="src-clear" onclick="clearSourceData(' + id + ')">' +
+      'Unload everything, including ' + esc(DATA_HEADERS_NAME) + '</button>';
+  }
+  if (notice) {
+    html += '<div class="src-notice ' + (notice.kind === 'error' ? 'bad' : 'ok') + '">' +
+      esc(notice.text) + '</div>';
+  }
+  return html;
 }
 
 function configHTML(node, schemas) {
@@ -2719,10 +4582,17 @@ function configHTML(node, schemas) {
   var html = '<div class="node-config">';
 
   if (node.type === 'source') {
+    html += sourceFilesHTML(node);
+
+    /* The population offers THIS Source's years, not every year loaded anywhere
+       on the canvas. Offering a year this Source cannot answer would be
+       offering an empty result dressed as a choice. */
+    var data = datasetFor(node);
+    var years = data ? data.years : [];
     html += '<div class="cfg-label">Population</div>' +
-      '<select' + ctl(id, 'pop') + '>' +
+      '<select' + ctl(id, 'pop') + (years.length ? '' : ' disabled') + '>' +
         opt('all', cfg.pop, 'All students') +
-        YEARS.map(function(y){ return opt(String(y), cfg.pop, y + ' only'); }).join('') +
+        years.map(function(y){ return opt(String(y), cfg.pop, y + ' only'); }).join('') +
       '</select>';
   }
 
@@ -2815,6 +4685,17 @@ function configHTML(node, schemas) {
     }
   }
 
+  if (node.type === 'reverse') {
+    /* No controls. The panel still earns its place by saying what the node is
+       for: on its own Reverse looks like a node that does nothing useful, and
+       the pairing with Take is the whole point of it. */
+    var rn = inputsOf(id).length
+      ? 'Last row first, first row last. Columns and row count are unchanged.'
+      : 'Wire a table in. This flips the order its rows arrive in.';
+    html += '<div class="cmp-hint">' + rn + ' Put it before a <b>Take</b> to keep ' +
+      'the last few rows instead of the first.</div>';
+  }
+
   if (node.type === 'take') {
     // Bound to cfg.n verbatim, so a partially typed value is preserved between
     // renders. The engine's fallback is what protects the Run, not the control.
@@ -2847,8 +4728,10 @@ function configHTML(node, schemas) {
       '</div>';
   }
 
-  if (node.type === 'aggregate' || node.type === 'aggregateColumns') {
+  if (node.type === 'aggregate' || node.type === 'aggregateColumns' ||
+      node.type === 'aggregateRows') {
     var isCols = node.type === 'aggregateColumns';
+    var isRows = node.type === 'aggregateRows';
     var op = aggOp(node);
 
     html += '<div class="cfg-label">Measure</div>' +
@@ -2856,7 +4739,7 @@ function configHTML(node, schemas) {
         AGG_OPS.map(function(o){ return opt(o.key, op.key, o.label); }).join('') +
       '</select>';
 
-    if (!isCols && op.needsCol) {
+    if (!isCols && !isRows && op.needsCol) {
       // Only the whole-table Aggregate picks a column: AggregateColumns applies
       // the measure to every column at once, which is the point of it.
       var mcols = measurableCols(schema);
@@ -2872,7 +4755,25 @@ function configHTML(node, schemas) {
     // Say what will come out, in the same words the result will use. The shape
     // of an aggregation is the thing people get wrong about it, and stating it
     // before the query runs is cheaper than explaining it afterwards.
-    if (isCols) {
+    if (isRows) {
+      /* Naming the count of contributing columns is the whole warning: if it
+         says 1, the measure is reducing a single column to itself, and if it
+         counts a column the user thinks of as a label, the label is being
+         added into the total. */
+      var rIdx = aggregateRowsIdx(node, schema);
+      var rTotal = schema.columns.length;
+      var rSkip = rTotal - rIdx.length;
+      html += '<div class="cmp-hint">' +
+        'One column out, one row per row in &mdash; ' + esc(op.label.toLowerCase()) +
+        ' across ' + (rTotal
+          ? rIdx.length + ' of ' + rTotal + ' column' + (rTotal === 1 ? '' : 's')
+          : 'each row') + '.' +
+        (rSkip > 0
+          ? ' ' + rSkip + ' non-measure column' + (rSkip === 1 ? ' is' : 's are') + ' ignored.'
+          : '') +
+        ' The rest of the row is replaced, so put a <b>Select</b> in front if the ' +
+        'row still carries anything that is not a measure.</div>';
+    } else if (isCols) {
       var ncols = schema.columns.length;
       html += '<div class="cmp-hint">One row out, ' +
         (ncols ? ncols + ' column' + (ncols === 1 ? '' : 's') : 'one column per column in') +
@@ -2910,6 +4811,28 @@ function configHTML(node, schemas) {
           ? 'Every column is kept — untick to narrow. Rows are never touched.'
           : kept.length + ' of ' + availCols.length + ' columns kept, in the order they arrive.') +
         '</div>';
+    }
+  }
+
+  if (node.type === 'project') {
+    /* No controls, so the panel exists entirely to say what the node does to
+       the meaning of a row. That is the thing this node was asked to make
+       visible, and a panel that said nothing would put it back where it was
+       when it lived hidden on the Source. */
+    if (!canProject(schema)) {
+      html += '<div class="cmp-hint">No course data on this table, so there is ' +
+        'nothing to expand &mdash; the rows pass through unchanged. Wire this ' +
+        'straight after a Source or a Filter.</div>';
+    } else {
+      var pCols = projectColumns(schema);
+      var pGained = enrolmentColumns().map(function(c){ return c.label; }).join(', ');
+      html += '<div class="cfg-label">One row per course</div>' +
+        '<div class="cmp-hint proj-warn">Every row becomes one row per course ' +
+        'taken, so a row is an enrolment from here on, not a student. ' +
+        '<b>A count after this counts enrolments.</b></div>' +
+        '<div class="cmp-hint">Adds ' + esc(pGained) + '. ' +
+        'ID becomes Student, because it no longer names a row on its own. ' +
+        pCols.length + ' columns out.</div>';
     }
   }
 
@@ -2993,6 +4916,41 @@ function configHTML(node, schemas) {
     }
     html += '</select>';
 
+    /* The column picker appears only on the row view. It is the same control as
+       Select's, deliberately — two panels that do the same thing should look
+       the same — and it reads the header that is actually arriving, so an
+       Output rewired behind a different branch offers that branch's columns. */
+    if (show === 'rows') {
+      var oCols = schema.columns;
+      if (!oCols.length) {
+        html += '<div class="cmp-hint">Nothing wired in yet &mdash; connect a Source to ' +
+          'choose which columns to show.</div>';
+      } else {
+        var oKept = outputCols(node, schema).map(function(c){ return c.key; });
+        html += '<div class="cfg-label">Show columns</div><div class="cmp-measures sel-cols">' +
+          oCols.map(function(c) {
+            // Last box locked for Select's reason: an Output showing no columns
+            // has nothing to show, and the panel it leaves behind offers no way
+            // back, since every box would be unticked and identical.
+            var on = oKept.indexOf(c.key) !== -1;
+            var locked = on && oKept.length === 1;
+            return '<label class="cmp-measure' + (locked ? ' locked' : '') + '"' +
+                (locked ? ' title="At least one column has to be shown"' : '') + '>' +
+              '<input type="checkbox"' + (on ? ' checked' : '') + (locked ? ' disabled' : '') +
+                ctl(id, 'column:' + c.key) + '>' +
+              '<span>' + esc(c.label) + '</span></label>';
+          }).join('') +
+        '</div>';
+        html += '<div class="cmp-hint">' +
+          (oKept.length === oCols.length
+            ? 'Every column is shown. Untick to narrow the view &mdash; no rows are lost, ' +
+              'and Copy and Save follow what is shown.'
+            : oKept.length + ' of ' + oCols.length + ' columns shown. Copy and Save ' +
+              'write these columns, every row.') +
+          '</div>';
+      }
+    }
+
     // The file name deliberately lives with the Copy/Save buttons in the results
     // panel rather than here. It describes the exported file, not the query, and
     // putting it on the node implied it was part of what gets computed.
@@ -3026,7 +4984,20 @@ function portsHTML(node) {
 function shapeHTML(node) {
   var removeBtn = '<button class="node-remove" onclick="removeNode(' + node.id + ')">x</button>' +
                   portsHTML(node);
-  if (node.type === 'source') return '<div class="node-shape shape-source">' + removeBtn + 'Source</div>';
+  if (node.type === 'source') {
+    /* A Source with no files looks exactly like a Source with files until you
+       open its panel, and on a graph of a dozen nodes that is the difference
+       between "why is this empty" and "load that one". The dashed ring says
+       which, and it says it around the whole shape.
+
+       A badge in the corner did the same job and was a worse way to do it: the
+       delete button lives at top-right, so the two occupied the same spot and
+       the badge read as something to click. The border carries the state
+       without competing for that corner. */
+    return '<div class="node-shape shape-source' +
+      (hasSourceData(node) ? '' : ' no-data') + '">' +
+      removeBtn + 'Source</div>';
+  }
   if (node.type === 'filter') return '<div class="node-shape shape-filter">' + removeBtn + 'Filter</div>';
   if (node.type === 'compare') {
     var glyph = '<span class="cmp-glyph"><i style="width:26px"></i><i style="width:16px"></i><i style="width:21px"></i></span>';
@@ -3038,6 +5009,17 @@ function shapeHTML(node) {
     var sbars = '<span class="sort-glyph"><i style="width:9px"></i>' +
       '<i style="width:16px"></i><i style="width:23px"></i></span>';
     return '<div class="node-shape shape-sort">' + removeBtn + sbars + 'Sort</div>';
+  }
+  if (node.type === 'reverse') {
+    /* Sort's ascending bars, upside down, with a turn arrow beside them. Read
+       against Sort the inversion is the message: same bars, opposite order. The
+       arrow is what stops it being mistaken for "sort descending", which is a
+       different node reached a different way. */
+    var rv = '<span class="rev-glyph">' +
+      '<span class="rev-bars"><i style="width:23px"></i>' +
+      '<i style="width:16px"></i><i style="width:9px"></i></span>' +
+      '<b class="rev-turn"></b></span>';
+    return '<div class="node-shape shape-reverse">' + removeBtn + rv + 'Reverse</div>';
   }
   if (node.type === 'take') {
     // Three kept bars above the cut, one dropped below it — the glyph says
@@ -3071,6 +5053,17 @@ function shapeHTML(node) {
     var sg = '<span class="sel-glyph"><i></i><i class="off"></i><i></i></span>';
     return '<div class="node-shape shape-select">' + removeBtn + sg + 'Select</div>';
   }
+  if (node.type === 'project') {
+    /* One bar fanning out into three. Every other glyph on the canvas shows
+       rows being kept, dropped, reordered or reduced; this is the only one that
+       shows them multiplying, which is the single fact about this node worth
+       recognising from across the canvas. Drawn left to right, like Select's,
+       because both change the header — but opening out rather than narrowing. */
+    var pj = '<span class="proj-glyph">' +
+      '<i class="proj-one"></i><b class="proj-fan"></b>' +
+      '<span class="proj-many"><i></i><i></i><i></i></span></span>';
+    return '<div class="node-shape shape-project">' + removeBtn + pj + 'Project</div>';
+  }
   if (node.type === 'aggregate') {
     // Rows funnelling into a single dot: many values, one value out.
     var ag = '<span class="agg-glyph"><i></i><i></i><i></i><b></b></span>';
@@ -3085,6 +5078,16 @@ function shapeHTML(node) {
       '<span class="aggc-col"><i></i><i></i><b></b></span>' +
       '<span class="aggc-col"><i></i><i></i><b></b></span></span>';
     return '<div class="node-shape shape-aggcols">' + removeBtn + agc + 'Agg. Columns</div>';
+  }
+  if (node.type === 'aggregateRows') {
+    /* AggregateColumns' glyph turned through ninety degrees: three ROWS, each
+       collapsing rightwards to its own value. Read beside its sibling the axis
+       is the whole message — one reduces down the page, the other across it. */
+    var aggr = '<span class="aggr-glyph">' +
+      '<span class="aggr-row"><i></i><i></i><b></b></span>' +
+      '<span class="aggr-row"><i></i><i></i><b></b></span>' +
+      '<span class="aggr-row"><i></i><i></i><b></b></span></span>';
+    return '<div class="node-shape shape-aggrows">' + removeBtn + aggr + 'Agg. Rows</div>';
   }
   if (node.type === 'combine') {
     // Two streams converging into one: the mirror image of Compare's glyph,
@@ -3748,6 +5751,21 @@ function runQuery() {
 
   if (srcNodes.length === 0) { showError('Add a Source node.'); return; }
   if (outNodes.length === 0) { showError('Add an Output node.'); return; }
+
+  /* Checked before the topological sort rather than inside it, so that a graph
+     whose Sources are all empty says so plainly instead of reporting whichever
+     one the ordering happened to reach first. Every unloaded Source is named,
+     because fixing one and re-running to be told about the next is a poor way
+     to find out there were three. */
+  var starved = srcNodes.filter(function(n){ return !hasSourceData(n); });
+  if (starved.length) {
+    showError(starved.length === 1
+      ? sourceDataError(starved[0])
+      : starved.length + ' Source nodes have no data: ' +
+        starved.map(function(n){ return '#' + n.id; }).join(', ') +
+        '. Open each one and load ' + DATA_HEADERS_NAME + ', then its year files.');
+    return;
+  }
   if (connections.length === 0) {
     showError('Drag nodes close together to connect them, then drop to confirm the connection.');
     return;
@@ -3891,7 +5909,17 @@ function serialiseTable(t, sep, quote) {
 // name prepended. That is the shape a pivot table wants.
 function exportTableFor(e) {
   var branches = e.source && e.source.meta && e.source.meta.branches;
-  if (!branches || e.show === 'summary') return e.table;
+  /* Only the "Summary + row lists" view exports long. The test used to be
+     "branches exist and the view is not the summary", which was the same thing
+     while branch metadata could only reach an Output across a direct wire from
+     a Compare — the two views available there are exactly summary and lists.
+
+     It stopped being the same thing when Compare was allowed to feed the row
+     nodes. Sort and Take carry meta through, quite correctly, so a
+     Compare -> Take(1) -> Output showed one row on screen and exported every
+     row of every branch: the export silently ignored the Take. Naming the one
+     view that means "long" keeps the two in step whatever arrives. */
+  if (!branches || e.show !== 'lists') return e.table;
 
   var per = branches.map(function(b) {
     return { label: b.label, t: b.table };
@@ -3969,17 +5997,56 @@ function writeClipboard(text, btn) {
   }
 }
 
-function downloadFile(name, content, mime) {
+/* WRITING A FILE FROM A PAGE THAT IS NOT BEING SERVED.
+
+   This tool is opened from a file:// URL with no build step, and that makes
+   saving harder than it looks. Three separate things went wrong here, and the
+   first two fixes each traded one failure for another:
+
+   1. The anchor was removed and the object URL revoked 1s after .click().
+      WebKit starts a download asynchronously and reads the blob AFTER the
+      handler returns, so a revoke on a timer is a race against the browser.
+      Losing it produces exactly "WebKitBlobResource error 1" on a blob:null
+      URL — the blob is not missing because the origin is opaque, it is missing
+      because we threw it away while WebKit was still fetching it.
+
+   2. Swapping the blob for a data: URI avoided the race but introduced a size
+      ceiling. A saved query is 2-10KB and rode under it; a CSV export of a year
+      file is ~320KB, and ~460KB once percent-encoded into a URL. That is why
+      Save Query worked and Save CSV did not — the same code, told to carry
+      fifty times as much.
+
+   3. A CSV announced as text/csv is something Safari knows how to display, so
+      it displays it: the tab fills with rows and no file is written. WebKit
+      weighs its own idea of the type against the download attribute and wins.
+
+   So: a blob, which has no size ceiling and does not inflate; typed as
+   application/octet-stream, which leaves nothing to render, so a download is
+   the only thing left to do with the bytes; and torn down long after the click
+   rather than in a race with it. The 40 second delay is what FileSaver.js
+   settled on for the same reason.
+
+   Nothing downstream reads that type. The extension on the download attribute
+   decides the file on disk and what opens it, and that is still .csv. */
+var FORCE_DOWNLOAD_TYPE = 'application/octet-stream';
+var DOWNLOAD_TEARDOWN_MS = 40000;
+
+function downloadFile(name, content) {
   try {
-    var blob = new Blob([content], { type: mime + ';charset=utf-8' });
-    var url = URL.createObjectURL(blob);
+    var url = URL.createObjectURL(new Blob([content], { type: FORCE_DOWNLOAD_TYPE }));
     var a = document.createElement('a');
     a.href = url;
     a.download = name;
+    a.rel = 'noopener';
+    a.style.display = 'none';
     document.body.appendChild(a);
     a.click();
-    document.body.removeChild(a);
-    setTimeout(function(){ URL.revokeObjectURL(url); }, 1000);
+    /* Both the anchor and the URL outlive the click, because the download that
+       reads them has not necessarily started yet. */
+    setTimeout(function () {
+      if (a.parentNode) a.parentNode.removeChild(a);
+      URL.revokeObjectURL(url);
+    }, DOWNLOAD_TEARDOWN_MS);
     return true;
   } catch (err) { return false; }
 }
@@ -4011,7 +6078,7 @@ function saveOutput(id, btn) {
   var e = exportEntry(id, btn);
   if (!e) return;
   var name = safeName(e.name) + '.csv';
-  flashBtn(btn, downloadFile(name, serialiseTable(exportTableFor(e), ',', true), 'text/csv')
+  flashBtn(btn, downloadFile(name, serialiseTable(exportTableFor(e), ',', true))
     ? 'Saved ✓' : 'Save failed');
 }
 
@@ -4043,7 +6110,12 @@ function setOutput(html) {
    is what a version 1 wire meant when every node had exactly one. The guard
    below only refuses files from a *newer* tool, so the format widened without
    breaking anything already written. */
-var FILE_VERSION = 2;
+/* Version 3 adds `dataset` to a Source's config: the NAMES of the files it was
+   given, never their contents. Version 1 and 2 files still load — a Source with
+   no dataset key gets the empty one from defaultCfg() and simply asks for its
+   files without being able to name them. The guard below still only refuses
+   files from a newer tool. */
+var FILE_VERSION = 3;
 var FILE_KIND = 'student-data-analyser-query';
 
 function serialiseGraph() {
@@ -4184,7 +6256,7 @@ function confirmSaveGraph() {
 function writeQueryFile(name, btn) {
   if (nodes.length === 0) { flashBtn(btn, 'Nothing to save'); return; }
   var json = JSON.stringify(serialiseGraph(), null, 2);
-  flashBtn(btn, downloadFile(name, json, 'application/json') ? 'Saved ✓' : 'Save failed');
+  flashBtn(btn, downloadFile(name, json) ? 'Saved ✓' : 'Save failed');
 }
 
 /* Validation is deliberately forgiving about detail and strict about structure.
@@ -4292,6 +6364,30 @@ function mergeCfg(base, saved) {
   if (Object.prototype.hasOwnProperty.call(base, 'measures') && !Array.isArray(base.measures)) {
     base.measures = DEFAULT_MEASURES.slice();
   }
+  /* The dataset descriptor is a name and a list of years and nothing else. It
+     is read straight back into the panel's markup, so a file supplying an
+     object where the name belongs, or 2000 fabricated years, is normalised here
+     rather than trusted. Years are coerced to integers in the admitted range;
+     the header name is length-capped and stripped of any path, exactly as
+     dataFileName() would do to a real one. NOTHING in this key is ever used to
+     find or read a file — the user picks those — so the worst a hostile value
+     can do is misdescribe itself in one line of the panel. */
+  if (Object.prototype.hasOwnProperty.call(base, 'dataset')) {
+    var ds = base.dataset;
+    if (!ds || typeof ds !== 'object' || Array.isArray(ds)) ds = {};
+    var hname = typeof ds.headers === 'string' ? ds.headers.split(/[\\/]/).pop() : '';
+    base.dataset = {
+      headers: hname.slice(0, 120),
+      years: (Array.isArray(ds.years) ? ds.years : [])
+        .map(function(y){ return parseInt(y, 10); })
+        .filter(function(y, i, a) {
+          return !isNaN(y) && y >= DATA_YEAR_MIN && y <= DATA_YEAR_MAX && a.indexOf(y) === i;
+        })
+        .slice(0, 50)
+        .sort(function(a, b){ return a - b; })
+    };
+  }
+
   /* null is the meaningful default — "keep everything" — so only a value that is
      neither null nor an array of keys is rejected. Non-string entries are
      dropped rather than coerced: a column key is compared against real header
@@ -4322,6 +6418,16 @@ function mergeCfg(base, saved) {
 }
 
 function applyGraph(g) {
+  /* The data goes. Every Source in the new graph starts with nothing loaded,
+     including one whose id happens to match a Source that was loaded a moment
+     ago — matching ids across two unrelated files is a coincidence, not a
+     grant, and silently handing the new graph the old graph's student records
+     would be the worst possible reading of it.
+
+     This is the behaviour the feature was asked for: the query is restored, the
+     files are asked for again. */
+  clearAllSourceData();
+
   nodes = g.nodes;
   connections = g.connections;
   // Keep the counter clear of every id in the file, so a node added after a
@@ -4349,6 +6455,24 @@ function loadGraphFromText(raw, btn) {
 
   var msg = 'Loaded ' + g.nodes.length + ' node' + (g.nodes.length === 1 ? '' : 's') +
     ' and ' + g.connections.length + ' connection' + (g.connections.length === 1 ? '' : 's') + '.';
+
+  /* The data did not come with it, and saying so here is the difference between
+     a user who knows what to do next and one who presses Run and reads an
+     error. The files the query was built against are named where the file named
+     them, because picking the right ones out of a folder is the task. */
+  var srcs = g.nodes.filter(function(n){ return n.type === 'source'; });
+  if (srcs.length) {
+    var wanted = {};
+    srcs.forEach(function(n) {
+      var d = n.cfg && n.cfg.dataset;
+      if (d && d.headers) wanted[d.headers] = true;
+      if (d && d.years) d.years.forEach(function(y){ wanted['mcs-students-' + y] = true; });
+    });
+    var names = Object.keys(wanted);
+    msg += ' The data is not saved with a query, so load the files again on ' +
+      (srcs.length === 1 ? 'the Source' : 'each Source') + '.';
+    if (names.length) msg += ' This one was built against ' + names.join(', ') + '.';
+  }
   if (g.warnings.length) {
     msg += ' Skipped ' + g.warnings.length + ' item' + (g.warnings.length === 1 ? '' : 's') +
       ' that no longer fit the graph: ' + g.warnings.filter(function(w, i, a){ return a.indexOf(w) === i; }).join(', ') + '.';
@@ -4415,20 +6539,30 @@ function onGraphFileChosen(e) {
   reader.readAsText(file);
 }
 
-/* PROCESSING MENU
-   One toolbar button per pipeline stage. Processing nodes are a growing family,
-   so they live behind a single dropdown rather than adding a button each. */
-function procMenuEl() { return document.getElementById('procMenu'); }
-function closeProcMenu() {
-  var m = procMenuEl();
-  if (m) m.classList.remove('open');
+/* THE NODE MENUS
+   Processing nodes are a growing family, so they live behind dropdowns rather
+   than adding a toolbar button each. There are two, split on colour: Reshape
+   holds the violet nodes and is violet itself, Processing holds the other three
+   families and stays neutral because it cannot honestly claim one of them.
+
+   Written against every .proc-menu rather than a named one, so a third menu is
+   markup and needs no change here. Opening one closes the others: two open
+   dropdowns overlap, and the second would look like a submenu of the first. */
+function procMenus() {
+  return Array.prototype.slice.call(document.querySelectorAll('.proc-menu'));
 }
-function toggleProcMenu(e) {
+function closeProcMenu() {
+  procMenus().forEach(function(m){ m.classList.remove('open'); });
+}
+function toggleProcMenu(e, id) {
   // Without this the document listener below sees the same click and closes the
   // menu in the tick it was opened.
   if (e) e.stopPropagation();
-  var m = procMenuEl();
-  if (m) m.classList.toggle('open');
+  var wanted = document.getElementById(id);
+  procMenus().forEach(function(m) {
+    if (m === wanted) m.classList.toggle('open');
+    else m.classList.remove('open');
+  });
 }
 function addProcNode(type) {
   closeProcMenu();
@@ -4817,6 +6951,16 @@ if (panelEl) panelEl.addEventListener('input', onExportNameInput);
 var loadInput = document.getElementById('loadFile');
 if (loadInput) loadInput.addEventListener('change', onGraphFileChosen);
 
+/* The two data pickers. Shared by every Source rather than one pair per node:
+   which node asked is carried on the input itself by pickHeadersFile(), and a
+   dozen Sources would otherwise mean two dozen hidden inputs in the document
+   for one dialog at a time. */
+var headersInput = document.getElementById('headersFile');
+if (headersInput) headersInput.addEventListener('change', onHeadersChosen);
+
+var yearsInput = document.getElementById('yearFiles');
+if (yearsInput) yearsInput.addEventListener('change', onYearFilesChosen);
+
 /* The dialog's buttons are wired in the markup like the rest of the toolbar,
    but the field's keys are not something an attribute expresses well. Enter is
    handled here rather than by a <form>: there is no form on this page, and
@@ -5082,6 +7226,10 @@ window.openHelp = openHelp;
 window.closeHelp = closeHelp;
 window.confirmSaveGraph = confirmSaveGraph;
 window.openGraphFile = openGraphFile;
+window.pickHeadersFile = pickHeadersFile;
+window.pickYearFiles = pickYearFiles;
+window.clearSourceData = clearSourceData;
+window.removeSourceYear = removeSourceYear;
 window.zoomIn = zoomIn;
 window.zoomOut = zoomOut;
 window.zoomReset = zoomReset;
@@ -5099,6 +7247,14 @@ window.clearSelection = clearSelection;
    silently broken by any edit near the end of this file, and a test suite that
    fails for reasons unrelated to the code under test is worse than none. */
 if (typeof window !== 'undefined' && window.__QB_TEST__) {
+  /* The suites run against the dataset the tool used to generate for itself.
+     Installing it here, behind the same flag that publishes the internals,
+     means a real page reaches neither: it opens with no data, and a Source
+     without files refuses to run. See the loader section for why the generator
+     was kept rather than the several hundred assertions written against it
+     being rewritten to talk about the archive instead. */
+  installSyntheticDataset();
+
   window.__qb = {
     // live state
     nodes: function(){ return nodes; },
@@ -5132,9 +7288,39 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     STUDENTS: STUDENTS, COURSES: COURSES, SUBJECTS: SUBJECTS, SPECS: SPECS, YEARS: YEARS,
     COURSE_BY_CODE: COURSE_BY_CODE, CORE_COURSES: CORE_COURSES, COURSES_PER_YEAR: COURSES_PER_YEAR,
     SPEC_SUBJECTS: SPEC_SUBJECTS, SUBJECT_WEIGHTS: SUBJECT_WEIGHTS, subjectWeight: subjectWeight,
+    rebuildRegistries: rebuildRegistries, defaultCourse: defaultCourse,
+    defaultSubject: defaultSubject, defaultLevel: defaultLevel,
+    DEGREES: DEGREES, LEVELS: LEVELS, courseLevel: courseLevel,
+
+    // loading the archive: admission, parsing, and per-source state
+    DATA_HEADERS_NAME: DATA_HEADERS_NAME, DATA_YEAR_RE: DATA_YEAR_RE,
+    DATA_YEAR_MIN: DATA_YEAR_MIN, DATA_YEAR_MAX: DATA_YEAR_MAX,
+    MAX_DATA_FILE_BYTES: MAX_DATA_FILE_BYTES, MAX_DATA_ROWS: MAX_DATA_ROWS,
+    MAX_FIELD_CHARS: MAX_FIELD_CHARS, MAX_COURSE_POINTS: MAX_COURSE_POINTS,
+    REQUIRED_HEADER_COLUMNS: REQUIRED_HEADER_COLUMNS,
+    dataFileName: dataFileName, headersFileProblem: headersFileProblem,
+    yearFileProblem: yearFileProblem, yearOfFile: yearOfFile,
+    parseHeaderFile: parseHeaderFile, parseYearFile: parseYearFile,
+    calendarYearOf: calendarYearOf, buildDataset: buildDataset,
+    loadHeadersFor: loadHeadersFor, loadYearFilesFor: loadYearFilesFor,
+    removeSourceYear: removeSourceYear, parsedYearsOf: parsedYearsOf,
+    yearFileNameFor: yearFileNameFor, applyDatasetToNode: applyDatasetToNode,
+    MAX_YEAR_FILES: MAX_YEAR_FILES,
+    clearSourceData: clearSourceData, clearAllSourceData: clearAllSourceData,
+    forgetSourceData: forgetSourceData,
+    datasetFor: datasetFor, hasSourceData: hasSourceData, datasetCfg: datasetCfg,
+    headerFor: headerFor, sourceDataError: sourceDataError, sourceTable: sourceTable,
+    sourceFilesHTML: sourceFilesHTML,
+    sourceData: function(){ return SOURCE_DATA; },
+    pendingHeaders: function(){ return PENDING_HEADERS; },
+    sourceNotice: function(id){ return SOURCE_NOTICE[id] || null; },
+    syntheticDataset: function(){ return SYNTHETIC_DATASET; },
+    setSyntheticDataset: setSyntheticDataset,
+    installSyntheticDataset: installSyntheticDataset,
 
     // table primitives
-    COLTYPE: COLTYPE, makeTable: makeTable, colIndex: colIndex, colByKey: colByKey,
+    COLTYPE: COLTYPE, STUDENT_COLUMNS: STUDENT_COLUMNS,
+    makeTable: makeTable, colIndex: colIndex, colByKey: colByKey,
     hasCol: hasCol, cellAt: cellAt, headerOnly: headerOnly, numericCols: numericCols,
     coursesColIndex: coursesColIndex, studentsTable: studentsTable,
     fmtCell: fmtCell, exportCell: exportCell, cellTitle: cellTitle,
@@ -5145,6 +7331,11 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     NODE_SPEC: NODE_SPEC, specFor: specFor, SHAPE: SHAPE, passthroughSchema: passthroughSchema,
     inputSchema: inputSchema, unionTables: unionTables, filterFields: filterFields,
     fieldByKey: fieldByKey, applyFilter: applyFilter, applyCriterion: applyCriterion,
+    opsFor: opsFor, defaultOpFor: defaultOpFor, OP_FNS: OP_FNS, OP_SYM: OP_SYM,
+    NUM_OPS: NUM_OPS, ENUM_OPS: ENUM_OPS, ORDERED_OPS: ORDERED_OPS,
+    isRangeable: isRangeable, numericValues: numericValues, rankerFor: rankerFor,
+    critValue: critValue, critOp: critOp, critHigh: critHigh, critRange: critRange,
+    rangeKey: rangeKey, isBlank: isBlank,
     newCriterion: newCriterion, defaultCfg: defaultCfg,
     normaliseShow: normaliseShow, outputTable: outputTable, defaultAvgCol: defaultAvgCol,
     meanOf: meanOf, MEASURES: MEASURES,
@@ -5154,6 +7345,8 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     sortRowComparator: sortRowComparator,
     resolveSortKeys: resolveSortKeys, newSortKey: newSortKey, dirLabel: dirLabel,
     ordinalsFor: ordinalsFor, GRADE_ORDER: GRADE_ORDER,
+    GRADE_POINTS: GRADE_POINTS, gradePoint: gradePoint, gpaOf: gpaOf,
+    gradeFromGpa: gradeFromGpa,
 
     // combine
     COMBINE_MODES: COMBINE_MODES, combineMode: combineMode, combineTables: combineTables,
@@ -5167,12 +7360,18 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     aggregateSchema: aggregateSchema, applyAggregate: applyAggregate,
     aggregateColumnsSchema: aggregateColumnsSchema,
     applyAggregateColumns: applyAggregateColumns,
+    aggregateRowsColumn: aggregateRowsColumn, aggregateRowsSchema: aggregateRowsSchema,
+    aggregateRowsIdx: aggregateRowsIdx, applyAggregateRows: applyAggregateRows,
+    outputCols: outputCols,
     columnValues: columnValues,
 
     // unique
     uniqueCols: uniqueCols, uniqueCol: uniqueCol, uniqueCellKey: uniqueCellKey,
     uniqueSchema: uniqueSchema, applyUnique: applyUnique,
     selectedCols: selectedCols, selectSchema: selectSchema, applySelect: applySelect,
+    canProject: canProject, projectCarried: projectCarried, projectColumns: projectColumns,
+    projectSchema: projectSchema, applyProject: applyProject,
+    enrolmentColumns: enrolmentColumns, enrolmentKeys: enrolmentKeys,
     combineOrder: combineOrder, joinColumns: joinColumns, joinTables: joinTables,
 
     // take
@@ -5204,6 +7403,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     serialiseTable: serialiseTable, exportTableFor: exportTableFor, safeName: safeName,
     exportNameOf: exportNameOf, defaultExportName: defaultExportName, markStale: markStale,
     timeStamp: timeStamp, resultHTML: resultHTML, scalarHTML: scalarHTML, tableHTML: tableHTML,
+    courseLabel: courseLabel, courseTitle: courseTitle, courseSelect: courseSelect,
     serialiseGraph: serialiseGraph, deserialiseGraph: deserialiseGraph,
     applyGraph: applyGraph, loadGraphFromText: loadGraphFromText,
     FILE_KIND: FILE_KIND, FILE_VERSION: FILE_VERSION,

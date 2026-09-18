@@ -33,7 +33,15 @@ function collect(file) {
   return tests;
 }
 
-function main() {
+/* Tests may be async, and one class of them has to be: the data loader goes
+   through a real FileReader, and a FileReader is asynchronous by construction.
+   Stubbing it out would have left the very path this suite exists to check —
+   pick a file, read it, refuse or accept it — untested in favour of a
+   synchronous imitation of it.
+
+   Synchronous tests are unaffected: a function that returns undefined is
+   awaited once and carries on, which costs a microtask and no behaviour. */
+async function main() {
   if (!fs.existsSync(SUITES_DIR)) {
     console.error('No suites/ folder found next to run.js');
     process.exit(1);
@@ -74,7 +82,7 @@ function main() {
         lastGroup = t.group;
       }
       try {
-        t.fn();
+        await t.fn();
         passed++;
         if (verbose) console.log('    ' + C.green + '\u2713' + C.off + ' ' + C.dim + t.name + C.off);
       } catch (err) {
@@ -109,4 +117,7 @@ function main() {
   process.exit(failed ? 1 : 0);
 }
 
-main();
+main().catch(err => {
+  console.error('\n' + C.red + 'The runner itself failed: ' + (err && err.stack || err) + C.off);
+  process.exit(1);
+});

@@ -29,20 +29,20 @@ module.exports = ({ describe, test }) => {
     test('the model survives a re-render without being read back from the DOM', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.value:gradeAvg', '88');
+      h.set(f.id, 'crit.0.value:gpa', '88');
       h.w.render();
-      assert.equal(f.cfg.criteria[0].values.gradeAvg, '88');
-      assert.equal(h.control(f.id, 'crit.0.value:gradeAvg').value, '88');
+      assert.equal(f.cfg.criteria[0].values.gpa, '88');
+      assert.equal(h.control(f.id, 'crit.0.value:gpa').value, '88');
     });
 
     test('a config value survives its panel being off screen', () => {
       // The old DOM-scraping approach read an unrendered panel as "unset".
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.value:gradeAvg', '91');
+      h.set(f.id, 'crit.0.value:gpa', '91');
       h.w.removeNode(o.id);
       h.w.render();
-      assert.equal(f.cfg.criteria[0].values.gradeAvg, '91');
+      assert.equal(f.cfg.criteria[0].values.gpa, '91');
     });
 
     test('every rendered control declares both data attributes', () => {
@@ -68,45 +68,45 @@ module.exports = ({ describe, test }) => {
     test('switching field and back restores the original value', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.value:gradeAvg', '93');
+      h.set(f.id, 'crit.0.value:gpa', '93');
       h.set(f.id, 'crit.0.field', 'gender');
       h.set(f.id, 'crit.0.value:gender', 'F');
-      h.set(f.id, 'crit.0.field', 'gradeAvg');
-      assert.equal(h.control(f.id, 'crit.0.value:gradeAvg').value, '93');
+      h.set(f.id, 'crit.0.field', 'gpa');
+      assert.equal(h.control(f.id, 'crit.0.value:gpa').value, '93');
     });
 
     test('values for different fields are kept separately', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.value:gradeAvg', '93');
-      h.set(f.id, 'crit.0.field', 'courses.mark');
+      h.set(f.id, 'crit.0.value:gpa', '93');
+      h.set(f.id, 'crit.0.field', 'courses.gradePoints');
       h.set(f.id, 'crit.0.course', 'AIML425');
-      h.set(f.id, 'crit.0.value:courses.mark', '55');
+      h.set(f.id, 'crit.0.value:courses.gradePoints', '55');
       h.set(f.id, 'crit.0.field', 'gender');
       h.set(f.id, 'crit.0.value:gender', 'F');
       assert.deepEqual(f.cfg.criteria[0].values,
-        { gradeAvg: '93', 'courses.mark': '55', gender: 'F' });
+        { gpa: '93', 'courses.gradePoints': '55', gender: 'F' });
       assert.equal(f.cfg.criteria[0].course, 'AIML425');
     });
 
     test('operators are kept per field too', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'lte');
-      h.set(f.id, 'crit.0.field', 'courses.mark');
-      h.set(f.id, 'crit.0.op:courses.mark', 'gt');
-      h.set(f.id, 'crit.0.field', 'gradeAvg');
-      assert.equal(h.control(f.id, 'crit.0.op:gradeAvg').value, 'lte');
+      h.set(f.id, 'crit.0.op:gpa', 'lte');
+      h.set(f.id, 'crit.0.field', 'courses.gradePoints');
+      h.set(f.id, 'crit.0.op:courses.gradePoints', 'gt');
+      h.set(f.id, 'crit.0.field', 'gpa');
+      assert.equal(h.control(f.id, 'crit.0.op:gpa').value, 'lte');
     });
 
     test('each criterion keeps its own values', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
       h.w.addCriterion(f.id); h.w.render();
-      h.set(f.id, 'crit.0.value:gradeAvg', '60');
-      h.set(f.id, 'crit.1.value:gradeAvg', '90');
-      assert.equal(f.cfg.criteria[0].values.gradeAvg, '60');
-      assert.equal(f.cfg.criteria[1].values.gradeAvg, '90');
+      h.set(f.id, 'crit.0.value:gpa', '60');
+      h.set(f.id, 'crit.1.value:gpa', '90');
+      assert.equal(f.cfg.criteria[0].values.gpa, '60');
+      assert.equal(f.cfg.criteria[1].values.gpa, '90');
     });
   });
 
@@ -129,12 +129,12 @@ module.exports = ({ describe, test }) => {
     test('a drag does not disturb the config', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      h.set(f.id, 'crit.0.value:gradeAvg', '77');
+      h.set(f.id, 'crit.0.value:gpa', '77');
       h.q('.shape-source').dispatchEvent(
         new h.w.MouseEvent('mousedown', { clientX: 50, clientY: 50, bubbles: true }));
       h.doc.dispatchEvent(new h.w.MouseEvent('mousemove', { clientX: 200, clientY: 150, bubbles: true }));
       h.doc.dispatchEvent(new h.w.MouseEvent('mouseup', { bubbles: true }));
-      assert.equal(f.cfg.criteria[0].values.gradeAvg, '77');
+      assert.equal(f.cfg.criteria[0].values.gpa, '77');
     });
 
     test('a drag started on a control does not move the node', () => {
@@ -167,21 +167,21 @@ module.exports = ({ describe, test }) => {
     test('a number field survives being typed into', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
-      const first = h.control(f.id, 'crit.0.value:gradeAvg');
+      const first = h.control(f.id, 'crit.0.value:gpa');
       ['8', '85'].forEach(v => {
-        const el = h.control(f.id, 'crit.0.value:gradeAvg');
+        const el = h.control(f.id, 'crit.0.value:gpa');
         el.value = v;
         el.dispatchEvent(new h.w.Event('input', { bubbles: true }));
       });
-      assert.equal(h.control(f.id, 'crit.0.value:gradeAvg'), first);
-      assert.equal(f.cfg.criteria[0].values.gradeAvg, '85');
+      assert.equal(h.control(f.id, 'crit.0.value:gpa'), first);
+      assert.equal(f.cfg.criteria[0].values.gpa, '85');
     });
 
     test('a dropdown does re-render, because the panel shape can depend on it', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
       assert.notOk(h.control(f.id, 'crit.0.course'), 'no course picker for a numeric field');
-      h.set(f.id, 'crit.0.field', 'courses.mark');
+      h.set(f.id, 'crit.0.field', 'courses.gradePoints');
       assert.ok(h.control(f.id, 'crit.0.course'), 'the picker should appear');
     });
   });
@@ -279,8 +279,8 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
       h.set(o.id, 'show', 'count');
-      h.set(f.id, 'crit.0.op:gradeAvg', 'lt');
-      h.set(f.id, 'crit.0.value:gradeAvg', '60');
+      h.set(f.id, 'crit.0.op:gpa', 'lt');
+      h.set(f.id, 'crit.0.value:gpa', '60');
       h.w.runQuery();
       assert.includes(h.text('.query-log'), '<');
     });

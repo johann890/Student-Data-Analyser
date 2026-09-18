@@ -26,12 +26,12 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, sel, f, o] = h.build('source', 'select', 'filter', 'output');
       const before = h.app.computeSchemas()[f.id].columns.map(c => c.key);
-      assert.includes(before, 'gradeAvg');
+      assert.includes(before, 'gpa');
       assert.includes(before, 'specialisation');
 
-      h.set(sel.id, 'column:gradeAvg', false);
+      h.set(sel.id, 'column:gpa', false);
       const after = h.app.computeSchemas()[f.id].columns.map(c => c.key);
-      assert.excludes(after, 'gradeAvg', 'the narrowing must reach the Filter');
+      assert.excludes(after, 'gpa', 'the narrowing must reach the Filter');
       assert.includes(after, 'specialisation', 'and leave everything else alone');
     });
 
@@ -41,7 +41,7 @@ module.exports = ({ describe, test }) => {
       const f = h.app.nodes[0];
       const schema = h.app.inputSchema(f, h.app.computeSchemas());
       assert.ok(schema.columns.length > 0);
-      assert.ok(h.app.hasCol(schema, 'gradeAvg'));
+      assert.ok(h.app.hasCol(schema, 'gpa'));
     });
   });
 
@@ -50,9 +50,9 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, f] = h.build('source', 'filter');
       const opts = h.qa('.ft-sel option').map(o => o.value);
-      ['gradeAvg', 'specialisation', 'gender',
-       'courses.subject', 'courses.code', 'courses.mark'].forEach(k => assert.includes(opts, k));
-      assert.excludes(opts, 'mark', 'nothing unfolds enrolments into rows any more');
+      ['gpa', 'specialisation', 'gender',
+       'courses.subject', 'courses.code', 'courses.gradePoints'].forEach(k => assert.includes(opts, k));
+      assert.excludes(opts, 'gradePoints', 'nothing unfolds enrolments into rows any more');
       assert.includes(opts, 'year', 'withheld once; app.js:1149 records why it came back');
     });
 
@@ -89,16 +89,16 @@ module.exports = ({ describe, test }) => {
       const keys = fields.map(f => f.key);
       assert.includes(keys, 'courses.subject');
       assert.includes(keys, 'courses.code');
-      assert.includes(keys, 'courses.mark');
+      assert.includes(keys, 'courses.gradePoints');
       assert.excludes(keys, 'courses', 'the raw nested column is not directly filterable');
     });
 
     test('a numeric field renders an operator and a number box', () => {
       const h = boot();
       const [s, f] = h.build('source', 'filter');
-      h.set(f.id, 'crit.0.field', 'gradeAvg');
-      assert.ok(h.control(f.id, 'crit.0.op:gradeAvg'), 'operator select missing');
-      assert.equal(h.control(f.id, 'crit.0.value:gradeAvg').type, 'number');
+      h.set(f.id, 'crit.0.field', 'gpa');
+      assert.ok(h.control(f.id, 'crit.0.op:gpa'), 'operator select missing');
+      assert.equal(h.control(f.id, 'crit.0.value:gpa').type, 'number');
     });
 
     test('an enum field renders a dropdown of its declared values', () => {
@@ -112,10 +112,10 @@ module.exports = ({ describe, test }) => {
     test('the course-mark field renders a course picker as well as a threshold', () => {
       const h = boot();
       const [s, f] = h.build('source', 'filter');
-      h.set(f.id, 'crit.0.field', 'courses.mark');
+      h.set(f.id, 'crit.0.field', 'courses.gradePoints');
       assert.ok(h.control(f.id, 'crit.0.course'), 'course picker missing');
-      assert.ok(h.control(f.id, 'crit.0.op:courses.mark'));
-      assert.ok(h.control(f.id, 'crit.0.value:courses.mark'));
+      assert.ok(h.control(f.id, 'crit.0.op:courses.gradePoints'));
+      assert.ok(h.control(f.id, 'crit.0.value:courses.gradePoints'));
     });
 
     test('the course picker offers the whole catalogue, grouped by subject', () => {
@@ -139,17 +139,17 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, a, o] = h.build('source', 'aggregate', 'output');
       h.set(a.id, 'op', 'average');
-      assert.includes(h.optionsOf(a.id, 'col'), 'gradeAvg');
+      assert.includes(h.optionsOf(a.id, 'col'), 'gpa');
     });
 
     test('it follows a narrowed header rather than assuming student records', () => {
       const h = boot();
       const [s, sel, a, o] = h.build('source', 'select', 'aggregate', 'output');
       h.set(a.id, 'op', 'average');
-      assert.includes(h.optionsOf(a.id, 'col'), 'gradeAvg');
+      assert.includes(h.optionsOf(a.id, 'col'), 'gpa');
 
-      h.set(sel.id, 'column:gradeAvg', false);
-      assert.excludes(h.optionsOf(a.id, 'col'), 'gradeAvg',
+      h.set(sel.id, 'column:gpa', false);
+      assert.excludes(h.optionsOf(a.id, 'col'), 'gpa',
         'a column that stopped arriving must stop being offered');
     });
 
@@ -164,7 +164,7 @@ module.exports = ({ describe, test }) => {
 
     test('defaultAvgCol picks the meaningful column for a student table', () => {
       const { app } = boot();
-      assert.equal(app.defaultAvgCol(app.studentsTable([])), 'gradeAvg');
+      assert.equal(app.defaultAvgCol(app.studentsTable([])), 'gpa');
     });
   });
 };

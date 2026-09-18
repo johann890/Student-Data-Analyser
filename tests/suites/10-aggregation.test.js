@@ -13,7 +13,7 @@ const { assert } = require('../lib/assert');
 module.exports = ({ describe, test }) => {
 
   const A = boot().app;
-  const AVGS = A.STUDENTS.map(s => s.gradeAvg);
+  const AVGS = A.STUDENTS.map(s => s.gpa);
 
   const mean   = xs => xs.reduce((a, b) => a + b, 0) / xs.length;
   const median = xs => {
@@ -120,17 +120,17 @@ module.exports = ({ describe, test }) => {
       assert.equal(agg('count').table.rows[0][0], A.STUDENTS.length);
     });
 
-    test('each measure over gradeAvg matches the dataset', () => {
-      assert.close(agg('average', 'gradeAvg').table.rows[0][0], mean(AVGS), 1e-9);
-      assert.close(agg('median',  'gradeAvg').table.rows[0][0], median(AVGS), 1e-9);
-      assert.equal(agg('min', 'gradeAvg').table.rows[0][0], Math.min(...AVGS));
-      assert.equal(agg('max', 'gradeAvg').table.rows[0][0], Math.max(...AVGS));
-      assert.equal(agg('sum', 'gradeAvg').table.rows[0][0], AVGS.reduce((a, b) => a + b, 0));
+    test('each measure over gpa matches the dataset', () => {
+      assert.close(agg('average', 'gpa').table.rows[0][0], mean(AVGS), 1e-9);
+      assert.close(agg('median',  'gpa').table.rows[0][0], median(AVGS), 1e-9);
+      assert.equal(agg('min', 'gpa').table.rows[0][0], Math.min(...AVGS));
+      assert.equal(agg('max', 'gpa').table.rows[0][0], Math.max(...AVGS));
+      assert.equal(agg('sum', 'gpa').table.rows[0][0], AVGS.reduce((a, b) => a + b, 0));
     });
 
     test('the result is always a 1x1 table', () => {
       A.AGG_OPS.forEach(o => {
-        const t = agg(o.key, 'gradeAvg').table;
+        const t = agg(o.key, 'gpa').table;
         assert.equal(t.columns.length, 1, o.key + ' should emit one column');
         assert.equal(t.rows.length, 1, o.key + ' should emit one row');
       });
@@ -138,20 +138,20 @@ module.exports = ({ describe, test }) => {
 
     test('the column says which measure over which column', () => {
       // point 11: a count and a median must not look alike
-      assert.equal(agg('median', 'gradeAvg').table.columns[0].label, 'Median Avg');
-      assert.equal(agg('average', 'gradeAvg').table.columns[0].label, 'Average Avg');
+      assert.equal(agg('median', 'gpa').table.columns[0].label, 'Median GPA');
+      assert.equal(agg('average', 'gpa').table.columns[0].label, 'Average GPA');
       assert.equal(agg('count').table.columns[0].label, 'Count');
     });
 
     test('the measure is named in the query log', () => {
-      assert.includes(agg('median', 'gradeAvg').text('.query-log').toLowerCase(), 'median');
+      assert.includes(agg('median', 'gpa').text('.query-log').toLowerCase(), 'median');
     });
 
     test('the schema walk and the engine agree about the header', () => {
       /* The registry invariant: a node cannot describe one header in
          computeSchemas and produce another in evaluateGraph. */
       A.AGG_OPS.forEach(o => {
-        const r = agg(o.key, 'gradeAvg');
+        const r = agg(o.key, 'gpa');
         const declared = r.app.computeSchemas()[r.a.id].columns.map(c => c.key + ':' + c.label);
         const produced = r.app.evaluateGraph().res[r.a.id].table.columns.map(c => c.key + ':' + c.label);
         assert.deepEqual(produced, declared, o.key);
@@ -161,7 +161,7 @@ module.exports = ({ describe, test }) => {
     test('an aggregate over no rows is blank, not zero', () => {
       const h = boot();
       const [s, f, a, o] = h.build('source', 'filter', 'aggregate', 'output');
-      h.set(f.id, 'crit.0.value:gradeAvg', '500');   // matches nobody
+      h.set(f.id, 'crit.0.value:gpa', '500');   // matches nobody
       ['average', 'median', 'min', 'max'].forEach(op => {
         h.set(a.id, 'op', op);
         h.w.runQuery();
@@ -173,7 +173,7 @@ module.exports = ({ describe, test }) => {
     test('count of no rows really is zero', () => {
       const h = boot();
       const [s, f, a, o] = h.build('source', 'filter', 'aggregate', 'output');
-      h.set(f.id, 'crit.0.value:gradeAvg', '500');
+      h.set(f.id, 'crit.0.value:gpa', '500');
       h.set(a.id, 'op', 'count');
       h.w.runQuery();
       assert.equal(h.entry(o.id).table.rows[0][0], 0, 'counting nothing is a real zero');
@@ -206,7 +206,7 @@ module.exports = ({ describe, test }) => {
       h.set(a.id, 'op', 'median');
       h.w.runQuery();
       const t = h.entry(o.id).table;
-      assert.close(A.cellAt(t, t.rows[0], 'gradeAvg'), median(AVGS), 1e-9);
+      assert.close(A.cellAt(t, t.rows[0], 'gpa'), median(AVGS), 1e-9);
     });
 
     test('non-numeric columns come out blank rather than guessed at', () => {

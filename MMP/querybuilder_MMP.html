@@ -13,13 +13,19 @@
   <span class="tlabel">Add</span>
   <button class="add-btn source" onclick="addNode('source')">Source</button>
   <button class="add-btn filter" onclick="addNode('filter')">Filter</button>
+  <!-- Reshape is its own button because it is its own colour. Every node behind
+       it is violet, so the button can be violet and mean it; the Processing
+       button next to it holds three different colours and stays neutral. -->
   <div class="proc-wrap">
-    <button class="add-btn processing" onclick="toggleProcMenu(event)">Processing <span class="caret">&#9662;</span></button>
-    <div class="proc-menu" id="procMenu" onclick="event.stopPropagation()">
-      <div class="proc-group cat-reshape">Reshape</div>
+    <button class="add-btn reshape" onclick="toggleProcMenu(event, 'reshapeMenu')">Reshape <span class="caret">&#9662;</span></button>
+    <div class="proc-menu" id="reshapeMenu" onclick="event.stopPropagation()">
       <button class="proc-item cat-reshape" onclick="addProcNode('sort')">
         <span class="proc-name">Sort</span>
         <span class="proc-desc">Order rows by one or more columns</span>
+      </button>
+      <button class="proc-item cat-reshape" onclick="addProcNode('reverse')">
+        <span class="proc-name">Reverse</span>
+        <span class="proc-desc">Flip row order &mdash; put before Take for the last N</span>
       </button>
       <button class="proc-item cat-reshape" onclick="addProcNode('take')">
         <span class="proc-name">Take</span>
@@ -33,6 +39,16 @@
         <span class="proc-name">Select</span>
         <span class="proc-desc">Keep only the columns you choose</span>
       </button>
+    </div>
+  </div>
+  <div class="proc-wrap">
+    <button class="add-btn processing" onclick="toggleProcMenu(event, 'procMenu')">Processing <span class="caret">&#9662;</span></button>
+    <div class="proc-menu" id="procMenu" onclick="event.stopPropagation()">
+      <div class="proc-group cat-expand">Expand</div>
+      <button class="proc-item cat-expand" onclick="addProcNode('project')">
+        <span class="proc-name">Project</span>
+        <span class="proc-desc">One row per course &mdash; a row stops being a student</span>
+      </button>
       <div class="proc-group cat-summarise">Summarise</div>
       <button class="proc-item cat-summarise" onclick="addProcNode('aggregate')">
         <span class="proc-name">Aggregate</span>
@@ -41,6 +57,10 @@
       <button class="proc-item cat-summarise" onclick="addProcNode('aggregateColumns')">
         <span class="proc-name">Aggregate Columns</span>
         <span class="proc-desc">One row out, one value per column</span>
+      </button>
+      <button class="proc-item cat-summarise" onclick="addProcNode('aggregateRows')">
+        <span class="proc-name">Aggregate Rows</span>
+        <span class="proc-desc">One value per row, one column out</span>
       </button>
       <div class="proc-group cat-branches">Branches</div>
       <button class="proc-item cat-branches" onclick="addProcNode('combine')">
@@ -59,6 +79,17 @@
   <button class="file-btn" onclick="saveGraph(this)" title="Save this query as a file you can re-open and re-run">Save</button>
   <button class="file-btn" onclick="openGraphFile(this)" title="Open a saved query">Load</button>
   <input type="file" id="loadFile" accept="application/json,.json" hidden>
+
+  <!-- The two data pickers, shared by every Source on the canvas: which node
+       asked is carried on the element by pickHeadersFile()/pickYearFiles().
+
+       `accept` is a courtesy to the dialog and is trusted by nothing. The year
+       input carries none at all, because the archive's year files have no
+       extension for a filter to match on — which is precisely why the name
+       rules live in app.js, where the file is actually taken, rather than in an
+       attribute a rename walks straight past. -->
+  <input type="file" id="headersFile" accept="text/plain,.txt" hidden>
+  <input type="file" id="yearFiles" multiple hidden>
   <div class="sep"></div>
   <span class="tlabel">View</span>
   <div class="zoom-group">
@@ -142,6 +173,7 @@
     <div class="help-main">
       <nav class="help-nav" id="helpNav">
         <button class="help-navitem" data-goto="help-start">Start here</button>
+        <button class="help-navitem" data-goto="help-data">Loading the data</button>
         <button class="help-navitem" data-goto="help-toolbar">The toolbar</button>
         <button class="help-navitem" data-goto="help-node">Anatomy of a node</button>
         <button class="help-navitem" data-goto="help-connect">Connecting nodes</button>
@@ -163,9 +195,12 @@
 
           <p>Every query has the same three-part spine:</p>
           <ol class="help-steps">
-            <li><b>A Source</b> &mdash; where the rows come from. Every query starts with one.</li>
-            <li><b>Processing</b> &mdash; any number of nodes that narrow, reorder, summarise or
-                combine those rows. This part can be empty.</li>
+            <li><b>A Source</b> &mdash; where the rows come from. Every query starts with one, and
+                every Source has to be given its data files before it can run. See
+                <b>Loading the data</b>.</li>
+            <li><b>The middle</b> &mdash; any number of nodes that narrow, reorder, summarise or
+                combine those rows. They are added from the <b>Reshape</b> and <b>Processing</b>
+                menus. This part can be empty.</li>
             <li><b>An Output</b> &mdash; where the answer appears, in the panel on the right.</li>
           </ol>
 
@@ -174,8 +209,86 @@
              freely without waiting for anything.</p>
 
           <div class="help-tip">
-            <b>The quickest possible start:</b> click <b>Source</b>, then <b>Output</b>, drag the
+            <b>The quickest possible start:</b> click <b>Source</b>, load <code>headers.txt</code>
+            and then a <code>mcs-students-</code> year file into it, click <b>Output</b>, drag the
             Output near the Source until a wire appears, and press <b>Run Query</b>.
+          </div>
+        </section>
+
+        <!-- ── DATA FILES ──────────────────────────────────── -->
+        <section id="help-data">
+          <h3>Loading the data</h3>
+          <p>The tool ships with <b>no data at all</b>. Every Source is handed its own files, and
+             until it has them it will not run &mdash; a Source with nothing loaded shows a dashed
+             ring with an amber dot on it, and pressing Run Query says which one to fix.</p>
+
+          <p>There are two files, and they go in that order:</p>
+          <ol class="help-steps">
+            <li><b><code>headers.txt</code></b> &mdash; the column names, and the numbering under
+                them. This has to come first: a year file is a grid of tab-separated fields with no
+                names on it, so nothing can be read out of one until the tool knows what each
+                position holds.</li>
+            <li><b><code>mcs-students-2022</code></b> and friends &mdash; one file per year, named
+                for the year and with <em>no extension</em>. Choose as many as you like, in as
+                many goes as you like. The Source then answers about all of them together, or
+                about one year at a time through its <b>Population</b> setting.</li>
+          </ol>
+
+          <p><b>One column file, many year files.</b> A Source has a single
+             <code>headers.txt</code>, because one column list describes the shape of every year
+             file. The years themselves are a collection it builds up: <b>Add</b> puts more in
+             beside what is already loaded rather than replacing them, so 2022 and 2023 today and
+             2024 when it arrives is three trips to the picker and no re-choosing.</p>
+
+          <p>Each loaded year is listed under step 2 with its own student count and its own
+             <b>x</b> to take just that one back off. Removing the last of them leaves
+             <code>headers.txt</code> in place, so you can pick different years straight away
+             &mdash; <b>Unload everything</b> is the button that clears both.</p>
+
+          <p>Choosing a year the Source already holds <em>replaces</em> that year, which is what
+             you want when a corrected export arrives; the panel says <q>Replaced 2022</q> rather
+             than making the swap silently. Holding both copies would count that cohort twice.</p>
+
+          <p>If any file in one selection is refused, none of that selection is loaded and whatever
+             the Source already held is left exactly as it was. A part-loaded Source would be
+             answering about a cohort nobody asked for.</p>
+
+          <p>The names are not a convention you can bend. A file is only read if it is named exactly
+             <code>headers.txt</code>, or exactly <code>mcs-students-</code> followed by a
+             four-digit year. Anything else is refused by name before a single byte of it is read,
+             and the panel says what it was expecting.</p>
+
+          <p>Renaming a file does not change what is in it, and the tool checks. A file called
+             <code>mcs-students-2023</code> whose rows are 2022 enrolments is refused, as is a year
+             file whose rows do not carry exactly as many fields as <code>headers.txt</code>
+             declares. Both refusals name the line that failed, so a bad export can be found rather
+             than guessed at.</p>
+
+          <div class="help-tip">
+            <b>Each Source owns its files.</b> Two Sources can hold two different sets of years and
+            be compared against each other &mdash; load 2022 into one and 2023 into the other, and
+            wire both into a Compare. A Source that should span several years just loads several
+            year files instead.
+          </div>
+
+          <p>Eight columns are read: the ID, gender, the first degree, the first major, the year,
+             the course, the grade and the points. Names, usernames, email addresses and ethnicity
+             are in the file and are deliberately not kept &mdash; nothing that is never loaded can
+             leak out of an export or a screenshot.</p>
+
+          <p>One more column is <em>derived</em> rather than read. A course code carries the level
+             it is taught at in its first digit &mdash; <code>CGRA151</code> is 100-level,
+             <code>SWEN421</code> is 400-level &mdash; so every enrolment gets a <b>Level</b>
+             alongside its subject. The archive is not a single honours year: 2022 alone holds 697
+             enrolments at 100-level against 454 at 400-level, and averaging those together without
+             being able to see the difference gives an answer that is wrong without looking wrong.</p>
+
+          <div class="help-tip">
+            <b>Level is a number, so it can be measured.</b> <b>Took level</b> on a Filter keeps
+            students who took at least one course at a level &mdash; and because the operators come
+            with it, <q>at 300-level or above</q> is the progression question. Put a <b>Project</b>
+            in front of an <b>Aggregate</b> to ask for the highest level a student reached, or the
+            average level across a cohort.
           </div>
         </section>
 
@@ -186,60 +299,67 @@
              the left, manage the file in the middle, change your view on the right.</p>
 
           <figure class="help-fig">
-            <svg viewBox="0 0 900 78" xmlns="http://www.w3.org/2000/svg" role="img"
+            <svg viewBox="0 0 986 78" xmlns="http://www.w3.org/2000/svg" role="img"
                  aria-label="The toolbar, with its six groups of controls numbered">
-              <rect x="4" y="14" width="892" height="44" rx="6" fill="#181818" stroke="#252525"/>
+              <rect x="4" y="14" width="978" height="44" rx="6" fill="#181818" stroke="#252525"/>
 
               <text x="18" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">ADD</text>
               <rect x="44"  y="25" width="58" height="22" rx="5" fill="none" stroke="#2d6640"/>
               <text x="73"  y="40" fill="#5ec87a" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Source</text>
               <rect x="108" y="25" width="50" height="22" rx="5" fill="none" stroke="#7a4a18"/>
               <text x="133" y="40" fill="#f0944a" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Filter</text>
-              <rect x="164" y="25" width="94" height="22" rx="5" fill="none" stroke="#5a3a7a"/>
-              <text x="211" y="40" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Processing &#9662;</text>
-              <rect x="264" y="25" width="56" height="22" rx="5" fill="none" stroke="#1e7fff"/>
-              <text x="292" y="40" fill="#3db8ff" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Output</text>
+              <rect x="164" y="25" width="80" height="22" rx="5" fill="none" stroke="#5a3a7a"/>
+              <text x="204" y="40" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Reshape &#9662;</text>
+              <rect x="250" y="25" width="94" height="22" rx="5" fill="none" stroke="#3d3d3d"/>
+              <text x="297" y="40" fill="#9a9a9a" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Processing &#9662;</text>
+              <rect x="350" y="25" width="56" height="22" rx="5" fill="none" stroke="#1e7fff"/>
+              <text x="378" y="40" fill="#3db8ff" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Output</text>
 
-              <line x1="332" y1="26" x2="332" y2="46" stroke="#2a2a2a"/>
-              <text x="344" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">QUERY</text>
-              <rect x="384" y="25" width="42" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
-              <text x="405" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Save</text>
-              <rect x="432" y="25" width="42" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
-              <text x="453" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Load</text>
+              <line x1="418" y1="26" x2="418" y2="46" stroke="#2a2a2a"/>
+              <text x="430" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">QUERY</text>
+              <rect x="470" y="25" width="42" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
+              <text x="491" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Save</text>
+              <rect x="518" y="25" width="42" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
+              <text x="539" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Load</text>
 
-              <line x1="486" y1="26" x2="486" y2="46" stroke="#2a2a2a"/>
-              <text x="498" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">VIEW</text>
-              <rect x="536" y="25" width="98" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
-              <line x1="568" y1="27" x2="568" y2="45" stroke="#2a2a2a"/>
-              <line x1="602" y1="27" x2="602" y2="45" stroke="#2a2a2a"/>
-              <text x="552" y="40" fill="#b0b0b0" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">&minus;</text>
-              <text x="585" y="40" fill="#b0b0b0" font-size="10" font-family="system-ui, sans-serif" text-anchor="middle">100%</text>
-              <text x="618" y="40" fill="#b0b0b0" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">+</text>
-              <rect x="642" y="25" width="36" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
-              <text x="660" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Fit</text>
+              <line x1="572" y1="26" x2="572" y2="46" stroke="#2a2a2a"/>
+              <text x="584" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">VIEW</text>
+              <rect x="622" y="25" width="98" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
+              <line x1="654" y1="27" x2="654" y2="45" stroke="#2a2a2a"/>
+              <line x1="688" y1="27" x2="688" y2="45" stroke="#2a2a2a"/>
+              <text x="638" y="40" fill="#b0b0b0" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">&minus;</text>
+              <text x="671" y="40" fill="#b0b0b0" font-size="10" font-family="system-ui, sans-serif" text-anchor="middle">100%</text>
+              <text x="704" y="40" fill="#b0b0b0" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">+</text>
+              <rect x="728" y="25" width="36" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
+              <text x="746" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Fit</text>
 
-              <rect x="688" y="25" width="44" height="22" rx="5" fill="none" stroke="#4a2020"/>
-              <text x="710" y="40" fill="#c07070" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Clear</text>
+              <rect x="774" y="25" width="44" height="22" rx="5" fill="none" stroke="#4a2020"/>
+              <text x="796" y="40" fill="#c07070" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Clear</text>
 
-              <circle cx="749" cy="36" r="13" fill="none" stroke="#2a2a2a"/>
-              <text x="749" y="40" fill="#b0b0b0" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">?</text>
-              <rect x="802" y="25" width="78" height="22" rx="5" fill="#051830" stroke="#1e7fff"/>
-              <text x="841" y="40" fill="#3db8ff" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle" font-weight="600">Run Query</text>
+              <circle cx="835" cy="36" r="13" fill="none" stroke="#2a2a2a"/>
+              <text x="835" y="40" fill="#b0b0b0" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">?</text>
+              <rect x="888" y="25" width="78" height="22" rx="5" fill="#051830" stroke="#1e7fff"/>
+              <text x="927" y="40" fill="#3db8ff" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle" font-weight="600">Run Query</text>
 
               <g font-family="system-ui, sans-serif" font-size="10" font-weight="700" text-anchor="middle">
                 <circle cx="44"  cy="14" r="8.5" fill="#e8e8e8"/><text x="44"  y="17.5" fill="#111">1</text>
                 <circle cx="164" cy="14" r="8.5" fill="#e8e8e8"/><text x="164" y="17.5" fill="#111">2</text>
-                <circle cx="384" cy="14" r="8.5" fill="#e8e8e8"/><text x="384" y="17.5" fill="#111">3</text>
-                <circle cx="536" cy="14" r="8.5" fill="#e8e8e8"/><text x="536" y="17.5" fill="#111">4</text>
-                <circle cx="736" cy="20" r="8.5" fill="#e8e8e8"/><text x="736" y="23.5" fill="#111">5</text>
-                <circle cx="802" cy="14" r="8.5" fill="#e8e8e8"/><text x="802" y="17.5" fill="#111">6</text>
+                <circle cx="470" cy="14" r="8.5" fill="#e8e8e8"/><text x="470" y="17.5" fill="#111">3</text>
+                <circle cx="622" cy="14" r="8.5" fill="#e8e8e8"/><text x="622" y="17.5" fill="#111">4</text>
+                <circle cx="822" cy="20" r="8.5" fill="#e8e8e8"/><text x="822" y="23.5" fill="#111">5</text>
+                <circle cx="888" cy="14" r="8.5" fill="#e8e8e8"/><text x="888" y="17.5" fill="#111">6</text>
               </g>
             </svg>
             <ol class="help-key">
               <li><b>Add</b> &mdash; puts a new node on the canvas. Source and Output are single
                   buttons because there is only one of each.</li>
-              <li><b>Processing</b> &mdash; opens a menu of the eight processing nodes, grouped
-                  by what they do to the shape of the table.</li>
+              <li><b>Reshape</b> and <b>Processing</b> &mdash; two menus of nodes, split by what
+                  they do to the shape of the table. <b>Reshape</b> holds the five that keep the
+                  rows as they are and change only which of them you see, or in what order; it is
+                  violet, and so is every node inside it. <b>Processing</b> holds the rest &mdash;
+                  the ones that multiply rows, collapse them, or bring branches together &mdash;
+                  and stays grey, because it holds three colours and can honestly wear none of
+                  them.</li>
               <li><b>Query</b> &mdash; Save writes the whole graph to a <code>.json</code> file;
                   Load opens one back.</li>
               <li><b>View</b> &mdash; zoom out, current zoom (click to return to 100%), zoom in,
@@ -371,37 +491,52 @@
         <!-- ── NODE REFERENCE ──────────────────────────────── -->
         <section id="help-nodes">
           <h3>Node reference</h3>
-          <p>The Processing menu groups its nine nodes by what each does to the shape of the table.
-             The colour of a node on the canvas is its group, so you can read an unfamiliar graph at
-             a glance: where it narrows, where it collapses, where branches meet.</p>
+          <p>Two menus hold the eleven nodes that sit between a Source and an Output, split by what
+             each does to the shape of the table. The colour of a node on the canvas is its group, so
+             you can read an unfamiliar graph at a glance: where it narrows, where it multiplies,
+             where it collapses, where branches meet.</p>
+
+          <p><b>Reshape</b> is the menu you reach for most, and the one group whose nodes all leave
+             the table's meaning intact: a row is still whatever it was before. <b>Processing</b>
+             holds the three groups that change that &mdash; Expand makes a row mean something new,
+             Summarise replaces many rows with one, and Branches pulls several tables into one.</p>
 
           <figure class="help-fig help-fig-narrow">
-            <svg viewBox="0 0 340 392" xmlns="http://www.w3.org/2000/svg" role="img"
-                 aria-label="The Processing menu, showing three colour-coded groups of nodes">
-              <rect x="8" y="8" width="324" height="376" rx="6" fill="#141414" stroke="#2a2a2a"/>
+            <svg viewBox="0 0 340 576" xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="The Reshape menu, and the Processing menu with its three colour-coded groups">
+              <rect x="8" y="8" width="92" height="22" rx="5" fill="none" stroke="#5a3a7a"/>
+              <text x="54" y="23" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Reshape &#9662;</text>
+              <rect x="8" y="38" width="324" height="186" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <text x="24" y="60" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Sort</text>
+              <text x="24" y="73" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Order rows by one or more columns</text>
+              <text x="24" y="94" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Reverse</text>
+              <text x="24" y="107" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Flip row order</text>
+              <text x="24" y="128" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Take</text>
+              <text x="24" y="141" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Keep only the first N rows</text>
+              <text x="24" y="162" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Unique</text>
+              <text x="24" y="175" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Drop duplicates, or list distinct values</text>
+              <text x="24" y="196" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Select</text>
+              <text x="24" y="209" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Keep only the columns you choose</text>
 
-              <text x="22" y="32" fill="#b48ce0" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">RESHAPE</text>
-              <text x="24" y="54" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Sort</text>
-              <text x="24" y="67" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Order rows by one or more columns</text>
-              <text x="24" y="88" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Take</text>
-              <text x="24" y="101" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Keep only the first N rows</text>
-              <text x="24" y="122" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Unique</text>
-              <text x="24" y="135" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Drop duplicates, or list distinct values</text>
-              <text x="24" y="156" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Select</text>
-              <text x="24" y="169" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Keep only the columns you choose</text>
-
-              <text x="22" y="200" fill="#5ac8c8" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">SUMMARISE</text>
-              <text x="24" y="222" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate</text>
-              <text x="24" y="235" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Whole table down to one value</text>
-              <text x="24" y="256" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Columns</text>
-              <text x="24" y="269" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row out, one value per column</text>
-
-              <text x="22" y="300" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
-              <text x="24" y="322" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
-              <text x="24" y="335" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
-              <text x="24" y="356" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
-              <text x="24" y="369" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
-              </svg>
+              <rect x="8" y="244" width="104" height="22" rx="5" fill="none" stroke="#3d3d3d"/>
+              <text x="60" y="259" fill="#9a9a9a" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Processing &#9662;</text>
+              <rect x="8" y="274" width="324" height="292" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <text x="22" y="296" fill="#a8d050" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">EXPAND</text>
+              <text x="24" y="316" fill="#a8d050" font-size="11" font-family="system-ui, sans-serif">Project</text>
+              <text x="24" y="329" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row per course</text>
+              <text x="22" y="356" fill="#5ac8c8" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">SUMMARISE</text>
+              <text x="24" y="376" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate</text>
+              <text x="24" y="389" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Whole table down to one value</text>
+              <text x="24" y="410" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Columns</text>
+              <text x="24" y="423" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row out, one value per column</text>
+              <text x="24" y="444" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Rows</text>
+              <text x="24" y="457" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One value per row, one column out</text>
+              <text x="22" y="484" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
+              <text x="24" y="504" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
+              <text x="24" y="517" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
+              <text x="24" y="538" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
+              <text x="24" y="551" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
+            </svg>
           </figure>
 
           <h4 class="help-cat help-cat-source">Source</h4>
@@ -416,6 +551,16 @@
              fields on offer come from whatever is arriving, and the comparison changes to suit the
              column &mdash; a number gets <i>at least</i> and <i>at most</i>, a category gets
              <i>is</i> and <i>is not</i>.</p>
+          <p class="help-node-desc">The comparison dropdown holds the six comparisons under
+             <b>Compare</b>, and one more under <b>Range</b>. Choosing <b>in range</b> opens an
+             amber band under the condition with a bound at each end. Both ends are included, so a mark
+             range of 70 to 80 keeps a mark of exactly 80. Entering the bounds the other way round
+             means the same band &mdash; the query log prints the one that was applied.</p>
+          <p class="help-node-desc">Ranges are offered wherever the order is a real one: on any
+             number, on <b>Year</b>, and on <b>Grade</b>, whose letters carry a declared ranking
+             from A+ down to D &mdash; so &ldquo;grade between A+ and B&rdquo; is a band of grades
+             rather than a comparison of spellings. They are not offered on Gender or
+             Specialisation, where the order would only be the order somebody typed the list in.</p>
 
           <h4 class="help-cat help-cat-reshape">Reshape &mdash; violet</h4>
           <p class="help-note">The same data, narrowed or reordered. Nothing is summarised.</p>
@@ -423,9 +568,17 @@
             <dt>Sort</dt>
             <dd>Orders rows by a column, ascending or descending. Add further keys to break ties:
                 the first key decides, the second settles what the first left equal.</dd>
+            <dt>Reverse</dt>
+            <dd>Turns the row order upside down. Same rows, same columns, same count &mdash; last
+                becomes first. Its use is in front of <b>Take</b>: Take keeps the first N rows, so
+                Sort, Reverse, Take is how you ask for the <i>last</i> N. It needs no column, which
+                is what makes it work on a table whose order did not come from a Sort at all
+                &mdash; the order rows arrived from a Combine, or the order branches were wired
+                into a Compare.</dd>
             <dt>Take</dt>
             <dd>Keeps the first N rows and drops the rest. On its own that is arbitrary, so it is
-                nearly always used straight after Sort &mdash; together they mean <i>top N</i>.</dd>
+                nearly always used straight after Sort &mdash; together they mean <i>top N</i>,
+                or <i>bottom N</i> with a Reverse between them.</dd>
             <dt>Unique</dt>
             <dd>Two modes. With no column named it removes duplicate rows, comparing whole rows.
                 Name a column and it returns that column's distinct values instead, one per row
@@ -438,15 +591,41 @@
                 they arrive, and at least one has to be kept.</dd>
           </dl>
 
+          <h4 class="help-cat help-cat-expand">Expand &mdash; lime</h4>
+          <p class="help-note">The one node that changes what a row <i>means</i>. It has a group to
+             itself for that reason.</p>
+          <dl class="help-defs">
+            <dt>Project</dt>
+            <dd>Turns each row into one row per course taken, so a student with eight courses
+                becomes eight rows. <b>From here on a row is an enrolment, not a student</b>, and a
+                Count after a Project counts course registrations rather than people. The node says
+                so on its panel, and the query log prints the before and after row counts, because
+                this is the one step that can make a later number look eight times too big.
+                <br><br>
+                It is how a mark or a grade <i>in a particular course</i> becomes something you can
+                filter, sort or average. Without it the tool can ask whether a student took SWEN421
+                but never what they got for it, because the marks sit nested inside the row rather
+                than in a column of their own. Wire it after a Source, filter on <b>Course</b>, and
+                <b>Mark</b> and <b>Grade</b> are ordinary columns from that point.
+                <br><br>
+                To get back to one row per student afterwards, use <b>Unique</b> on Student.</dd>
+          </dl>
+
           <h4 class="help-cat help-cat-summarise">Summarise &mdash; teal</h4>
           <p class="help-note">Rows collapse to a summary, and the columns are rewritten.</p>
           <dl class="help-defs">
             <dt>Aggregate</dt>
-            <dd>Reduces the whole table to a single value: a count, sum, average, minimum or
-                maximum of one column.</dd>
+            <dd>Reduces the whole table to a single value: a count, sum, average, median,
+                minimum or maximum of one column.</dd>
             <dt>Aggregate Columns</dt>
             <dd>One row out, with the chosen calculation applied to every numeric column at once.
                 Use it for a profile of a group rather than a single figure.</dd>
+            <dt>Aggregate Rows</dt>
+            <dd>The mirror of Aggregate Columns, and the one that runs across the page instead of
+                down it: one value for every row, and a single column out. The row count is
+                unchanged. It replaces the whole row rather than adding to it, because totalling a
+                row that still carries an ID is not a meaningful thing to have done &mdash; so put
+                a <b>Select</b> in front to narrow the row to the figures you mean to combine.</dd>
           </dl>
 
           <h4 class="help-cat help-cat-branches">Branches &mdash; rose</h4>
@@ -478,6 +657,11 @@
              once. Its setting chooses between the rows themselves and how many of them there
              are &mdash; it displays what arrives rather than computing anything, so for an
              average or any other figure, wire an <b>Aggregate</b> in front of it.</p>
+          <p class="help-node-desc">Showing the rows, it also offers a tick box per column, so you
+             can look at three columns of a wide table without wiring anything. This changes the
+             view and never the answer: no rows are lost, and Copy and Save write exactly the
+             columns shown. A <b>Select</b> upstream does the same job to the data itself, and the
+             two compose &mdash; Select narrows what arrives, this narrows what is shown of it.</p>
         </section>
 
         <!-- ── RESULTS ─────────────────────────────────────── -->
@@ -572,6 +756,16 @@
           <p>What a file holds is the <em>question</em>, not the answer. Opening a saved query
              restores the graph, and pressing Run Query evaluates it against the data as it stands
              then &mdash; so the same query re-run next year gives next year's answer.</p>
+
+          <p><b>The data is never saved with it.</b> A query file records the <em>names</em> of the
+             files each Source was given and nothing out of them: no student, no grade, not even a
+             course code. That is deliberate &mdash; a query gets emailed around, and student
+             records should not travel with it.</p>
+
+          <p>So loading a query gives you the graph back with every Source empty, and each one then
+             names the files it was built against. Choose them again and the query answers exactly
+             as it did before. A query saved last year and re-loaded against this year's files is
+             the same question asked of new data, which is the point of keeping one.</p>
         </section>
 
         <!-- ── KEYS ────────────────────────────────────────── -->

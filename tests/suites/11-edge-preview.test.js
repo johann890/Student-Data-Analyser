@@ -77,9 +77,13 @@ module.exports = ({ describe, test }) => {
     });
 
     test('the student table shows all but its widest column', () => {
+      // Asserted against the schema rather than against a literal, so a column
+      // added to the Source moves this test's expectation with it instead of
+      // failing it. What is being checked is the CAP, not the width.
       const t = A.studentsTable(A.STUDENTS);
-      assert.equal(t.columns.length, 7);
-      assert.equal(A.previewColumns(t).length, 6);
+      assert.equal(t.columns.length, A.STUDENT_COLUMNS.length);
+      assert.ok(t.columns.length > A.PREVIEW_COLS, 'or there is nothing to drop');
+      assert.equal(A.previewColumns(t).length, A.PREVIEW_COLS);
     });
 
     test('rows are capped as well as columns', () => {
@@ -104,7 +108,7 @@ module.exports = ({ describe, test }) => {
       const keys = A.previewColumns(A.studentsTable(A.STUDENTS)).map(c => c.key);
       assert.excludes(keys, 'letterGrade', 'the TEXT column should be the one dropped');
       assert.includes(keys, 'id');
-      assert.includes(keys, 'gradeAvg');
+      assert.includes(keys, 'gpa');
     });
 
     test('the table\'s own order is kept, not the order they were picked in', () => {

@@ -25,6 +25,57 @@ tests/
   suites/*.test.js       the tests
 ```
 
+## The data the suites run against
+
+Two datasets, for two different jobs.
+
+**The built-in synthetic one** is what `app.js` used to ship with. It is now
+installed only under `__QB_TEST__` (`installSyntheticDataset()`), so a real page
+opens with no data and a Source refuses to run until it is handed files. Several
+hundred assertions are written in terms of its forty students a year and its
+seeded GPAs, and rewriting them against the archive would have changed what those
+tests *say* rather than what they check — so the generator stayed, behind the
+same flag that publishes the internals.
+
+`20-source-loading` calls `setSyntheticDataset(null)` around the blocks that test
+the refusal, because a refusal tested with a fallback still in place is not the
+refusal a user would meet.
+
+**The real archive** lives in `../data` beside the application, and `19-data-files`
+reads it through the shipped parser. A parser tested only against fixtures its own
+author wrote is a parser tested against its own assumptions; fixtures still cover
+the refusals, because a file has to be malformed deliberately.
+
+If `../data` is absent those tests return early rather than failing — the suite
+should still be runnable from a checkout that does not carry student records.
+
+The archive has **three** years: 2022 and 2023 as exported, and 2024, which was
+built afterwards to carry the patterns two years cannot express. A trend needs
+three points — two years tell you a number changed but not which way it is
+going — and the movement between programmes that the head of school and the
+programme directors care about was simply absent, because nobody in 2022 or 2023
+changes degree or major at all.
+
+`20-source-loading` still needs more year files than the archive holds, and
+makes them by rewriting the `Year` column of the real 2022 export, so they are
+genuine files by every rule in the parser — same 27 columns, same tab
+separation, same rows — differing only in the one field the file name has to
+agree with. A hand-written fixture would have been a fixture the parser was
+allowed to disagree with.
+
+## Asynchronous tests
+
+`run.js` awaits each test function, because the loading path goes through a real
+`FileReader` and a `FileReader` is asynchronous by construction. Stubbing it would
+have left the very path those suites exist to check — pick a file, read it, refuse
+or accept it — untested in favour of a synchronous imitation.
+
+The harness's `waitFor(predicate)` polls with a ceiling, rather than guessing at a
+fixed delay that is flaky on a slow machine and slow on a fast one. `choose()`
+puts real `File` objects on a hidden input and fires `change`, which is exactly
+where the browser stands after a pick: everything inward of the listener is the
+shipped code.
+
 ## Where it looks for the application
 
 By default the harness searches sibling folders for one containing `app.js` and
@@ -86,7 +137,7 @@ bridges them back to getters so tests can write `app.nodes`, in one place —
 
 | Suite | Covers |
 |---|---|
-| `01-dataset` | Generated data invariants: eight courses each, `gradeAvg` equals the mean of the marks, letter grades agree with numbers, catalogue fully exercised, generation is deterministic |
+| `01-dataset` | The grade model, and the built-in dataset's invariants: eight courses each, `gradeAvg` equals the mean of the marks, letter grades agree with numbers, catalogue fully exercised, generation is deterministic |
 | `02-table-model` | The `{columns, rows, meta}` primitive: access by key, finding the nested column by type rather than name, type-driven cell formatting |
 | `03-filter` | Every field type and operator, cross-checked against the raw dataset; multi-criterion AND; criteria orphaned by a narrowed header |
 | `04-schema` | Schema propagation, and that the Filter and Aggregate panels follow the incoming table rather than assuming student records |
@@ -97,6 +148,17 @@ bridges them back to getters so tests can write `app.nodes`, in one place —
 | `09-ui-state` | Config lives in the model; dragging does not rebuild the DOM; typing does not destroy the field; escaping |
 | `10-aggregation` | Aggregate and AggregateColumns: the operation set, every measure cross-checked against the dataset, empty input, the registry invariant, persistence |
 | `11-edge-preview` | The hover preview: the column cap and the stylesheet width held together, what is shown and which columns, real edges |
+| `12-compare-downstream` | Compare feeding the row nodes: every downstream node accepts a comparison, the registry invariant holds for each, and branch metadata stops being honoured the moment it stops describing the rows |
+| `13-reverse` | The Reverse node: registration in all six tables, row order, the Sort/Reverse/Take pairing, and the in-place-mutation guard |
+| `14-aggregate-rows` | AggregateRows: the mirror of AggregateColumns, values cross-checked against the dataset, which cells feed the measure, and composition with Select |
+| `15-output-columns` | Choosing columns on an Output: the control, that it changes the view and never the answer, where the picker does and does not appear, and both empty-selection guards |
+| `16-range` | The `between` operator: that it can be found at all, which columns may carry a range and which may not, the amber band's appearance, bounds cross-checked against the dataset on numbers, years and grade letters, reversed and incomplete bounds |
+| `17-shape-styling` | The model's `SHAPE` geometry against the stylesheet's, and that every processing node is named in its family's colour rule and its menu group |
+| `18-project` | The Project node: the unfold cross-checked against the raw enrolments, that the change in row identity is *visible*, the header being statically known, and use case (f) |
+| `19-data-files` | The boundary between an arbitrary file and the DOM: the two name rules, the size caps, the column file, every per-field check in a year file, the file-name/row-year agreement, and the real archive in `../data` read end to end |
+| `21-level-and-degree` | Course level (derived from the code) and degree (read from `deg1`): what they are against the archive, the `Took level` predicate and its operators, level as a measurable column after a Project — and guards for the two positional-array bugs adding them caused |
+| `22-archive-patterns` | The patterns `../data` claims to carry, read through the shipped parser: three linked years, the BEHONS CYBR → BSC COMP migration, a course improving every year, courses growing and shrinking every year, the reliably hard and reliably easy ones measured against the cohort, and the student-level claims — progression, own-subject advantage, who leaves and why |
+| `20-source-loading` | The Source from the picker to the answer: the two ordered pickers driven through the real hidden inputs, year files accumulating across picks and coming back off one at a time, all-or-nothing within a pick, one Source per dataset, and that a saved query carries the graph and not one byte of the records |
 
 ### What was removed, and why
 
@@ -117,6 +179,142 @@ changed deliberately. Each says so at the point of the change:
 - Year *is* filterable now (`03-filter`, `04-schema`) — `app.js:1149` explains why.
 - Saved CSVs carry **no** timestamp (`06-export`) — the name typed is the name written.
 - `saveGraph` opens a naming dialog rather than writing immediately (`07-saveload`).
+- `CONNECT_RULES.compare` is no longer `['output']` (`08-graph`) — a comparison
+  can be sorted, taken and aggregated like any other table.
+
+## Rows are built from the column list, not beside it
+
+Adding Degree to `STUDENT_COLUMNS` and Level to `enrolmentColumns()` broke two
+things at once, in the same way and for the same reason: both row builders were
+hand-written positional arrays sitting next to a column list, and neither was
+updated with it. Every cell after the insertion point shifted one place.
+
+Neither threw. A Filter on Specialisation started reading grades and returning
+zero rows; a projected Grade points column held a letter and Grade held nothing.
+Both produced output that looked like output.
+
+`studentsTable()` and `applyProject()` now map over the column list by `key`, so
+the invariant is true by construction rather than by vigilance, and
+`21-level-and-degree` asserts the stronger version of it — not just that a row
+has one cell per column, but that the cell under each column *is that column's
+value*. A matching length is what both bugs already had.
+
+Two consequences for writing tests here:
+
+- assert column counts against `A.STUDENT_COLUMNS.length`, not against a
+  literal, so a column added tomorrow moves the expectation instead of failing
+  it. Several suites were changed to do this;
+- where a test unticks columns by name to leave a known set behind, the new
+  column has to be named in that list. That is not boilerplate — it is the test
+  saying which columns it means.
+
+## Tests that must be able to fail
+
+Two guards here assert the *absence* of a bug, which makes them easy to write in
+a form that can never go red. Both were checked by reintroducing the bug and
+confirming the suite caught it:
+
+- **`13-reverse` › a sibling branch off the same Source is unaffected.** Change
+  `t.rows.slice().reverse()` to `t.rows.reverse()` in `applyReverse` and three
+  tests fail. Without a forking graph the in-place version passes everything.
+- **`12-compare-downstream` › a Take past a Compare exports the rows it kept.**
+  Change `e.show !== 'lists'` back to `e.show === 'summary'` in
+  `exportTableFor` and this fails. It needs a node *between* the Compare and the
+  Output to show up at all.
+- **`15-output-columns` › the two empty-selection guards.** An Output is stopped
+  from showing no columns twice over — `setCfg` refuses to write an empty list,
+  and `selectedCols` falls back to the whole header if one reaches it anyway.
+  They are tested separately *because* a single test of the outcome passes when
+  either one is removed. That is how the first version of this test was written,
+  and it could not fail. Remove each guard in turn and exactly one test should
+  go red.
+
+- **`16-range` › a cleared bound stops the run instead of ranking as zero.**
+  Remove the `isBlank(v)` line from `rankerFor` and two tests fail. `Number('')`
+  is `0`, so without it a cleared upper bound ranked as zero, the bounds were
+  put "the right way round", and "between 70 and nothing" became "between 0 and
+  70" — a different question, answered confidently, with a log line reading
+  `[ .. 70]` as the only clue.
+
+- **`22-archive-patterns` › the pattern guards.** All four were checked by
+  breaking the archive rather than the code: putting the three migrants back
+  into BEHONS CYBR, flattening COMP103's improvement to a straight C, and moving
+  sixteen enrolments into NWEN438 so it grew instead of shrank. Each fails
+  exactly the test that names it.
+
+  The leaver guard needed two goes, and is the reason this list is worth
+  keeping. Its first version passed a deliberately broken archive, because
+  "students who left before finishing" was written as *mean course level below
+  3.5* — and a final-year student carrying three 300-level papers averages 3.4.
+  Three graduands leaked into the attrition pool and held the assertion up on
+  their own. Rewriting it as the modal level was not enough either: four 300s
+  against four 400s is a tie, the tie broke downward, and the same three
+  students came back. It now reads the ENGR489 capstone first and breaks ties
+  upward. **A test about who leaves is only as good as its definition of who has
+  finished**, and in this archive the graduands outnumber the leavers two to
+  one.
+
+If any of these is ever rewritten, re-check it the same way.
+
+## The leaver pattern reads backwards unless you exclude the graduands
+
+Worth stating on its own, because it caught both the data and the test that was
+written to check it, and it will catch the next person to query this archive.
+
+Taken as a whole, the students who leave have *higher* averages than the
+students who stay — 5.84 against 5.35 across 2022 → 2023. That looks like the
+"students who leave early were struggling" pattern is simply absent. It is not.
+Almost every leaver is a final-year student who has **finished**, and final-year
+students are the strongest in the archive because everybody improves as they
+progress. Graduation swamps attrition: 62 of the 88 who go after 2023 are
+completing.
+
+Within each non-final year the pattern is clean and always was — leavers sit
+roughly a grade below the students who stay. The 2024 file makes the other half
+true as well, which it was not before: a minority of the students who go before
+finishing are doing *well* when they go, because people leave for a job offer
+and not only because they are failing. So the honest claim is that leavers are
+*mostly* struggling, and an analysis that reports otherwise has usually forgotten
+to take the graduands out.
+
+## Testing that something is visible
+
+`18-project` has a describe block called "the change in row identity is
+visible", and it is the unusual half of that suite. Project is correct if it
+produces the right rows; it is *finished* only if a person can see that a row
+has stopped being a student. That distinction is not pedantry — the same
+operation used to be a dropdown on the Source, and it was removed precisely
+because it made "count students" wrong by a factor of eight with nothing on
+screen to say so.
+
+So four separate things are asserted, because each is a separate way the node
+announces itself and any one could be removed without the numbers changing:
+
+| Signal | Test |
+|---|---|
+| `id` becomes `studentId` | the old name must not survive |
+| the log states the multiplication | 80 rows → 640 rows, one per course |
+| the panel warns before anything runs | "counts enrolments" |
+| the warning is coloured | `.proj-warn`, the only coloured hint on any panel |
+
+All four were checked by removing them one at a time. Dropping the rename fails
+eight tests, dropping the log line fails one, and making the warning a plain
+grey hint fails exactly the test that says so.
+
+## Why `17-shape-styling` exists
+
+It checks the stylesheet from the test suite, which is unusual, and it is worth
+saying why. `SHAPE` is what the graph measures — snap-to-connect compares shape
+edges, `nodeBox` feeds `zoomToFit`, `shapeEntry`/`shapeExit` place arrowheads —
+while the stylesheet is what is actually drawn. Nothing made the two agree, and
+nothing goes loudly wrong when they disagree: arrows land slightly off, Fit
+leaves a margin nobody asked for.
+
+AggregateRows shipped with no width rule at all while the model said 112x72, and
+with its class missing from the Summarise colour rule, so it rendered violet
+among the teal ones. Both were found by a person looking at the screen, which is
+the most expensive way to find them. Remove `.shape-aggrows` from either rule and
+this suite says so.
 
 ## Conventions
 
