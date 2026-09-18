@@ -49,12 +49,19 @@ the refusals, because a file has to be malformed deliberately.
 If `../data` is absent those tests return early rather than failing — the suite
 should still be runnable from a checkout that does not carry student records.
 
-The archive has two years, which is not enough to tell *added* from *replaced*
-apart from *there are two now*. `20-source-loading` makes the rest by rewriting
-the `Year` column of the real 2022 export, so they are genuine files by every
-rule in the parser — same 27 columns, same tab separation, same rows — differing
-only in the one field the file name has to agree with. A hand-written fixture
-would have been a fixture the parser was allowed to disagree with.
+The archive has **three** years: 2022 and 2023 as exported, and 2024, which was
+built afterwards to carry the patterns two years cannot express. A trend needs
+three points — two years tell you a number changed but not which way it is
+going — and the movement between programmes that the head of school and the
+programme directors care about was simply absent, because nobody in 2022 or 2023
+changes degree or major at all.
+
+`20-source-loading` still needs more year files than the archive holds, and
+makes them by rewriting the `Year` column of the real 2022 export, so they are
+genuine files by every rule in the parser — same 27 columns, same tab
+separation, same rows — differing only in the one field the file name has to
+agree with. A hand-written fixture would have been a fixture the parser was
+allowed to disagree with.
 
 ## Asynchronous tests
 
@@ -150,6 +157,7 @@ bridges them back to getters so tests can write `app.nodes`, in one place —
 | `18-project` | The Project node: the unfold cross-checked against the raw enrolments, that the change in row identity is *visible*, the header being statically known, and use case (f) |
 | `19-data-files` | The boundary between an arbitrary file and the DOM: the two name rules, the size caps, the column file, every per-field check in a year file, the file-name/row-year agreement, and the real archive in `../data` read end to end |
 | `21-level-and-degree` | Course level (derived from the code) and degree (read from `deg1`): what they are against the archive, the `Took level` predicate and its operators, level as a measurable column after a Project — and guards for the two positional-array bugs adding them caused |
+| `22-archive-patterns` | The patterns `../data` claims to carry, read through the shipped parser: three linked years, the BEHONS CYBR → BSC COMP migration, a course improving every year, courses growing and shrinking every year, the reliably hard and reliably easy ones measured against the cohort, and the student-level claims — progression, own-subject advantage, who leaves and why |
 | `20-source-loading` | The Source from the picker to the answer: the two ordered pickers driven through the real hidden inputs, year files accumulating across picks and coming back off one at a time, all-or-nothing within a pick, one Source per dataset, and that a saved query carries the graph and not one byte of the records |
 
 ### What was removed, and why
@@ -228,7 +236,46 @@ confirming the suite caught it:
   70" — a different question, answered confidently, with a log line reading
   `[ .. 70]` as the only clue.
 
+- **`22-archive-patterns` › the pattern guards.** All four were checked by
+  breaking the archive rather than the code: putting the three migrants back
+  into BEHONS CYBR, flattening COMP103's improvement to a straight C, and moving
+  sixteen enrolments into NWEN438 so it grew instead of shrank. Each fails
+  exactly the test that names it.
+
+  The leaver guard needed two goes, and is the reason this list is worth
+  keeping. Its first version passed a deliberately broken archive, because
+  "students who left before finishing" was written as *mean course level below
+  3.5* — and a final-year student carrying three 300-level papers averages 3.4.
+  Three graduands leaked into the attrition pool and held the assertion up on
+  their own. Rewriting it as the modal level was not enough either: four 300s
+  against four 400s is a tie, the tie broke downward, and the same three
+  students came back. It now reads the ENGR489 capstone first and breaks ties
+  upward. **A test about who leaves is only as good as its definition of who has
+  finished**, and in this archive the graduands outnumber the leavers two to
+  one.
+
 If any of these is ever rewritten, re-check it the same way.
+
+## The leaver pattern reads backwards unless you exclude the graduands
+
+Worth stating on its own, because it caught both the data and the test that was
+written to check it, and it will catch the next person to query this archive.
+
+Taken as a whole, the students who leave have *higher* averages than the
+students who stay — 5.84 against 5.35 across 2022 → 2023. That looks like the
+"students who leave early were struggling" pattern is simply absent. It is not.
+Almost every leaver is a final-year student who has **finished**, and final-year
+students are the strongest in the archive because everybody improves as they
+progress. Graduation swamps attrition: 62 of the 88 who go after 2023 are
+completing.
+
+Within each non-final year the pattern is clean and always was — leavers sit
+roughly a grade below the students who stay. The 2024 file makes the other half
+true as well, which it was not before: a minority of the students who go before
+finishing are doing *well* when they go, because people leave for a job offer
+and not only because they are failing. So the honest claim is that leavers are
+*mostly* struggling, and an analysis that reports otherwise has usually forgotten
+to take the graduands out.
 
 ## Testing that something is visible
 

@@ -447,6 +447,18 @@ module.exports = ({ describe, test }) => {
       out.students.forEach(s => assert.equal(s.year, 2023));
     });
 
+    test('2024 reads too, and carries the third year of the archive', function () {
+      if (!hasDataDir()) return;
+      const out = app.parseYearFile(dataDirFile('mcs-students-2024'), 2024,
+        app.parseHeaderFile(HDR, 'headers.txt'));
+      assert.notOk(out.error, out.error);
+      assert.equal(out.rows, 1927);
+      assert.equal(out.students.length, 248);
+      out.students.forEach(s => assert.equal(s.year, 2024));
+      assert.deepEqual(out.warnings, [],
+        'a year added later must not introduce a grade code the tool cannot read');
+    });
+
     test('the archive\'s 33 dropped courses survive as ungraded enrolments', function () {
       if (!Y22) return;
       const out = app.parseYearFile(Y22, 2022, app.parseHeaderFile(HDR, 'headers.txt'));
