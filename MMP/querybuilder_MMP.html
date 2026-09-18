@@ -86,7 +86,7 @@
        `accept` is a courtesy to the dialog and is trusted by nothing. The year
        input carries none at all, because the archive's year files have no
        extension for a filter to match on — which is precisely why the name
-       rules live in app.js, where the file is actually taken, rather than in an
+       rules live in data.js, where the file is actually taken, rather than in an
        attribute a rename walks straight past. -->
   <input type="file" id="headersFile" accept="text/plain,.txt" hidden>
   <input type="file" id="yearFiles" multiple hidden>
@@ -800,7 +800,7 @@
      inspected and restyled without reading the script.
 
      The buttons are wired inline like the toolbar's. Dismissing by clicking the
-     backdrop is not, because it carries a condition — see app.js. -->
+     backdrop is not, because it carries a condition — see ui.js. -->
 <div class="save-dialog" id="saveDialog">
   <div class="save-card" role="dialog" aria-modal="true" aria-labelledby="saveTitle">
     <h2 class="save-title" id="saveTitle">Save query</h2>
@@ -820,6 +820,14 @@
   </div>
 </div>
 
-<script src="app.js"></script>
+<!-- Three classic scripts, in this order and not as modules. The tool is opened
+     from Finder at file://, where a module script is fetched with CORS against an
+     opaque origin and refused; classic scripts sharing one global scope are what
+     works there. data.js declares the archive and the Table type, engine.js the
+     evaluation, ui.js the canvas — and ui.js last, because it ends by wiring the
+     events and painting the first frame. -->
+<script src="data.js"></script>
+<script src="engine.js"></script>
+<script src="ui.js"></script>
 </body>
 </html>
