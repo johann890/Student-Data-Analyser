@@ -54,16 +54,21 @@ body {
   cursor: pointer;
 }
 .run-btn:hover { background: #0a2e5a; }
+/* Red at rest, not only on hover: Clear throws the whole graph away, and the
+   one destructive control in the bar should read as destructive before the
+   pointer reaches it. Hover fades a fill in behind it, the same gesture the
+   Add buttons use, so it belongs to the same family despite the warning. */
 .clear-btn {
   background: transparent;
-  border: 1px solid #2a2a2a;
+  border: 1px solid #7a2828;
   border-radius: 5px;
-  color: #555;
+  color: #e35d5d;
   padding: 5px 13px;
   font-size: 11px;
   cursor: pointer;
+  transition: background 0.12s;
 }
-.clear-btn:hover { color: #c05050; border-color: #4a1a1a; }
+.clear-btn:hover { background: #240d0d; }
 
 /* ── LAYOUT ──────────────────────────────────────────────── */
 .main { display: flex; flex: 1; overflow: hidden; }
@@ -1978,15 +1983,16 @@ th.cmp-num { color: #383838 !important; }
   width: 24px; height: 24px;
   border-radius: 50%;
   background: transparent;
-  border: 1px solid #2a2a2a;
-  color: #8a8a8a;
+  border: 1px solid #7a6418;
+  color: #e8c84a;
   font-family: inherit;
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
+  transition: background 0.12s;
 }
-.help-btn:hover { border-color: #3d3d3d; color: #d0d0d0; background: #1a1a1a; }
+.help-btn:hover { background: #221c08; }
 
 /* Same backdrop treatment as the save dialog, one layer below it: help can be
    open when nothing else is, and should never sit over a dialog awaiting an
@@ -2110,8 +2116,6 @@ th.cmp-num { color: #383838 !important; }
   margin-bottom: 10px;
 }
 .help-body b { color: #d4d4d4; font-weight: 600; }
-.help-body em { color: #c0c0c0; font-style: italic; }
-.help-body i { color: #b0b0b0; font-style: italic; }
 .help-body code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;

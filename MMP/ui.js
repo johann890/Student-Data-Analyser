@@ -3843,24 +3843,47 @@ function closeHelp() {
   if (btn && btn.focus) btn.focus();
 }
 
+/* The section a click asked for, held until the reader scrolls for themselves.
+   Scroll position alone cannot answer this: the last sections are shorter than
+   the reading area, so the content runs out before their headings can reach the
+   top, and the link above the one that was clicked would stay marked instead. */
+var helpNavPin = null;
+
 function scrollHelpTo(id) {
   var el = document.getElementById(id);
-  if (el) el.scrollIntoView({ block: 'start' });
+  if (!el) return;
+  helpNavPin = id;
+  el.scrollIntoView({ block: 'start' });
+  syncHelpNav();
 }
 
-/* Marks the section currently under the top of the reading area. Driven by
-   scroll rather than by which link was last clicked, so it stays honest when
-   the user scrolls by hand instead of navigating. */
+/* Marks the section currently under the top of the reading area, unless a link
+   was just clicked. Scrolling by hand clears the pin, so the mark goes back to
+   reporting where the reader actually is rather than where they last jumped. */
 function syncHelpNav() {
   var body = document.getElementById('helpBody');
   var nav = document.getElementById('helpNav');
   if (!body || !nav) return;
   var secs = body.querySelectorAll('section');
-  var current = secs.length ? secs[0].id : '';
-  for (var i = 0; i < secs.length; i++) {
-    // 24px of slack, so a section counts as current just before its heading
-    // reaches the edge rather than just after.
-    if (secs[i].offsetTop - body.scrollTop <= 24) current = secs[i].id;
+  if (!secs.length) return;
+  var current = helpNavPin;
+  if (!current) {
+    // Measured from the reading area's own top edge rather than through
+    // offsetTop: these sections' offsetParent is not the scrolling box, so
+    // offsetTop carries an offset that has nothing to do with the scroll.
+    var top = body.getBoundingClientRect().top;
+    // 24px of slack normally: enough to cover the scroll-margin a section lands
+    // on, so it counts as current the moment it has been scrolled to rather than
+    // a pixel after. At the very bottom the test has to be looser, because the
+    // scroll has run out and the last sections can no longer reach the top at
+    // all: half the reading area, so whichever of them fills most of the screen
+    // is the one marked.
+    var atEnd = body.scrollTop + body.clientHeight >= body.scrollHeight - 2;
+    var mark = atEnd ? body.clientHeight / 2 : 24;
+    current = secs[0].id;
+    for (var i = 0; i < secs.length; i++) {
+      if (secs[i].getBoundingClientRect().top - top <= mark) current = secs[i].id;
+    }
   }
   var items = nav.querySelectorAll('.help-navitem');
   for (var j = 0; j < items.length; j++) {
@@ -3876,7 +3899,18 @@ if (helpNavEl) {
   });
 }
 var helpBodyEl = document.getElementById('helpBody');
-if (helpBodyEl) helpBodyEl.addEventListener('scroll', syncHelpNav);
+if (helpBodyEl) {
+  helpBodyEl.addEventListener('scroll', syncHelpNav);
+  // A pin belongs to the click that set it. These are the ways a reader scrolls
+  // for themselves — wheel, touch, keyboard, and a drag of the scrollbar, which
+  // sends no wheel event but does press the mouse down on this element.
+  var helpUnpin = ['wheel', 'touchmove', 'mousedown', 'keydown'];
+  for (var u = 0; u < helpUnpin.length; u++) {
+    helpBodyEl.addEventListener(helpUnpin[u], function() {
+      helpNavPin = null;
+    }, { passive: true });
+  }
+}
 
 /* Same backdrop rule as the save dialog: a press that starts and ends on the
    backdrop dismisses, a drag that began on the card does not. */
