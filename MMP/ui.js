@@ -3648,10 +3648,14 @@ function applyPanelWidth(w, persist) {
   if (persist !== false) savePanelPrefs();
 }
 
+/* The button names what the next press does, not what the panel is: while the
+   panel is wide the only thing left to ask for is a thin one, so the label
+   reads Thin. aria-pressed still carries the state for a screen reader. */
 function syncPanelWideBtn() {
   var b = panelWideBtnEl();
   if (!b) return;
   b.setAttribute('aria-pressed', panelWide ? 'true' : 'false');
+  b.textContent = panelWide ? 'Thin' : 'Wide';
   b.title = panelWide
     ? 'Back to the narrower panel  ( W )'
     : 'Widen the panel to see every column  ( W )';
