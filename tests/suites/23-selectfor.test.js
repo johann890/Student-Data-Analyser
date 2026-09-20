@@ -1,9 +1,9 @@
-/* SELECT FOR — the group-by whose groups are named rather than wired.
+/* SELECT FOR: The group-by whose groups are named rather than wired.
 
    The node is assembled almost entirely out of parts that already had tests:
    applyCriterion decides which rows a label keeps, reduceValues computes the
    measures, and the port model carries the two inputs. So the interesting
-   claims here are not "does a filter work" — 03-filter owns that — but the
+   claims here are not "does a filter work" (03-filter owns that), but the
    ones that are true only of this node:
 
      - a group IS a filter, so it groups by predicates that are not columns,
@@ -336,8 +336,8 @@ module.exports = ({ describe, test }) => {
     });
 
     test('each group is measured over its own rows, not over the whole table', () => {
-      /* The mistake this guards is one character wide — measuring the incoming
-         table instead of the group's — and it produces a breakdown where every
+      /* The mistake this guards is one character wide (measuring the incoming
+         table instead of the group's), and it produces a breakdown where every
          row is right-looking and identical. So the test asserts the values are
          DISTINCT as well as correct: a cross-check alone passes when every
          group is handed the cohort average, because the cohort average is a
@@ -384,7 +384,7 @@ module.exports = ({ describe, test }) => {
       /* Every student takes eight courses, so the course groups overlap
          eightfold and the shares must total 800%. Dividing by the sum of the
          groups instead would normalise that away and report 5% where 42% of
-         students took a course — a number that is wrong, in range, and
+         students took a course. A number that is wrong, in range, and
          impossible to spot. */
       const h = plain();
       cfg(h, 'by', 'courses.code');
@@ -479,7 +479,7 @@ module.exports = ({ describe, test }) => {
     });
 
     test('duplicate labels make one group, not two identical ones', () => {
-      /* The labels branch here is NOT deduplicated — it is the projected
+      /* The labels branch here is NOT deduplicated. It is the projected
          enrolment rows, eight per student. */
       const h = boot(), A = h.app;
       const dsrc = h.add('source');
@@ -515,7 +515,7 @@ module.exports = ({ describe, test }) => {
     });
 
     test('a nested course list is not offered as a label column', () => {
-      // There is no single value in it to name a group with — the same
+      // There is no single value in it to name a group with: The same
       // exclusion Sort and Unique make.
       const h = boot(), A = h.app;
       const dsrc = h.add('source'), lsrc = h.add('source'), sf = h.add('selectFor');
@@ -985,8 +985,8 @@ module.exports = ({ describe, test }) => {
     describe('against the real archive', () => {
       /* One Source, two branches off it. The rows are the BCA students of
          2024; the groups are every course that ran in 2022. That is the shape
-         of the question the archive was built to answer — what happened to
-         the 2022 catalogue — and it cannot be asked of one table, because no
+         of the question the archive was built to answer (what happened to
+         the 2022 catalogue), and it cannot be asked of one table, because no
          one table holds both years' roles at once. */
       async function migration() {
         const h = boot(), A = h.app;

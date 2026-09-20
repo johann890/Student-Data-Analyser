@@ -1,13 +1,13 @@
 /* ============================================================================
-   UI — the canvas, the panels, persistence, and every event wired to them
+   UI: The canvas, the panels, persistence, and every event wired to them
    ============================================================================
    Graph state, the view transform, selection, ports and port geometry; the
    config panels and results panel; export, save/load, canvas gestures, and the
    listeners that connect them. Loads last: the event wiring and the first
    paint at the foot of this file need the other two files already parsed.
    ============================================================================
-   Part of the query builder. LOAD ORDER MATTERS: data.js, engine.js, ui.js —
-   see querybuilder_MMP.html. These are deliberately NOT ES modules; the tool is
+   Part of the query builder. LOAD ORDER MATTERS: data.js, engine.js, ui.js.
+   See querybuilder_MMP.html. These are deliberately NOT ES modules; the tool is
    opened from Finder at file://, where module scripts are fetched with CORS
    against an opaque origin and refused. Classic scripts sharing one global
    scope are what works there, which is why nothing here is wrapped in an IIFE
@@ -24,7 +24,7 @@
    render() only reads. That is also what makes save/load possible at all.    */
 
 var nodes = [];
-var connections = [];   // [{from, to, port, color}] — port names an input on the TO node
+var connections = [];   // [{from, to, port, color}]. Port names an input on the TO node
 var idCtr = 0;
 var drag = null;
 var SNAP_DIST = 160;    // px proximity threshold, measured between shape edges
@@ -58,7 +58,7 @@ var SHAPE = {
 };
 
 /* ============================================================================
-   VIEW — WORLD COORDINATES, ZOOM AND PAN
+   VIEW: WORLD COORDINATES, ZOOM AND PAN
    ============================================================================
    Node x/y were previously viewport pixels: a node's position meant "this many
    pixels from the top-left of the visible canvas", so the reachable area was
@@ -69,7 +69,7 @@ var SHAPE = {
    separate concern: a scale plus a translation applied to one wrapper element.
    The model never knows what is on screen. That is what makes zoom possible
    without touching the graph, and it means a saved query means the same thing
-   on any display — so the file format is untouched by this change.
+   on any display, so the file format is untouched by this change.
 
        screen = world * z + pan            (pan is in screen px)
        world  = (screen - pan) / z
@@ -99,8 +99,8 @@ function viewCentreWorld() {
 }
 
 /* Pan is clamped so the world can never be dragged off screen entirely. When
-   the world is smaller than the viewport — which is what zooming out far enough
-   produces — there is no valid pan, so it is centred instead. Without this,
+   the world is smaller than the viewport (which is what zooming out far enough
+   produces), there is no valid pan, so it is centred instead. Without this,
    zooming out leaves the graph pinned to a corner against dead space. */
 function clampPan() {
   var r = canvasBox();
@@ -121,7 +121,7 @@ function applyView() {
 }
 
 /* Zoom about a fixed point: the world position under the cursor stays under the
-   cursor. Anchoring to the canvas centre instead — the naive version — walks
+   cursor. Anchoring to the canvas centre instead (the naive version) walks
    the graph away from wherever the user was looking, which is why wheel zoom
    passes the pointer through. */
 function setZoom(z, clientX, clientY) {
@@ -142,7 +142,7 @@ function zoomReset() { setZoom(1); }
 
 /* Open on the middle of the world rather than its top-left corner. Not
    cosmetic: pan is clamped so the world can never show dead space around it, and
-   at a corner two of those clamps are always active — so zooming out drags the
+   at a corner two of those clamps are always active, so zooming out drags the
    graph diagonally into the corner instead of pulling away from the pointer,
    which reads as the canvas fighting back. From the middle there is world on
    every side and zoom is symmetric until an edge is genuinely approached. */
@@ -196,8 +196,8 @@ function zoomToFit() {
    ============================================================================
    Selection is transient view state keyed by node id, deliberately outside the
    graph model: it is not serialised, and it survives a render() because ids
-   survive a render(). Changing it must not rebuild the canvas — a rebuild
-   destroys any config control the user is mid-edit in — so every selection
+   survive a render(). Changing it must not rebuild the canvas (a rebuild
+   destroys any config control the user is mid-edit in), so every selection
    change goes through syncSelectionUI(), which only toggles classes. */
 
 var selection = [];
@@ -241,8 +241,8 @@ function syncSelectionUI() {
   }
 }
 
-/* Every node reachable from a start node, following edges in either direction —
-   the connected component, which is what "this branch" means to someone looking
+/* Every node reachable from a start node, following edges in either direction.
+   The connected component, which is what "this branch" means to someone looking
    at the canvas. Direction is ignored on purpose: a Compare node's two input
    chains are one visual branch even though no edge runs between them. */
 function connectedComponent(startId) {
@@ -260,7 +260,7 @@ function connectedComponent(startId) {
 function selectBranch(id) { setSelection(connectedComponent(id)); }
 
 /* Bulk delete. Connections are dropped when either end goes, which is the same
-   rule removeNode() has always used — applied once over the whole set rather
+   rule removeNode() has always used. Applied once over the whole set rather
    than once per node, so a graph is never briefly inconsistent mid-delete. */
 function deleteSelection() {
   if (!selection.length) return;
@@ -279,7 +279,7 @@ function deleteSelection() {
 
 /* Take sits anywhere a row stream does: it neither reads nor writes column
    structure, so anything that could feed a Filter can feed a Take and vice
-   versa. Compare stays output-only — it is superseded, and widening its
+   versa. Compare stays output-only. It is superseded, and widening its
    downstream reach now would be work thrown away when it retires. */
 /* Every row-stream node accepts and produces a table, so they compose freely.
    The aggregation nodes are no exception: an Aggregate result is a one-row
@@ -291,7 +291,7 @@ function deleteSelection() {
 var TABLE_NODES = ['filter', 'sort', 'reverse', 'take', 'unique', 'select', 'project',
                    'aggregate', 'aggregateColumns', 'aggregateRows', 'combine',
                    /* Both of its ports take an ordinary table, so anything that
-                      produces one may feed it — including another SelectFor,
+                      produces one may feed it, including another SelectFor,
                       which is how a breakdown becomes the label set for the
                       next one. Which port a wire lands on is the port model's
                       business, not this list's: CONNECT_RULES answers "may
@@ -313,15 +313,15 @@ var CONNECT_RULES = {
   /* Compare was output-only, on the grounds that it is superseded by SelectFor
      and widening its reach would be work thrown away. That reasoning held while
      the cost was hypothetical. It is not: a Compare's result is the only
-     labelled multi-row answer the tool can currently produce — "how many in
-     each year", "the average for each branch" — and refusing to let it be
+     labelled multi-row answer the tool can currently produce ("how many in
+     each year", "the average for each branch"), and refusing to let it be
      aggregated made "count per year, then average those counts" unbuildable
      through it. That is the exact example app.js:212 cites as the thing the
      table refactor existed to fix.
 
      Nothing downstream needed changing. Every row node already decides for
      itself whether a Compare's branch metadata still describes its rows, and
-     says so where it does it — Sort and Take carry meta, Select and the
+     says so where it does it. Sort and Take carry meta, Select and the
      one-column mode of Unique drop it. Those comments were written against this
      day arriving. */
   compare:          TABLE_NODES.concat(['compare', 'output']),
@@ -337,13 +337,13 @@ function canConnect(fromType, toType) {
    ============================================================================
    A connection now names the input it lands on, not just the node. Previously
    two wires into one node were silently unioned: the merge happened in
-   evaluateGraph, was invisible on the canvas, and — as the histogram case
-   showed — could discard rows without saying so. A node now declares its
+   evaluateGraph, was invisible on the canvas, and (as the histogram case
+   showed) could discard rows without saying so. A node now declares its
    inputs, and each wire occupies one.
 
    Two arities:
-     single — exactly one wire. A second is refused at the point of wiring.
-     multi  — many wires, because taking several tables IS the node's job.
+     single:  Exactly one wire. A second is refused at the point of wiring.
+     multi:   Many wires, because taking several tables IS the node's job.
               Combine and Compare, and nothing else.
 
    The implicit union is gone with it: a node with one input has one table, so
@@ -353,7 +353,7 @@ function canConnect(fromType, toType) {
    Declaring ports as data rather than as branches is what lets the geometry,
    the wiring rules, the evaluator and the schema pass all agree about a node
    they have never heard of. SelectFor (data + labels) and any future two-input
-   node are an entry in this table plus their implementation — nothing here
+   node are an entry in this table plus their implementation: Nothing here
    changes.                                                                   */
 
 var SINGLE_IN = [{ key:'in', label:'In' }];
@@ -373,7 +373,7 @@ var NODE_PORTS = {
   combine:          [{ key:'in', label:'Tables',   multi:true }],
   compare:          [{ key:'in', label:'Branches', multi:true }],
   /* The two-input node the port model was generalised for, and the entry is
-     the whole of its declaration — geometry, stub rendering, snap-to-connect,
+     the whole of its declaration. Geometry, stub rendering, snap-to-connect,
      the arity refusal and the save-file port resolution all read this table
      and needed no case added for it.
 
@@ -415,7 +415,7 @@ function wiresInto(nodeId, portKey) {
 
 /* A port accepts a wire when it is multi, or when it is single and empty.
    `ignore` skips one existing connection, so a check can ask "would this be
-   free if that wire were not there" — which is what a re-wire needs. */
+   free if that wire were not there", which is what a re-wire needs. */
 function portAccepts(node, portKey, ignore) {
   var def = portDef(node.type, portKey);
   if (!def) return false;
@@ -435,7 +435,7 @@ function freePortsOn(node) {
    PORT GEOMETRY
    ============================================================================
    Ports are spaced down the left edge of the shape. One port sits at mid-height,
-   which is exactly where the single entry point used to be — so a one-input node
+   which is exactly where the single entry point used to be, so a one-input node
    is pixel-identical to what it was before this change, and every existing
    arrow lands where it always did.
 
@@ -498,7 +498,7 @@ function resolveDirection(a, b) {
    may have changed since the file was written. */
 function defaultCfg(type) {
   /* `dataset` records the NAMES of the files this Source was given, and never
-     their contents — see the loader section. It is the one cfg key whose value
+     their contents. See the loader section. It is the one cfg key whose value
      is a description of state held outside the model, which is exactly what
      makes a saved query re-openable without carrying student records in it. */
   if (type === 'source')  return { pop:'all', dataset:{ headers:'', years:[] } };
@@ -509,7 +509,7 @@ function defaultCfg(type) {
   // Reverse has nothing to configure: it takes no column, no direction and no
   // count. An empty cfg is the honest answer, not a placeholder key.
   if (type === 'reverse') return {};
-  // col:'' means all columns — whole-row deduplication. Naming a column
+  // col:'' means all columns: Whole-row deduplication. Naming a column
   // switches to the label-producing mode and rewrites the header.
   if (type === 'unique')  return { col: '' };
   // Both aggregation nodes share one config shape: which measure, and (for the
@@ -534,7 +534,7 @@ function defaultCfg(type) {
   // no choices in it.
   if (type === 'project') return {};
   /* `by` empty means "the first field this table can be grouped by", resolved
-     against whatever arrives — the same convention Aggregate's col:'' uses,
+     against whatever arrives. The same convention Aggregate's col:'' uses,
      and for the same reason: an explicit key written at creation time goes
      stale the moment the node is rewired.
 
@@ -542,7 +542,7 @@ function defaultCfg(type) {
      `measures` and its elements are strings; these are {op, col} objects, and
      mergeCfg validates that key by resetting anything that is not an array to
      Compare's string defaults. One key, two element types, one validator is a
-     collision waiting for the first hand-edited file — so they get separate
+     collision waiting for the first hand-edited file, so they get separate
      keys and separate guards.
 
      `labelCol` is which column of the labels branch supplies the values, and
@@ -557,7 +557,7 @@ function defaultCfg(type) {
 /* A criterion keeps a value and an operator per field, not one of each. Switching
    the field selector from Avg to Gender and back therefore restores the original
    threshold instead of a default, and the same criterion object works against
-   any table schema — including ones with columns that did not exist when it was
+   any table schema, including ones with columns that did not exist when it was
    created. */
 function newCriterion() {
   return { field:'gpa', values:{}, ops:{}, course:defaultCourse() };
@@ -567,8 +567,8 @@ function critValue(c, field, col) {
   if (c.values && c.values[field] !== undefined) return c.values[field];
   if (col && col.def !== undefined) return col.def;
   if (col && col.values && col.values.length) return String(col.values[0]);
-  /* A column can declare an order without declaring a value set — letterGrade
-     carries GRADE_ORDER and nothing else — and that order is just as good a
+  /* A column can declare an order without declaring a value set (letterGrade
+     carries GRADE_ORDER and nothing else), and that order is just as good a
      source of a default. Without this the control renders with nothing
      selected, the browser shows option one, and the model still says "", which
      is precisely the disagreement between panel and model that the sort keys
@@ -583,8 +583,8 @@ function critOp(c, field, fallback) {
 
 /* THE SECOND BOUND
    A range needs two values where every other comparison needs one. It is stored
-   under a derived key in the same per-field map — "gpa" holds the low bound
-   and "gpa:max" the high one — which means no change to the criterion
+   under a derived key in the same per-field map ("gpa" holds the low bound
+   and "gpa:max" the high one), which means no change to the criterion
    shape, no change to the save format, and no change to setCfg: a control named
    `crit.0.value:gpa:max` already routes to values['gpa:max'] through
    the parser that was there.
@@ -691,7 +691,7 @@ function setCfg(nodeId, key, value) {
     if (value && at === -1) list.push(mk);
     if (!value && at !== -1) list.splice(at, 1);
     // Preserve the declared order so ticking boxes out of order still yields a
-    // stable column order — sorting uses the first ticked column.
+    // stable column order. Sorting uses the first ticked column.
     n.cfg.measures = MEASURES.filter(function(x){ return list.indexOf(x.key) !== -1; })
                              .map(function(x){ return x.key; });
     return;
@@ -749,13 +749,13 @@ function addNode(type) {
     cfg: defaultCfg(type)
   });
   /* The new node is deliberately NOT selected. Selection means "the thing I am
-     about to act on", and arriving from the toolbar is not that — the user
+     about to act on", and arriving from the toolbar is not that. The user
      picked a node type, not a target. Selecting happens by clicking or dragging
      a node, which is the point at which they have actually pointed at one.
 
      The existing selection is cleared, though. Leaving it would mean that after
      selecting a few nodes and then adding one, Backspace deletes the old
-     selection rather than the node just added — the opposite of what the last
+     selection rather than the node just added: The opposite of what the last
      action suggests, and unrecoverable without undo. */
   selection = [];
   markStale();
@@ -764,7 +764,7 @@ function addNode(type) {
 
 /* Deleting a Source deletes what it was holding. Node ids are handed out by a
    counter that resets on load, so leaving the data behind would let a later
-   node inherit a cohort it was never given — and in the meantime its rows would
+   node inherit a cohort it was never given, and in the meantime its rows would
    still be feeding the registries from nowhere. */
 function forgetSourceData(id) {
   delete SOURCE_DATA[id];
@@ -801,8 +801,8 @@ function clearAll() {
 
 /* Every one of these buttons calls render(), which destroys the button that was
    just clicked along with the rest of the panel. Focus then falls to <body>,
-   leaving the user looking at a panel the keyboard no longer considers active —
-   the state that made a stray Backspace destructive. Putting focus back on the
+   leaving the user looking at a panel the keyboard no longer considers active.
+   The state that made a stray Backspace destructive. Putting focus back on the
    rebuilt panel keeps the two in agreement, and gives keyboard users somewhere
    sensible to tab on from rather than the top of the document. */
 function focusCfg(nodeId, keyPrefix) {
@@ -830,8 +830,8 @@ function removeCriterion(nodeId, idx) {
   focusCfg(nodeId);
 }
 
-/* Sort keys use the same add/remove shape as filter criteria — one list, the
-   first row not removable — so the two panels behave identically. Priority is
+/* Sort keys use the same add/remove shape as filter criteria (one list, the
+   first row not removable), so the two panels behave identically. Priority is
    list position: the first key decides, later ones break ties. */
 function addSortKey(nodeId) {
   var n = findNode(nodeId);
@@ -852,8 +852,8 @@ function removeSortKey(nodeId, idx) {
   focusCfg(nodeId);
 }
 
-/* SelectFor's measures use the same list shape again — add at the end, first
-   row not removable — so a third panel does not introduce a third set of
+/* SelectFor's measures use the same list shape again (add at the end, first
+   row not removable), so a third panel does not introduce a third set of
    manners. */
 function addStat(nodeId) {
   var n = findNode(nodeId);
@@ -880,7 +880,7 @@ function removeStat(nodeId, idx) {
 
    Two inputs, not one, because the two steps are genuinely ordered: a year file
    cannot be parsed without the column list. `accept` is set on the header input
-   as a courtesy to the dialog and trusted by neither check above — and on the
+   as a courtesy to the dialog and trusted by neither check above, and on the
    year picker it is absent, since the archive's year files carry no extension
    for a filter to match on.                                                  */
 
@@ -915,7 +915,7 @@ function onYearFilesChosen(e) {
   loadYearFilesFor(nodeId, input.files);
 }
 /* ============================================================================
-   RENDER — CONFIG PANELS
+   RENDER: CONFIG PANELS
    ============================================================================
    Controls carry data-node / data-key and are read by one delegated listener.
    Nothing here reads the DOM back: render() is a pure function of the model,
@@ -930,12 +930,12 @@ function opt(val, cur, label) {
 }
 /* The archive names a course by code and never by title, so a loaded catalogue
    has name === code and there is nothing to append. Saying "AIML427" beats
-   saying "AIML427 — AIML427", and the synthetic catalogue, which does carry
+   saying "AIML427: AIML427", and the synthetic catalogue, which does carry
    titles, still gets both. One function, because the course dropdown and its
    tooltip must not disagree about how a course is written. */
 function courseLabel(c) {
   if (!c) return '';
-  return (c.name && c.name !== c.code) ? c.code + ' — ' + c.name : c.code;
+  return (c.name && c.name !== c.code) ? c.code + ': ' + c.name : c.code;
 }
 function courseTitle(code) {
   var c = COURSE_BY_CODE[code];
@@ -980,13 +980,13 @@ function opSelect(nodeId, key, ops, cur) {
 }
 
 /* One criterion row. Its shape follows the field's type, and the field list
-   follows the incoming table — so this function knows nothing about students. */
+   follows the incoming table, so this function knows nothing about students. */
 /* THE RANGE BAND
    A range is the one criterion that needs a second value, and squeezing it into
    the same row as the first would leave three controls and two numbers fighting
    over 220px. It gets its own strip below the row instead, banded down the left
    the way a criterion is banded, so it reads as part of that criterion rather
-   than as a new one — and coloured, so a filter carrying a band is visibly
+   than as a new one, and coloured, so a filter carrying a band is visibly
    doing something different from one that is not.
 
    It exists only while `between` is the operator. Choosing it adds the band and
@@ -994,7 +994,7 @@ function opSelect(nodeId, key, ops, cur) {
    not": there is no separate switch to get out of step with the operator.
 
    The colour is the one this interface already uses for a state worth noticing
-   — the amber of the stale-results notice — rather than a new hue invented for
+   (the amber of the stale-results notice), rather than a new hue invented for
    one control. */
 function rangeBandHTML(nid, ci, cur, c, renderBound) {
   var rng = critRange(c, cur.key, cur.column);
@@ -1027,7 +1027,7 @@ function rangeBandHTML(nid, ci, cur, c, renderBound) {
 function criterionHTML(node, ci, c, schema) {
   var fields = filterFields(schema);
   if (!fields.length) {
-    return '<div class="criterion-row"><div class="cmp-hint">No columns upstream — connect a Source.</div></div>';
+    return '<div class="criterion-row"><div class="cmp-hint">No columns upstream. Connect a Source.</div></div>';
   }
   var cur = fieldByKey(schema, c.field) || fields[0];
   var nid = node.id;
@@ -1098,8 +1098,8 @@ function criterionHTML(node, ci, c, schema) {
     var numBox = function(key, val) {
       return '<input type="number" value="' + esc(val) + '"' + ctl(nid, key) + '>';
     };
-    // The single box gives way to the band rather than sitting beside it — two
-    // places to type a lower bound would be one too many — so with the range on
+    // The single box gives way to the band rather than sitting beside it: Two
+    // places to type a lower bound would be one too many, so with the range on
     // the row has only two cells and the operator can have the spare width.
     body = (nOp === 'between'
       ? '<div class="criterion-controls two-col">' + fieldSel +
@@ -1113,7 +1113,7 @@ function criterionHTML(node, ci, c, schema) {
   } else if (cur.kind === COLTYPE.ENUM || isRangeable(cur.column)) {
     var vals = (cur.column && cur.column.values) || (cur.column && cur.column.order) || [];
     // Enum criteria carry an operator too. Without one, "specialisation is NOT
-    // Data Science" is unaskable — the engine has always supported it, but
+    // Data Science" is unaskable. The engine has always supported it, but
     // there was no control to reach it with.
     var eOps = opsFor(cur.kind, cur.column);
     var eOp = critOp(c, cur.key, 'eq');
@@ -1128,7 +1128,7 @@ function criterionHTML(node, ci, c, schema) {
     // 80px field column, so those wrap onto their own row.
     var wide = vals.some(function(v){ return String(v).length > 8; });
     body = (eOp === 'between'
-      // Both bounds live in the band, so the row is field and operator only —
+      // Both bounds live in the band, so the row is field and operator only,
       // and the operator gets the width its label needs, wide values or not.
       ? '<div class="criterion-controls two-col">' + fieldSel + enumOp + '</div>' +
         rangeBandHTML(nid, ci, cur, c, pick)
@@ -1170,8 +1170,8 @@ function upstreamLabel(node) {
    reason the names are shown at all.
 
    The year button is disabled until a header is in hand. The ordering is a real
-   constraint rather than a stylistic one — a year file is a list of fields with
-   no names on it — so the control says so by being unavailable, and the hint
+   constraint rather than a stylistic one (a year file is a list of fields with
+   no names on it), so the control says so by being unavailable, and the hint
    underneath says why. */
 function sourceFilesHTML(node) {
   var id = node.id;
@@ -1182,7 +1182,7 @@ function sourceFilesHTML(node) {
 
   var html = '<div class="cfg-label">Data files</div><div class="src-files">';
 
-  // 1 — the column file
+  // 1: The column file
   html += '<div class="src-file' + (header ? ' done' : '') + '">' +
     '<span class="src-step">1</span>' +
     '<span class="src-what">' +
@@ -1195,7 +1195,7 @@ function sourceFilesHTML(node) {
       (header ? 'Replace' : 'Choose') + '</button>' +
   '</div>';
 
-  /* 2 — the year files.
+  /* 2: The year files.
      A list rather than one line of comma-separated names, because they are a
      collection the user adds to and takes from: each one has to be countable on
      its own and removable on its own. Naming them all in a single label made
@@ -1299,7 +1299,7 @@ function configHTML(node, schemas) {
       html += '<div class="cmp-hint">Drag a Source or Filter next to this node to add a branch.</div>';
     } else {
       if (inIds.length === 1) {
-        html += '<div class="cmp-hint">One branch connected — add another to compare against.</div>';
+        html += '<div class="cmp-hint">One branch connected. Add another to compare against.</div>';
       }
       html += '<div class="cmp-branches">';
       inIds.forEach(function(inId, i) {
@@ -1337,14 +1337,14 @@ function configHTML(node, schemas) {
        branch is fetched separately and only when something is actually wired
        to it: inputSchema() falls back to the student header when a port is
        empty, which is right for a panel describing the rows and wrong for one
-       asking which column holds the labels — it would offer 27 columns of a
+       asking which column holds the labels. It would offer 27 columns of a
        table that is not there. */
     var gfields = groupFields(schema);
     var labelWires = inputsOf(id, 'labels');
     var gf = groupField(node, schema);
 
     if (!gfields.length) {
-      html += '<div class="cmp-hint">Nothing to group by — wire a table into ' +
+      html += '<div class="cmp-hint">Nothing to group by. Wire a table into ' +
         '<b>Data</b>.</div>';
     } else {
       html += '<div class="cfg-label">For each</div>' +
@@ -1374,16 +1374,16 @@ function configHTML(node, schemas) {
             '</select>' +
             '<div class="cmp-hint">One group per distinct value in that column, ' +
               'in the order that branch produces them. A value no row matches ' +
-              'still gets a row here, with a count of zero &mdash; which is the ' +
+              'still gets a row here, with a count of zero. That is the ' +
               'reason to wire labels in rather than let the data name its own ' +
               'groups.</div>'
           : '<div class="cmp-hint">That branch has no column that can supply ' +
-              'labels. A nested course list is not a label &mdash; put a ' +
+              'labels. A nested course list is not a label, so put a ' +
               '<b>Project</b> in front of it.</div>');
     } else {
       html += '<div class="cmp-hint">Groups are the values found in the data. ' +
         'Wire a one-column table into <b>Labels</b> to name them yourself ' +
-        'instead &mdash; that is how a group with no matching rows still ' +
+        'instead. That is how a group with no matching rows still ' +
         'appears, as a zero.</div>';
     }
 
@@ -1415,7 +1415,7 @@ function configHTML(node, schemas) {
 
     if (statsOf(node).some(function(st){ return selectForOp(st && st.op).needsCol; }) &&
         !measurableCols(schema).length) {
-      html += '<div class="cmp-hint">No numeric column upstream — those ' +
+      html += '<div class="cmp-hint">No numeric column upstream: Those ' +
         'measures will come out blank.</div>';
     }
 
@@ -1423,18 +1423,18 @@ function configHTML(node, schemas) {
     // reason the Aggregate panels do: the shape is the part people get wrong.
     html += '<div class="cmp-hint">One row per group: ' +
       selectForColumns(node, schema).map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(', ') +
-      '. Sort or Take it downstream &mdash; this node does not reorder.</div>';
+      '. Sort or Take it downstream: This node does not reorder.</div>';
   }
 
   if (node.type === 'sort') {
     var scols = sortableCols(schema);
     if (!scols.length) {
-      html += '<div class="cmp-hint">No sortable columns upstream — connect a Source.</div>';
+      html += '<div class="cmp-hint">No sortable columns upstream. Connect a Source.</div>';
     } else {
       var skeys = cfg.keys && cfg.keys.length ? cfg.keys : [newSortKey()];
       html += '<div class="cfg-label">Sort by</div><div class="sort-list">' +
         skeys.map(function(k, si) {
-          // A saved key can outlive its column — rewiring a Source from students
+          // A saved key can outlive its column: Rewiring a Source from students
           // to enrolments is enough. Show the fallback the engine will actually
           // use, rather than a select silently displaying option one while the
           // model still says something else.
@@ -1485,14 +1485,14 @@ function configHTML(node, schemas) {
       '<input type="number" min="' + TAKE_MIN + '" step="1" ' +
         'value="' + esc(cfg.n === undefined ? '' : cfg.n) + '"' + ctl(id, 'n') + '>' +
       '<div class="cmp-hint">Rows are kept in the order they arrive. ' +
-        'This node does not rank — put the ordering upstream if you want a top ' +
+        'This node does not rank, so put the ordering upstream if you want a top ' +
         takeCount(node) + '.</div>';
   }
 
   if (node.type === 'unique') {
     /* One selector, defaulting to whole rows. The two modes are genuinely
-       different operations — one keeps the table's shape, the other reduces it
-       to a list — so the control says which is which in words rather than
+       different operations (one keeps the table's shape, the other reduces it
+       to a list), so the control says which is which in words rather than
        leaving the user to infer it from the result. */
     var ucols = uniqueCols(schema);
     var ucur  = uniqueCol(node, schema);
@@ -1531,7 +1531,7 @@ function configHTML(node, schemas) {
           ? '<select' + ctl(id, 'col') + '>' +
               mcols.map(function(c){ return opt(c.key, chosen ? chosen.key : '', c.label); }).join('') +
             '</select>'
-          : '<div class="cmp-hint">No numeric column upstream — the result will be blank.</div>');
+          : '<div class="cmp-hint">No numeric column upstream: The result will be blank.</div>');
     }
 
     // Say what will come out, in the same words the result will use. The shape
@@ -1546,7 +1546,7 @@ function configHTML(node, schemas) {
       var rTotal = schema.columns.length;
       var rSkip = rTotal - rIdx.length;
       html += '<div class="cmp-hint">' +
-        'One column out, one row per row in &mdash; ' + esc(op.label.toLowerCase()) +
+        'One column out, one row per row in: ' + esc(op.label.toLowerCase()) +
         ' across ' + (rTotal
           ? rIdx.length + ' of ' + rTotal + ' column' + (rTotal === 1 ? '' : 's')
           : 'each row') + '.' +
@@ -1559,7 +1559,7 @@ function configHTML(node, schemas) {
       var ncols = schema.columns.length;
       html += '<div class="cmp-hint">One row out, ' +
         (ncols ? ncols + ' column' + (ncols === 1 ? '' : 's') : 'one column per column in') +
-        ' — same headers, ' + esc(op.label.toLowerCase()) + ' down each.' +
+        ', same headers, ' + esc(op.label.toLowerCase()) + ' down each.' +
         (op.key === 'count' ? '' : ' Non-numeric columns come out blank.') +
         '</div>';
     } else {
@@ -1571,14 +1571,14 @@ function configHTML(node, schemas) {
   if (node.type === 'select') {
     var availCols = schema.columns;
     if (!availCols.length) {
-      html += '<div class="cmp-hint">Nothing upstream yet — wire a Source in to choose columns.</div>';
+      html += '<div class="cmp-hint">Nothing upstream yet. Wire a Source in to choose columns.</div>';
     } else {
       var kept = selectedCols(node, schema).map(function(c){ return c.key; });
       html += '<div class="cfg-label">Keep</div><div class="cmp-measures sel-cols">' +
         availCols.map(function(c) {
           // The last ticked box is disabled rather than hidden. A Select with no
           // columns is a table with nothing in it, and the panel it leaves behind
-          // offers no way back — every box would be unticked and identical.
+          // offers no way back. Every box would be unticked and identical.
           var on = kept.indexOf(c.key) !== -1;
           var locked = on && kept.length === 1;
           return '<label class="cmp-measure' + (locked ? ' locked' : '') + '"' +
@@ -1590,7 +1590,7 @@ function configHTML(node, schemas) {
       '</div>';
       html += '<div class="cmp-hint">' +
         (kept.length === availCols.length
-          ? 'Every column is kept — untick to narrow. Rows are never touched.'
+          ? 'Every column is kept. Untick to narrow. Rows are never touched.'
           : kept.length + ' of ' + availCols.length + ' columns kept, in the order they arrive.') +
         '</div>';
     }
@@ -1603,7 +1603,7 @@ function configHTML(node, schemas) {
        when it lived hidden on the Source. */
     if (!canProject(schema)) {
       html += '<div class="cmp-hint">No course data on this table, so there is ' +
-        'nothing to expand &mdash; the rows pass through unchanged. Wire this ' +
+        'nothing to expand, so the rows pass through unchanged. Wire this ' +
         'straight after a Source or a Filter.</div>';
     } else {
       var pCols = projectColumns(schema);
@@ -1626,7 +1626,7 @@ function configHTML(node, schemas) {
     if (cinIds.length === 0) {
       html += '<div class="cmp-hint">Wire two branches into this node to stack them.</div>';
     } else if (cinIds.length === 1) {
-      html += '<div class="cmp-hint">One input — passed straight through. Add another to combine.</div>';
+      html += '<div class="cmp-hint">One input, passed straight through. Add another to combine.</div>';
     }
 
     html += '<div class="cfg-label">Mode</div>' +
@@ -1655,7 +1655,7 @@ function configHTML(node, schemas) {
       }
       /* The key column comes from the BASE, not from whichever wire happened to
          be drawn first. They are usually the same table, and were always assumed
-         to be — but join makes the difference visible: pick the second input as
+         to be, but join makes the difference visible: pick the second input as
          the base and the picker would otherwise offer columns the base does not
          have, then refuse the key it just offered. */
       var baseSchema = (schemas && schemas[combineBaseId(node, cinIds)]) || schema;
@@ -1699,13 +1699,13 @@ function configHTML(node, schemas) {
     html += '</select>';
 
     /* The column picker appears only on the row view. It is the same control as
-       Select's, deliberately — two panels that do the same thing should look
-       the same — and it reads the header that is actually arriving, so an
+       Select's, deliberately (two panels that do the same thing should look
+       the same), and it reads the header that is actually arriving, so an
        Output rewired behind a different branch offers that branch's columns. */
     if (show === 'rows') {
       var oCols = schema.columns;
       if (!oCols.length) {
-        html += '<div class="cmp-hint">Nothing wired in yet &mdash; connect a Source to ' +
+        html += '<div class="cmp-hint">Nothing wired in yet. Connect a Source to ' +
           'choose which columns to show.</div>';
       } else {
         var oKept = outputCols(node, schema).map(function(c){ return c.key; });
@@ -1725,7 +1725,7 @@ function configHTML(node, schemas) {
         '</div>';
         html += '<div class="cmp-hint">' +
           (oKept.length === oCols.length
-            ? 'Every column is shown. Untick to narrow the view &mdash; no rows are lost, ' +
+            ? 'Every column is shown. Untick to narrow the view: No rows are lost, ' +
               'and Copy and Save follow what is shown.'
             : oKept.length + ' of ' + oCols.length + ' columns shown. Copy and Save ' +
               'write these columns, every row.') +
@@ -1741,7 +1741,7 @@ function configHTML(node, schemas) {
   return html + '</div>';
 }
 
-/* Port stubs are drawn only where they carry information — on a node with more
+/* Port stubs are drawn only where they carry information. On a node with more
    than one input, where the user has to know which is which. A single-input
    node shows nothing: it has one entry point, in the place arrows have always
    landed, and decorating it would be noise on every node on the canvas.
@@ -1804,16 +1804,16 @@ function shapeHTML(node) {
     return '<div class="node-shape shape-reverse">' + removeBtn + rv + 'Reverse</div>';
   }
   if (node.type === 'take') {
-    // Three kept bars above the cut, one dropped below it — the glyph says
+    // Three kept bars above the cut, one dropped below it. The glyph says
     // "first few, rest discarded" without repeating the word on the label.
     var bars = '<span class="take-glyph">' +
       '<i></i><i></i><i></i><b></b><i class="cut"></i></span>';
     return '<div class="node-shape shape-take">' + removeBtn + bars + 'Take</div>';
   }
   if (node.type === 'unique') {
-    /* Two pairs, each a value and its repeat. The first of each pair is solid —
-       kept — and the second is an empty outline of the same width — the same
-       value again, dropped. Matching widths are what say "the same value";
+    /* Two pairs, each a value and its repeat. The first of each pair is solid,
+       meaning kept, and the second is an empty outline of the same width,
+       the same value again, dropped. Matching widths say "the same value";
        the outline is what says "not kept".
 
        The previous glyph struck a line through the repeat, which read as Take's
@@ -1840,7 +1840,7 @@ function shapeHTML(node) {
        rows being kept, dropped, reordered or reduced; this is the only one that
        shows them multiplying, which is the single fact about this node worth
        recognising from across the canvas. Drawn left to right, like Select's,
-       because both change the header — but opening out rather than narrowing. */
+       because both change the header, but opening out rather than narrowing. */
     var pj = '<span class="proj-glyph">' +
       '<i class="proj-one"></i><b class="proj-fan"></b>' +
       '<span class="proj-many"><i></i><i></i><i></i></span></span>';
@@ -1864,7 +1864,7 @@ function shapeHTML(node) {
   if (node.type === 'aggregateRows') {
     /* AggregateColumns' glyph turned through ninety degrees: three ROWS, each
        collapsing rightwards to its own value. Read beside its sibling the axis
-       is the whole message — one reduces down the page, the other across it. */
+       is the whole message: One reduces down the page, the other across it. */
     var aggr = '<span class="aggr-glyph">' +
       '<span class="aggr-row"><i></i><i></i><b></b></span>' +
       '<span class="aggr-row"><i></i><i></i><b></b></span>' +
@@ -1883,7 +1883,7 @@ function shapeHTML(node) {
   if (node.type === 'selectFor') {
     /* Three labelled rows, each with its own bar: the output shape drawn
        literally. Compare's glyph is three bars held apart with nothing naming
-       them, and that is the difference between the two nodes — these groups
+       them, and that is the difference between the two nodes. These groups
        have names, which is what makes them nameable in one control instead of
        wired one at a time. */
     var sfg = '<span class="sf-glyph">' +
@@ -1935,7 +1935,7 @@ function render() {
   drawArrows();
 }
 
-/* Delegated config listener — one handler for every control on the canvas.
+/* Delegated config listener: One handler for every control on the canvas.
    Registered once at start-up rather than per element per render, so a rebuild
    cannot leave stale listeners behind.
 
@@ -1959,7 +1959,7 @@ function onConfigInput(e) {
     // render() replaces the element that was just used, so the control loses
     // focus mid-interaction. Put it back on its replacement.
     var again = document.querySelector('[data-node="' + nid + '"][data-key="' + key.replace(/"/g, '\\"') + '"]');
-    // A control can also disappear rather than be replaced — one select's value
+    // A control can also disappear rather than be replaced: One select's value
     // decides which others the panel offers. Falling back to the same node's
     // panel keeps focus with the user's work instead of dropping it on <body>,
     // where the next Backspace would be read as a canvas shortcut.
@@ -2017,7 +2017,7 @@ function drawArrow(parent, p0, tip, color, opacity, isGhost) {
    onMove used to call render(), tearing down and rebuilding every node's DOM at
    pointer rate. Now it moves the existing elements and redraws only the arrows;
    panel contents cannot change during a drag, so there is nothing to rebuild.
-   This was previously masked by the fact that config lived in the DOM — a full
+   This was previously masked by the fact that config lived in the DOM. A full
    rebuild was needed to avoid losing it. With the model authoritative, it is
    not. */
 var ghostTarget = null;
@@ -2039,9 +2039,9 @@ function startDrag(e, nodeId) {
 
   /* Selection is resolved on mousedown rather than on click, because the answer
      decides what the drag about to happen will move. Three cases:
-       additive click  — toggle this node, and if that deselected it, no drag
-       unselected node — becomes the whole selection
-       selected node   — selection is left alone, so a group can be dragged
+       additive click:   Toggle this node, and if that deselected it, no drag
+       unselected node:  Becomes the whole selection
+       selected node:    Selection is left alone, so a group can be dragged
                          without the press collapsing it to one node first    */
   if (e.shiftKey || e.metaKey || e.ctrlKey) {
     toggleSelected(nodeId);
@@ -2091,7 +2091,7 @@ function onMove(e) {
 
   /* Snap-to-connect stays a single-node gesture. With several nodes moving there
      is no defensible answer to which one the ghost edge should come from, and
-     guessing would wire up a connection the user never aimed at — the one kind
+     guessing would wire up a connection the user never aimed at. The one kind
      of mistake that is tedious to undo, since it has to be found first. */
   ghostTarget = null;
   if (drag.group.length === 1) {
@@ -2117,8 +2117,8 @@ function onUp() {
     var dir = gt ? resolveDirection(drag.node, gt) : null;
     if (dir) {
       // Same pair, same port is the duplicate to refuse. The same pair on two
-      // different ports is legitimate — one table can be both the data and the
-      // labels — so the port is part of the identity of a connection.
+      // different ports is legitimate. One table can be both the data and the
+      // labels, so the port is part of the identity of a connection.
       var exists = connections.some(function(c) {
         return c.from === dir.from.id && c.to === dir.to.id && c.port === dir.port;
       });
@@ -2137,8 +2137,8 @@ function onUp() {
   document.removeEventListener('mouseup', onUp);
 
   /* Only a wiring change can alter what a config panel offers, so only a wiring
-     change earns a full rebuild. A plain move — and a plain click, which is now
-     most mousedowns since clicking selects — redraws the arrows and stops there.
+     change earns a full rebuild. A plain move (and a plain click, which is now
+     most mousedowns since clicking selects) redraws the arrows and stops there.
      Rebuilding on every click would drop focus from whatever control the user
      had open and re-run schema propagation for nothing. */
   if (wired) render();
@@ -2213,7 +2213,7 @@ function buildDeleteBadge(conn, pathEl) {
 
 /* EDGE DATA PREVIEW
    After a deliberate dwell, show the first few rows travelling along a
-   connection — the upstream node's emitted table, recomputed live so it is
+   connection. The upstream node's emitted table, recomputed live so it is
    current even mid-edit. A plausibility aid: the "of N" total is the real
    signal, the rows are dataset-ordered texture rather than a sample. */
 var PREVIEW_DELAY = 450;
@@ -2256,14 +2256,14 @@ function edgeData(conn) {
 
 // Preview columns are capped, not chosen: a join result carries both inputs'
 // headers and runs to a dozen columns, which no floating panel can hold.
-// Paired with the .edge-preview width in the stylesheet — six columns at the
+// Paired with the .edge-preview width in the stylesheet: Six columns at the
 // density four had. Raising this without widening that crowds the cells until
 // every one of them ellipsises away to nothing.
 var PREVIEW_COLS = 6;
 var PREVIEW_ROWS = 5;
 
-/* Which columns to show is a choice, not just a slice. Long free-text columns —
-   a course title, a specialisation — consume the whole panel and tell you least
+/* Which columns to show is a choice, not just a slice. Long free-text columns
+   (a course title, a specialisation) consume the whole panel and tell you least
    about whether the right rows are flowing, so they yield to shorter ones. The
    count above the table is the real signal; these rows are texture. */
 function previewColumns(t) {
@@ -2306,15 +2306,15 @@ function showPreview(conn, pathEl) {
   var body;
 
   if (res.error) {
-    body = '<div class="ep-note">Can\'t preview — ' +
+    body = '<div class="ep-note">Can\'t preview: ' +
       (res.error.indexOf('Circular') === 0 ? 'circular connection.' : 'graph unresolved.') + '</div>';
   } else if (res.incomplete) {
-    body = '<div class="ep-note">No data on this edge yet — upstream isn\'t connected to a Source.</div>';
+    body = '<div class="ep-note">No data on this edge yet. Upstream isn\'t connected to a Source.</div>';
   } else {
     var t = res.table, n = t.rows.length;
     var count = '<div class="ep-count"><span class="ep-num">' + n + '</span> row' + (n === 1 ? '' : 's') + ' on this edge</div>';
     body = n === 0
-      ? count + '<div class="ep-note">Empty table — nothing passes this point.</div>'
+      ? count + '<div class="ep-note">Empty table. Nothing passes this point.</div>'
       : count + previewTableHTML(t) +
         '<div class="ep-foot">showing ' + Math.min(PREVIEW_ROWS, n) + ' of ' + n + ', in table order</div>';
   }
@@ -2325,7 +2325,7 @@ function showPreview(conn, pathEl) {
 }
 
 /* The preview is a sibling of the scaled layer, not a child of it, so its text
-   stays at a readable size when the canvas is zoomed out — which is exactly when
+   stays at a readable size when the canvas is zoomed out, which is exactly when
    a row count is most useful and the nodes themselves are least readable. The
    cost is that its anchor arrives in world coordinates and has to be projected
    here. Kept as its own function so a zoom mid-hover can re-place the panel
@@ -2352,15 +2352,15 @@ function placePreview() {
 
 function repositionPreview() { placePreview(); }
 
-/* True while any canvas gesture is in flight — dragging a node, sweeping a
+/* True while any canvas gesture is in flight: Dragging a node, sweeping a
    marquee, or panning.
 
    Connections carry two hover affordances: a delete badge and the data-preview
    panel. Both are helpful when the pointer is resting on a line and actively
    unhelpful while it is travelling across one. Sweeping a marquee used to light
    up every arrow it crossed and pop a preview over the box being drawn, which
-   read as the selection picking up the arrows themselves. It never did — only
-   node ids ever enter the selection — but the feedback said otherwise, and
+   read as the selection picking up the arrows themselves. It never did (only
+   node ids ever enter the selection), but the feedback said otherwise, and
    feedback is what the user has to go on. */
 function gestureActive() { return !!(drag || marquee || panning); }
 
@@ -2431,7 +2431,7 @@ function drawArrows() {
 }
 
 /* ============================================================================
-   RESULTS PANEL — one renderer for every table
+   RESULTS PANEL: One renderer for every table
    ============================================================================
    Previously there was a card per output type, plus a separate Compare path.
    They rendered the same kinds of thing in slightly different ways and had to
@@ -2446,7 +2446,7 @@ var DISPLAY_CARD_LIMIT = 10;
 
 function tableHTML(t, title, badge) {
   if (t.columns.length === 0) {
-    return card(title, '<div class="cmp-empty">Nothing to show — this Output has no columns.</div>', badge);
+    return card(title, '<div class="cmp-empty">Nothing to show. This Output has no columns.</div>', badge);
   }
 
   var head = t.columns.map(function(c) {
@@ -2465,7 +2465,7 @@ function tableHTML(t, title, badge) {
 
   var more = t.rows.length > DISPLAY_ROW_LIMIT
     ? '<tr><td colspan="' + t.columns.length + '" class="cmp-more">... ' +
-      (t.rows.length - DISPLAY_ROW_LIMIT) + ' more — Copy and Save include every row</td></tr>'
+      (t.rows.length - DISPLAY_ROW_LIMIT) + ' more. Copy and Save include every row</td></tr>'
     : '';
 
   var empty = t.rows.length === 0
@@ -2486,7 +2486,7 @@ function card(title, body, badge) {
 }
 
 // A 1x1 result still reads better as a headline number than as a one-cell
-// table, so scalars keep the large display. It is the same table underneath —
+// table, so scalars keep the large display. It is the same table underneath;
 // only the presentation differs, and the export path never sees this.
 function scalarHTML(t) {
   var c = t.columns[0], r = t.rows[0] || [];
@@ -2531,7 +2531,7 @@ function resultHTML(node, r) {
            level up. A Compare has two or three branches and this never binds;
            a breakdown by course has seventy-eight groups, and rendering a
            table for each produced most of a megabyte of markup to show
-           something nobody scrolls to. Copy and Save are unaffected — they
+           something nobody scrolls to. Copy and Save are unaffected. They
            write every group, which is where an answer that long belongs. */
         html += branches.slice(0, DISPLAY_CARD_LIMIT).map(function(b) {
           return '<div class="cmp-branch-card">' +
@@ -2540,7 +2540,7 @@ function resultHTML(node, r) {
         if (branches.length > DISPLAY_CARD_LIMIT) {
           html += '<div class="cmp-more-cards">... ' +
             (branches.length - DISPLAY_CARD_LIMIT) + ' more ' + bUnit +
-            ' not shown — Copy and Save include every one</div>';
+            ' not shown. Copy and Save include every one</div>';
         }
       }
       return html;
@@ -2549,8 +2549,8 @@ function resultHTML(node, r) {
 
   /* A single value is a single value however it was produced. Until now only
      the Output's own Count setting reached the headline display, so moving the
-     same calculation onto the canvas — an Aggregate wired in front, which is
-     exactly what removing the Output shortcuts told people to do — demoted the
+     same calculation onto the canvas (an Aggregate wired in front, which is
+     exactly what removing the Output shortcuts told people to do) demoted the
      answer to a one-cell table. The rule is the shape of the result, not which
      control happened to produce it.
 
@@ -2598,7 +2598,7 @@ function runQuery() {
     var body, actions = '';
 
     if (!r.hasSource) {
-      body = '<div class="error-box">Not connected to a Source — this Output has no data path.</div>';
+      body = '<div class="error-box">Not connected to a Source. This Output has no data path.</div>';
     } else {
       var show = normaliseShow(onode);
       var t = outputTable(onode, r.table);
@@ -2640,7 +2640,7 @@ function runQuery() {
 
 /* EXPORT FILE NAME
    Sits next to Copy and Save because that is where it is used. The value is
-   still stored on the node, so it travels with a saved query — the model owns
+   still stored on the node, so it travels with a saved query: The model owns
    it, only the control moved.
 
    Editing it must NOT mark the results stale. The name has no bearing on what
@@ -2664,7 +2664,7 @@ function exportNameHTML(node, index) {
   '</label>';
 }
 
-/* Delegated on the results panel, which is rebuilt on every run — per-element
+/* Delegated on the results panel, which is rebuilt on every run. Per-element
    listeners would be re-attached each time and leak. */
 function onExportNameInput(e) {
   var el = e.target;
@@ -2677,11 +2677,11 @@ function onExportNameInput(e) {
   node.cfg.filename = el.value;
   var entry = exportData[node.id];
   if (entry) entry.name = exportNameOf(node, entry.index);
-  // No markStale() here, by design — see the note above.
+  // No markStale() here, by design. See the note above.
 }
 
 /* ============================================================================
-   EXPORT — one serialiser, because there is one data shape
+   EXPORT: One serialiser, because there is one data shape
    ============================================================================ */
 
 function markStale() {
@@ -2693,7 +2693,7 @@ function markStale() {
   if (!pb.querySelector('.stale-note')) {
     var note = document.createElement('div');
     note.className = 'stale-note';
-    note.textContent = 'Graph changed since this run — re-run the query to export.';
+    note.textContent = 'Graph changed since this run. Re-run the query to export.';
     pb.insertBefore(note, pb.firstChild);
   }
 }
@@ -2728,7 +2728,7 @@ function exportTableFor(e) {
   /* Only the "Summary + row lists" view exports long. The test used to be
      "branches exist and the view is not the summary", which was the same thing
      while branch metadata could only reach an Output across a direct wire from
-     a Compare — the two views available there are exactly summary and lists.
+     a Compare. The two views available there are exactly summary and lists.
 
      It stopped being the same thing when Compare was allowed to feed the row
      nodes. Sort and Take carry meta through, quite correctly, so a
@@ -2758,7 +2758,7 @@ function exportTableFor(e) {
 }
 
 /* Strip path separators and characters Windows rejects, collapse whitespace,
-   then trim the separators back off the ends — otherwise a name made entirely
+   then trim the separators back off the ends. Otherwise a name made entirely
    of slashes sanitises to a lone "-" rather than falling back. */
 /* The fallback is a parameter because the two things this names have different
    right answers: a results export is an "output", a saved graph is a "query".
@@ -2784,7 +2784,7 @@ function flashBtn(btn, msg) {
   }, 1500);
 }
 
-// execCommand fallback — navigator.clipboard needs a secure context, which is
+// execCommand fallback. Navigator.clipboard needs a secure context, which is
 // not guaranteed when the page is opened straight off the filesystem.
 function legacyCopy(text) {
   try {
@@ -2823,13 +2823,13 @@ function writeClipboard(text, btn) {
       WebKit starts a download asynchronously and reads the blob AFTER the
       handler returns, so a revoke on a timer is a race against the browser.
       Losing it produces exactly "WebKitBlobResource error 1" on a blob:null
-      URL — the blob is not missing because the origin is opaque, it is missing
+      URL:  The blob is not missing because the origin is opaque, it is missing
       because we threw it away while WebKit was still fetching it.
 
    2. Swapping the blob for a data: URI avoided the race but introduced a size
       ceiling. A saved query is 2-10KB and rode under it; a CSV export of a year
       file is ~320KB, and ~460KB once percent-encoded into a URL. That is why
-      Save Query worked and Save CSV did not — the same code, told to carry
+      Save Query worked and Save CSV did not. The same code, told to carry
       fifty times as much.
 
    3. A CSV announced as text/csv is something Safari knows how to display, so
@@ -2881,7 +2881,7 @@ function copyOutput(id, btn) {
 
 /* The name written is the name typed, with nothing appended. A timestamp used
    to be added for uniqueness, which meant the field never actually decided the
-   filename — two saves of "grades" produced two differently-named files, and
+   filename. Two saves of "grades" produced two differently-named files, and
    the user who had just named the file could not predict what they would get.
    Re-saving now overwrites, or is de-duplicated by the browser, which is what
    every other download on the machine does.
@@ -2889,7 +2889,7 @@ function copyOutput(id, btn) {
    This also makes the two export paths agree: queryFileName() already writes a
    typed name verbatim and reserves the timestamp for the *default* name, where
    it is a convenience rather than an override. defaultExportName() plays that
-   role here — different Outputs still get distinct names without one. */
+   role here. Different Outputs still get distinct names without one. */
 function saveOutput(id, btn) {
   var e = exportEntry(id, btn);
   if (!e) return;
@@ -2927,7 +2927,7 @@ function setOutput(html) {
    below only refuses files from a *newer* tool, so the format widened without
    breaking anything already written. */
 /* Version 3 adds `dataset` to a Source's config: the NAMES of the files it was
-   given, never their contents. Version 1 and 2 files still load — a Source with
+   given, never their contents. Version 1 and 2 files still load. A Source with
    no dataset key gets the empty one from defaultCfg() and simply asks for its
    files without being able to name them. The guard below still only refuses
    files from a newer tool. */
@@ -2960,7 +2960,7 @@ function serialiseGraph() {
    The extension is not the user's to choose. It is decided by the format, and
    the loader below refuses anything else, so offering it as editable text would
    let someone type a name the tool then declines to open. It is therefore shown
-   beside the field but sits outside the input — the same treatment the CSV
+   beside the field but sits outside the input. The same treatment the CSV
    export name already uses, so the two read as the same kind of control.
 
    A name typed with ".json" already on the end is accepted and the duplicate
@@ -2972,11 +2972,11 @@ function defaultQueryName() { return 'query-' + timeStamp(true); }
 
 /* Typed text to written filename. Two things happen on the way: the extension
    is stripped if present so it can be re-added exactly once, and the rest goes
-   through the same sanitiser as every other file this tool writes — a name is
+   through the same sanitiser as every other file this tool writes. A name is
    a name whether it came from a config field or a dialog. */
 /* Repeated, not once: someone correcting a name by hand can leave
    "report.json.json" behind, and the intent is plainly one extension. Its own
-   function because the hint below has to strip identically — two copies of this
+   function because the hint below has to strip identically. Two copies of this
    rule would drift, and the symptom would be a hint that fires on names it
    should not. */
 function stripQueryExt(s) {
@@ -2992,7 +2992,7 @@ function queryFileName(raw) {
 // about to disappear.
 var saveDialogBtn = null;
 
-/* The name last saved under, this session only — never persisted. Save, adjust
+/* The name last saved under, this session only. Never persisted. Save, adjust
    the graph, save again is the ordinary loop, and it almost always wants the
    same name; offering a fresh timestamp each time would leave a folder of
    near-identical files distinguishable only by the minute they were written.
@@ -3014,15 +3014,15 @@ function saveGraph(btn) {
 
 function openSaveDialog(btn) {
   var d = saveDialogEl(), input = saveNameInput();
-  // If the markup is absent — an older page, or a headless harness that loaded
-  // the script alone — saving still works, it just uses the default name. A
+  // If the markup is absent: An older page, or a headless harness that loaded
+  // the script alone. Saving still works, it just uses the default name. A
   // missing dialog should not cost the user their query.
   if (!d || !input) { writeQueryFile(defaultQueryName() + QUERY_EXT, btn); return; }
 
   saveDialogBtn = btn || null;
   input.value = lastQueryName || defaultQueryName();
   // The placeholder is always the timestamp, because that is what an empty
-  // field actually writes — clearing the box should show its own result, not
+  // field actually writes. Clearing the box should show its own result, not
   // repeat the name being cleared.
   input.placeholder = defaultQueryName();
   updateSaveHint();
@@ -3045,7 +3045,7 @@ function closeSaveDialog() {
 
 /* Sanitising is silent everywhere else in the tool, which is fine when the name
    is typed inches from the file it names. Here the file is written and gone, so
-   a name that changed on the way out is worth one line — and only then, since
+   a name that changed on the way out is worth one line, and only then, since
    restating an unchanged name is noise. */
 function updateSaveHint() {
   var input = saveNameInput(), hint = document.getElementById('saveHint');
@@ -3117,7 +3117,7 @@ function deserialiseGraph(raw) {
   });
 
   /* Ports are resolved rather than trusted. A version 1 file predates them and
-     names none, so every wire lands on the target's primary port — which is
+     names none, so every wire lands on the target's primary port, which is
      what those files meant, since there was only one input to land on.
 
      The arity rule is applied here as well as at the point of wiring, because a
@@ -3148,7 +3148,7 @@ function deserialiseGraph(raw) {
 
     var slot = to + ':' + port;
     if (!def.multi && filled[slot]) {
-      warnings.push('a second wire into a single input — wire a Combine if you meant to merge');
+      warnings.push('a second wire into a single input, so wire a Combine if you meant to merge');
       return;
     }
     filled[slot] = true;
@@ -3180,14 +3180,14 @@ function mergeCfg(base, saved) {
   if (Object.prototype.hasOwnProperty.call(base, 'measures') && !Array.isArray(base.measures)) {
     base.measures = DEFAULT_MEASURES.slice();
   }
-  /* SelectFor's measures, which are objects rather than Compare's strings —
-     the reason they are not both called `measures`. Every element is rebuilt
+  /* SelectFor's measures, which are objects rather than Compare's strings.
+     The reason they are not both called `measures`. Every element is rebuilt
      from a fresh default rather than patched in place, so a file supplying a
      number, a string or a nested object where {op, col} belongs cannot put a
      value into the model that the panel would then read into an attribute.
      op and col are both resolved against the live table at render and at
-     evaluation anyway, so an unrecognised one falls back rather than breaking
-     — this guard only has to guarantee the SHAPE. */
+     evaluation anyway, so an unrecognised one falls back rather than breaking.
+     This guard only has to guarantee the SHAPE. */
   if (Object.prototype.hasOwnProperty.call(base, 'stats')) {
     var rawStats = Array.isArray(base.stats) ? base.stats : [];
     base.stats = rawStats.slice(0, 20).map(function(x) {
@@ -3206,7 +3206,7 @@ function mergeCfg(base, saved) {
      rather than trusted. Years are coerced to integers in the admitted range;
      the header name is length-capped and stripped of any path, exactly as
      dataFileName() would do to a real one. NOTHING in this key is ever used to
-     find or read a file — the user picks those — so the worst a hostile value
+     find or read a file (the user picks those), so the worst a hostile value
      can do is misdescribe itself in one line of the panel. */
   if (Object.prototype.hasOwnProperty.call(base, 'dataset')) {
     var ds = base.dataset;
@@ -3224,7 +3224,7 @@ function mergeCfg(base, saved) {
     };
   }
 
-  /* null is the meaningful default — "keep everything" — so only a value that is
+  /* null is the meaningful default ("keep everything"), so only a value that is
      neither null nor an array of keys is rejected. Non-string entries are
      dropped rather than coerced: a column key is compared against real header
      keys, and "[object Object]" can never match one. */
@@ -3235,7 +3235,7 @@ function mergeCfg(base, saved) {
     if (base.cols && !base.cols.length) base.cols = null;
   }
 
-  // Only filter nodes carry criteria — a file that attaches them to an Output
+  // Only filter nodes carry criteria: A file that attaches them to an Output
   // must not have them normalised into existence there.
   if (wantsCriteria) {
     base.criteria = (Array.isArray(base.criteria) ? base.criteria : []).map(function(c) {
@@ -3256,7 +3256,7 @@ function mergeCfg(base, saved) {
 function applyGraph(g) {
   /* The data goes. Every Source in the new graph starts with nothing loaded,
      including one whose id happens to match a Source that was loaded a moment
-     ago — matching ids across two unrelated files is a coincidence, not a
+     ago. Matching ids across two unrelated files is a coincidence, not a
      grant, and silently handing the new graph the old graph's student records
      would be the worst possible reading of it.
 
@@ -3277,8 +3277,8 @@ function applyGraph(g) {
   hidePreview();
   render();
   /* Fit after loading rather than restoring a saved zoom. A file carries the
-     graph, not the view — which is why the format did not have to change for
-     any of this — and a query written on one screen should open framed for
+     graph, not the view (which is why the format did not have to change for
+     any of this), and a query written on one screen should open framed for
      whatever screen opens it. render() has to run first: fitting measures node
      heights off the DOM, and those do not exist until the nodes do. */
   zoomToFit();
@@ -3334,8 +3334,8 @@ function openGraphFile(btn) {
 var MAX_QUERY_FILE_BYTES = 8 * 1024 * 1024;
 
 /* Two checks before a byte is read, both about failing early and specifically.
-   Neither is the last line of defence — deserialiseGraph still rejects anything
-   that is not a query file — but by the time that runs the tool has read an
+   Neither is the last line of defence (deserialiseGraph still rejects anything
+   that is not a query file), but by the time that runs the tool has read an
    arbitrary file into memory and can only report that the contents were wrong,
    which is a poor description of choosing the wrong file. */
 function graphFileProblem(file) {
@@ -3406,11 +3406,11 @@ function addProcNode(type) {
 }
 
 /* ============================================================================
-   CANVAS GESTURES — MARQUEE SELECT AND PAN
+   CANVAS GESTURES: MARQUEE SELECT AND PAN
    ============================================================================
    Both start with a press on empty canvas, so they are told apart by modifier
    rather than by target: plain drag selects, space or middle-button drags the
-   view. That ordering is deliberate — selection is the frequent action and gets
+   view. That ordering is deliberate. Selection is the frequent action and gets
    the unmodified gesture; panning is occasional and is mostly unnecessary at
    all once the graph has been zoomed to fit. */
 
@@ -3476,7 +3476,7 @@ function startMarquee(e) {
 }
 
 function onCanvasMouseDown(e) {
-  /* Pan is a view gesture, not a graph one, so it is allowed to start anywhere —
+  /* Pan is a view gesture, not a graph one, so it is allowed to start anywhere,
      including on top of a node. startDrag() bows out for these same two cases,
      and the event then bubbles here. */
   if (e.button === 1 || (e.button === 0 && spaceDown)) { e.preventDefault(); startPan(e); return; }
@@ -3524,7 +3524,7 @@ function onCanvasMouseMove(e) {
 /* Overlap, not containment: a box has to fully enclose a node to select it under
    containment rules, which is unusable here because node heights vary with their
    config panels and the tall ones are the hard ones to enclose. Touching is
-   enough — the same rule the marquee in most node editors uses.
+   enough. The same rule the marquee in most node editors uses.
 
    `boxes` is the snapshot taken when the drag began. Omitting it measures live,
    which is what a caller outside a drag wants. */
@@ -3560,8 +3560,8 @@ function onCanvasMouseUp() {
 
 /* Wheel zooms about the pointer. There is nothing scrollable on the canvas, so
    the wheel has no competing meaning here, and claiming it makes zoom reachable
-   without first finding the toolbar. deltaY is normalised across deltaMode —
-   Firefox reports lines, not pixels — and then clamped, so one notch of a coarse
+   without first finding the toolbar. deltaY is normalised across deltaMode
+   (Firefox reports lines, not pixels), and then clamped, so one notch of a coarse
    mouse wheel and one flick of a trackpad land in the same range instead of the
    former jumping several steps at once. */
 function onCanvasWheel(e) {
@@ -3574,8 +3574,8 @@ function onCanvasWheel(e) {
   setZoom(view.z * factor, e.clientX, e.clientY);
 }
 
-/* A canvas gesture must survive the pointer leaving the canvas — releasing over
-   the results panel mid-marquee should still complete the selection — so move
+/* A canvas gesture must survive the pointer leaving the canvas (releasing over
+   the results panel mid-marquee should still complete the selection), so move
    and up are bound to the document, not to the canvas. */
 
 /* WIRING */
@@ -3597,16 +3597,16 @@ document.addEventListener('mouseup', onCanvasMouseUp);
 
    Two controls, because there are two different intentions behind widening:
 
-     the handle  — settle on a width that suits this machine and this dataset,
+     the handle:   Settle on a width that suits this machine and this dataset,
                    and leave it there
-     Wide        — this one table has too many columns; show me all of them,
+     Wide:         This one table has too many columns; show me all of them,
                    then give me my canvas back
 
    Wide remembers the width it left, so using it does not cost the user the
    width they had chosen with the handle.
 
-   Widening narrows the canvas rather than floating over it. The alternative —
-   an overlay — would hide whatever node happened to be under it, and the pan
+   Widening narrows the canvas rather than floating over it. The alternative
+   (an overlay) would hide whatever node happened to be under it, and the pan
    clamp would still be working from the old, larger canvas box. Shrinking keeps
    one source of truth for how much canvas there is.
 
@@ -3678,7 +3678,7 @@ function togglePanelWide() {
   if (document.activeElement && document.activeElement.blur) document.activeElement.blur();
 }
 
-/* Persisted outside the document, so it survives a reload — a preference the
+/* Persisted outside the document, so it survives a reload. A preference the
    user should only have to express once. localStorage throws rather than
    returns null in some file:// and private-window configurations, so every
    access is guarded: failing to remember is a minor loss, and never a reason
@@ -3775,8 +3775,307 @@ function nudgePanel(by) {
   loadPanelPrefs();
 })();
 
+/* ============================================================================
+   TOOLBAR HEIGHT
+   ============================================================================
+   The same bargain as the results panel, turned ninety degrees: the bar can be
+   pulled down for more room, and the room comes out of the canvas rather than
+   out of a layer floating over it.
+
+   What the drag sets is a scale, not a height. A bar that grew taller while its
+   buttons stayed 22px would be a band of empty grey with the same controls
+   stranded in it, which is more room for nothing. One multiplier drives every
+   measurement in the stylesheet instead, so the bar keeps its proportions and
+   the controls grow into the height the user asked for.
+
+   The default is the floor. Pulling up goes back to the bar as designed and
+   stops there, because below it the labels start colliding and there is nothing
+   to be gained that zooming the browser does not already do better. The ceiling
+   is whichever comes first: a scale the controls still look deliberate at, or
+   the point where the canvas has shrunk to CANVAS_MIN_H and giving away more
+   would leave nowhere to build a query.
+
+   Stored with the panel width and for the same reason: it is a fact about this
+   person's screen, not about the query, and a saved .json carries neither. */
+
+var BAR_S_MIN    = 1;     // the bar as designed, and the smallest it goes
+var BAR_S_MAX    = 2.4;   // past this the controls read as a mistake rather than a choice
+var BAR_S_STEP   = 0.05;  // the grain the drag lands on, and the table's resolution
+var CANVAS_MIN_H = 260;   // the canvas is never squeezed past this, however tall the bar
+var BAR_HANDLE_H = 5;     // matches .toolbar-resize in the stylesheet
+
+var barScale = BAR_S_MIN;
+var barFill  = 0;   // px of padding making up the difference to the dragged height
+
+function toolbarEl()       { return document.getElementById('toolbar'); }
+function toolbarResizeEl() { return document.getElementById('toolbarResize'); }
+
+/* Height is not a multiple of the scale, because the bar wraps. Somewhere
+   between 1 and the ceiling the controls stop fitting on one row and the bar
+   gains a whole row at once, and where that happens depends on the window
+   width and on what is in the bar. Nothing here predicts it. The scales are
+   applied to the real bar and the resulting heights written down, which is the
+   only way to be right about a layout the browser decides.
+
+   Built on demand and rebuilt when the window's width changes, since that moves
+   the wrap points. Twenty-nine measurements, once per width, against a lookup
+   per mousemove, which is the way round that keeps the drag smooth.
+
+   Keyed on the width it was measured at rather than cleared by the resize
+   event, because a resize event that arrives late or not at all leaves a table
+   describing a window that is no longer there, and every ceiling read out of it
+   is then wrong in the direction that lets the bar overflow. */
+var barSteps = null;
+var barStepsW = -1;
+
+/* How many rows the controls have wrapped onto, counted from where they
+   actually are. Grouped by vertical centre rather than by top edge: the bar
+   centres its items, so a 10px label and a 25px button on the SAME row start at
+   different heights and only their centres agree. The hidden file inputs have
+   no box at all and are skipped, which is why this asks each child for its
+   rects rather than trusting the child list. */
+function barRowCount(t) {
+  var mids = [], tallest = 0;
+  for (var i = 0; i < t.children.length; i++) {
+    var c = t.children[i];
+    if (!c.getClientRects().length) continue;
+    var r = c.getBoundingClientRect();
+    if (!r.height) continue;
+    mids.push(r.top + r.height / 2);
+    if (r.height > tallest) tallest = r.height;
+  }
+  if (!mids.length) return 1;
+  mids.sort(function(a, b) { return a - b; });
+  var rows = 1;
+  for (var j = 1; j < mids.length; j++) {
+    // Anything further apart than most of a control's height is the next row.
+    if (mids[j] - mids[j - 1] > tallest * 0.6) rows++;
+  }
+  return rows;
+}
+
+/* One scale, in one of the two layouts, measured on the real bar.
+   A group is one flex item and cannot be broken, so past a certain size the
+   widest of them is wider than the window and hangs off the right edge with a
+   button on it. scrollWidth is how the bar reports that. */
+function measureBarAt(t, root, sv, stacked) {
+  root.style.setProperty('--bar-s', String(sv));
+  root.style.setProperty('--bar-fill', '0px');
+  t.classList.toggle('stacked', stacked);
+  return {
+    s: sv,
+    stacked: stacked,
+    h: t.getBoundingClientRect().height,
+    rows: barRowCount(t),
+    fits: t.scrollWidth <= t.clientWidth + 1
+  };
+}
+
+/* One row for as long as one row works, and the chosen break after that, so the
+   bar has two shapes rather than a series of accidents. Each is measured, not
+   predicted: whether the unstacked bar still fits on one row depends on the
+   window width and on what is in the bar. */
+function buildBarSteps() {
+  var t = toolbarEl();
+  if (!t) return null;
+  var root = document.documentElement;
+  var keepVar = root.style.getPropertyValue('--bar-s');
+  var keepFill = root.style.getPropertyValue('--bar-fill');
+  var keepCls = t.classList.contains('stacked');
+  var out = [];
+  for (var v = BAR_S_MIN; v <= BAR_S_MAX + 1e-9; v += BAR_S_STEP) {
+    var sv = Math.round(v * 100) / 100;
+    var flat = measureBarAt(t, root, sv, false);
+    out.push(flat.rows === 1 && flat.fits ? flat : measureBarAt(t, root, sv, true));
+  }
+  t.classList.toggle('stacked', keepCls);
+  if (keepVar) root.style.setProperty('--bar-s', keepVar);
+  else root.style.removeProperty('--bar-s');
+  if (keepFill) root.style.setProperty('--bar-fill', keepFill);
+  else root.style.removeProperty('--bar-fill');
+  return out;
+}
+
+function barStepFor(sv) {
+  var steps = barStepTable();
+  if (!steps) return null;
+  for (var i = 0; i < steps.length; i++) {
+    if (Math.abs(steps[i].s - sv) < 1e-9) return steps[i];
+  }
+  return null;
+}
+
+function barStepTable() {
+  if (!barSteps || barStepsW !== window.innerWidth) {
+    barSteps = buildBarSteps();
+    barStepsW = window.innerWidth;
+  }
+  return barSteps;
+}
+
+/* The tallest the bar may be before the canvas is not worth having. */
+function barHeightBudget() {
+  return window.innerHeight - CANVAS_MIN_H - BAR_HANDLE_H;
+}
+
+/* Three limits, and the lowest wins. Height keeps the canvas worth having.
+   Width keeps every control on screen, since a group cannot wrap inside itself
+   and a group wider than the window puts its last button past the right edge.
+   Rows keep the bar worth looking at: one extra row is the controls given more
+   room, but a third puts Run Query alone on a line of its own, which is not
+   more room for anything. One extra row rather than a count of two, because a
+   narrow window may already need two at the default size.
+
+   The scan stops at the first step that fails rather than taking the last one
+   that passes, so the ceiling is a size everything below it also clears. */
+function barMaxScale() {
+  var steps = barStepTable();
+  if (!steps || !steps.length) return BAR_S_MIN;
+  var budget = barHeightBudget();
+  var maxRows = steps[0].rows + 1;
+  var best = steps[0].s;
+  for (var i = 0; i < steps.length; i++) {
+    var st = steps[i];
+    if (st.h > budget || st.rows > maxRows || !st.fits) break;
+    best = st.s;
+  }
+  return best;
+}
+
+/* The largest scale whose bar is no taller than the height asked for, so the
+   bottom edge follows the pointer across a wrap instead of running ahead of it. */
+function clampBarScale(v) {
+  if (typeof v !== 'number' || !isFinite(v)) return BAR_S_MIN;
+  var stepped = Math.round(v / BAR_S_STEP) * BAR_S_STEP;
+  stepped = Math.round(stepped * 100) / 100;
+  return Math.max(BAR_S_MIN, Math.min(barMaxScale(), stepped));
+}
+
+/* One write, to the custom property the stylesheet reads, exactly as the panel
+   width works. The canvas has just changed height without a window resize event
+   firing, so the two things that measure it are told by hand. */
+function applyBarScale(v, persist, fill) {
+  barScale = clampBarScale(v);
+  barFill = (typeof fill === 'number' && isFinite(fill) && fill > 0) ? Math.round(fill) : 0;
+  var root = document.documentElement;
+  root.style.setProperty('--bar-s', String(barScale));
+  root.style.setProperty('--bar-fill', (barFill / 2) + 'px');   // half above, half below
+  var t = toolbarEl();
+  var step = barStepFor(barScale);
+  if (t) t.classList.toggle('stacked', !!(step && step.stacked));
+  clampPan();
+  applyView();
+  if (persist !== false) saveBarPrefs();
+}
+
+/* The height asked for, resolved into the biggest controls that fit inside it
+   and the padding that makes up the rest. The fill is capped at the point where
+   the next size up would be the natural fit, so the bar is never more padding
+   than it needs, and at the ceiling there is no next size and so no fill: past
+   the top the bar simply stops, rather than inflating. */
+function barFitForHeight(h) {
+  var steps = barStepTable();
+  if (!steps || !steps.length) return { s: BAR_S_MIN, fill: 0 };
+  var cap = barMaxScale();
+  var idx = 0;
+  for (var i = 0; i < steps.length; i++) {
+    if (steps[i].s > cap) break;
+    if (steps[i].h <= h) idx = i;
+  }
+  var here = steps[idx];
+  var next = (idx + 1 < steps.length && steps[idx + 1].s <= cap) ? steps[idx + 1] : null;
+  var room = next ? Math.max(0, next.h - here.h) : 0;
+  return { s: here.s, fill: Math.max(0, Math.min(room, h - here.h)) };
+}
+
+var BAR_STORE = 'sda.toolbar.v1';
+
+function saveBarPrefs() {
+  try {
+    window.localStorage.setItem(BAR_STORE, JSON.stringify({ s: barScale, f: barFill }));
+  } catch (e) { /* the height still holds for this session */ }
+}
+
+function loadBarPrefs() {
+  var raw = null;
+  try { raw = window.localStorage.getItem(BAR_STORE); } catch (e) { return; }
+  if (!raw) return;
+  var p;
+  try { p = JSON.parse(raw); } catch (e) { return; }
+  if (!p || typeof p.s !== 'number') return;
+  applyBarScale(p.s, false, typeof p.f === 'number' ? p.f : 0);
+}
+
+/* DRAG */
+var barDrag = null;
+
+function onBarResizeDown(e) {
+  if (e.button !== 0) return;
+  e.preventDefault();   // stop the drag turning into a text selection
+  var t = toolbarEl();
+  barStepTable();       // measured before the first move, not during it
+  barDrag = {
+    startY: e.clientY,
+    startH: t ? t.getBoundingClientRect().height : 0,
+    moved: false
+  };
+  document.body.classList.add('toolbar-resizing');
+  var h = toolbarResizeEl();
+  if (h) h.classList.add('dragging');
+}
+
+/* The handle sits on the bar's bottom edge, so the edge follows the pointer.
+   The height the drag asks for is read back through the table as the scale that
+   produces it, which is what keeps the two together even where a wrap makes the
+   bar jump a whole row. */
+function onBarResizeMove(e) {
+  if (!barDrag) return;
+  var dy = e.clientY - barDrag.startY;
+  if (Math.abs(dy) > 2) barDrag.moved = true;
+  var fit = barFitForHeight(barDrag.startH + dy);
+  applyBarScale(fit.s, false, fit.fill);
+}
+
+function onBarResizeUp() {
+  if (!barDrag) return;
+  barDrag = null;
+  document.body.classList.remove('toolbar-resizing');
+  var h = toolbarResizeEl();
+  if (h) h.classList.remove('dragging');
+  saveBarPrefs();
+}
+
+function onBarResizeDouble() { applyBarScale(BAR_S_MIN); }
+
+/* A focusable separator answers the arrow keys, which is the only way to reach
+   the height without a mouse. */
+function onBarResizeKey(e) {
+  var step = e.shiftKey ? 0.25 : 0.08;
+  if (e.key === 'ArrowDown')    { e.preventDefault(); applyBarScale(barScale + step); }
+  else if (e.key === 'ArrowUp') { e.preventDefault(); applyBarScale(barScale - step); }
+  else if (e.key === 'Home')    { e.preventDefault(); onBarResizeDouble(); }
+}
+
+(function wireBarResize() {
+  var h = toolbarResizeEl();
+  if (!h) return;
+  h.addEventListener('mousedown', onBarResizeDown);
+  h.addEventListener('dblclick', onBarResizeDouble);
+  h.addEventListener('keydown', onBarResizeKey);
+  document.addEventListener('mousemove', onBarResizeMove);
+  document.addEventListener('mouseup', onBarResizeUp);
+  loadBarPrefs();
+})();
+
+// A resize moves the ceiling, so the scale is re-clamped rather than left with
+// the canvas squeezed out from under it. The table looks after itself: it
+// notices the width it was measured at is not the width any more.
+window.addEventListener('resize', function() {
+  applyBarScale(barScale, false, barFill);
+});
+
 // Panning and marquee use screen-space maths against the canvas box, and zoomed
-// out far enough the world is centred rather than pinned — both need revisiting
+// out far enough the world is centred rather than pinned. Both need revisiting
 // when the canvas changes size. A narrower window also lowers the ceiling on
 // the panel, so the stored width is re-clamped rather than left overhanging.
 window.addEventListener('resize', function() {
@@ -3826,7 +4125,7 @@ function openHelp(btn) {
   d.classList.add('open');
   syncHelpNav();
   // Focus the scrolling region rather than the first link, so Page Down and the
-  // arrow keys work the moment it opens — the common case is reading, not
+  // arrow keys work the moment it opens. The common case is reading, not
   // tabbing to a section.
   var body = document.getElementById('helpBody');
   if (body) { body.setAttribute('tabindex', '-1'); body.focus(); }
@@ -3902,7 +4201,7 @@ var helpBodyEl = document.getElementById('helpBody');
 if (helpBodyEl) {
   helpBodyEl.addEventListener('scroll', syncHelpNav);
   // A pin belongs to the click that set it. These are the ways a reader scrolls
-  // for themselves — wheel, touch, keyboard, and a drag of the scrollbar, which
+  // for themselves: Wheel, touch, keyboard, and a drag of the scrollbar, which
   // sends no wheel event but does press the mouse down on this element.
   var helpUnpin = ['wheel', 'touchmove', 'mousedown', 'keydown'];
   for (var u = 0; u < helpUnpin.length; u++) {
@@ -3928,8 +4227,8 @@ if (helpDlgEl) {
 
 /* Clicking away cancels, but only a press that both starts and ends on the
    backdrop counts. Checking the target on mousedown alone is not enough: a
-   drag that begins inside the card — selecting the name by dragging across it,
-   and overshooting — releases on the backdrop, and treating that as clicking
+   drag that begins inside the card (selecting the name by dragging across it,
+   and overshooting) releases on the backdrop, and treating that as clicking
    away would discard the name mid-edit. */
 var saveDialogEl_ = document.getElementById('saveDialog');
 if (saveDialogEl_) {
@@ -3955,7 +4254,7 @@ if (saveNameEl) {
 
 document.addEventListener('click', closeProcMenu);
 
-/* DESTRUCTIVE SHORTCUTS — THREE GUARDS
+/* DESTRUCTIVE SHORTCUTS: THREE GUARDS
    ---------------------------------------------------------------------------
    Backspace deletes the selection, and there is no undo, so being wrong here
    costs the user work they cannot get back. It also cannot simply be dropped in
@@ -3963,17 +4262,17 @@ document.addEventListener('click', closeProcMenu);
    Backspace, so removing it would leave those users with no shortcut at all.
 
    One guard is not enough, because the dangerous case is not "the user is typing
-   in a field" — that is the easy case — but "the user believes they are typing
+   in a field" (that is the easy case), but "the user believes they are typing
    in a field while the browser disagrees". render() rebuilds the whole canvas,
    and any control that triggered it is destroyed in the process; focus then
    falls back to <body>. The panel still looks active. The next Backspace is read
    as a canvas shortcut and deletes the node being configured.
 
-     1. isTypingTarget  — the event landed on a control, or anywhere inside a
+     1. isTypingTarget:   The event landed on a control, or anywhere inside a
                           config or results panel.
-     2. activeElement   — the same test against whatever actually holds focus,
+     2. activeElement:    The same test against whatever actually holds focus,
                           which is not always the event target.
-     3. keyboardContext — where the user last chose to work. Survives focus
+     3. keyboardContext:  Where the user last chose to work. Survives focus
                           being lost to <body>, which is the case the first two
                           cannot see.                                          */
 
@@ -3992,8 +4291,8 @@ function isTypingTarget(t) {
 
 /* 'canvas' while the user is working on the graph, 'panel' while they are
    editing a node's configuration or the results panel. Recorded on mousedown in
-   the capture phase, so it is still set for handlers that stop propagation —
-   the connection delete badge does exactly that. */
+   the capture phase, so it is still set for handlers that stop propagation.
+   The connection delete badge does exactly that. */
 var keyboardContext = 'canvas';
 
 document.addEventListener('mousedown', function(e) {
@@ -4014,7 +4313,7 @@ function safeToDelete(e) {
 document.addEventListener('keydown', function(e) {
   if (e.key === 'Escape') {
     // The dialog is modal, so it consumes the key. Without this, cancelling a
-    // save would also clear the selection underneath it — a second, unasked-for
+    // save would also clear the selection underneath it: A second, unasked-for
     // change from a keystroke that meant "never mind".
     if (saveDialogOpen()) { e.preventDefault(); closeSaveDialog(); return; }
     if (helpOpen())       { e.preventDefault(); closeHelp(); return; }
@@ -4081,7 +4380,7 @@ window.addEventListener('blur', function() {
   drawArrows();
 });
 
-/* GLOBALS — referenced by inline onclick handlers in the toolbar and panels */
+/* GLOBALS: Referenced by inline onclick handlers in the toolbar and panels */
 window.addNode = addNode;
 window.addProcNode = addProcNode;
 window.toggleProcMenu = toggleProcMenu;
@@ -4119,7 +4418,7 @@ window.clearSelection = clearSelection;
    the test suite. In normal use the flag is undefined and nothing is exported,
    so this costs one branch at start-up and leaks nothing.
 
-   The alternative — having the tests reach in by rewriting the source text — is
+   The alternative (having the tests reach in by rewriting the source text) is
    silently broken by any edit near the end of this file, and a test suite that
    fails for reasons unrelated to the code under test is worse than none. */
 if (typeof window !== 'undefined' && window.__QB_TEST__) {

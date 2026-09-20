@@ -1,7 +1,7 @@
 /* Choosing columns on an Output.
    A deliberate duplication of what Select does. The Output's other shortcuts
    were removed for being exactly that, so the distinction matters: Average and
-   the course breakdown COMPUTED — they hid steps that changed the answer, in a
+   the course breakdown COMPUTED. They hid steps that changed the answer, in a
    place the query log could not describe. Choosing which columns to look at
    changes no answer. It is a property of the view, which is what an Output is.
 
@@ -113,7 +113,7 @@ module.exports = ({ describe, test }) => {
 
     /* Two independent guards stop an Output showing nothing, and they are tested
        separately because a test that only checks the outcome passes when either
-       one is removed — which is how the first version of this test was written,
+       one is removed, which is how the first version of this test was written,
        and it could not fail. */
     test('setCfg refuses to write an empty selection', () => {
       // The backstop behind the disabled box: bypass the control entirely

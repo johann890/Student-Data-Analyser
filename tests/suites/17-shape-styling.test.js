@@ -1,6 +1,6 @@
 /* Shapes: the model's geometry against the stylesheet's.
 
-   SHAPE is what the graph measures — snap-to-connect compares shape edges,
+   SHAPE is what the graph measures. Snap-to-connect compares shape edges,
    nodeBox feeds zoomToFit, and shapeEntry/shapeExit place the arrowheads. The
    stylesheet is what is actually on screen. Nothing checks that the two agree,
    and nothing goes visibly wrong when they do not: arrows land slightly off a
@@ -10,7 +10,7 @@
 
    The colour check is here for the same reason. A processing node is read by
    its family colour, and a node left out of its family's rule silently keeps
-   whatever the base rule gave it — which is how AggregateRows came out violet
+   whatever the base rule gave it, which is how AggregateRows came out violet
    among the teal ones. */
 
 const fs = require('fs');
@@ -46,7 +46,7 @@ const FAMILY = {
   summarise: { colour: '#1f6a6a', types: ['aggregate', 'aggregateColumns', 'aggregateRows'] },
   /* SelectFor joins Branches rather than Summarise, though it does summarise.
      The family is read off the canvas as "this node takes more than one wire",
-     and it is the only node with two different ports — putting it in teal
+     and it is the only node with two different ports. Putting it in teal
      would say it behaves like Aggregate, which takes one table and cannot be
      fed a label set at all. */
   branches:  { colour: '#7a2f52', types: ['combine', 'compare', 'selectFor'] }
@@ -98,7 +98,7 @@ module.exports = ({ describe, test }) => {
     Object.keys(FAMILY).forEach(fam => {
       const { colour, types } = FAMILY[fam];
       test(fam + ' nodes are all ' + colour, () => {
-        /* Every rule that sets this colour, not the first one — the toolbar
+        /* Every rule that sets this colour, not the first one. The toolbar
            buttons use the family colours too, and matching the first hit found
            .add-btn.processing rather than the shapes. A member is styled if ANY
            such rule names its class; one left out of all of them keeps whatever
@@ -126,7 +126,7 @@ module.exports = ({ describe, test }) => {
          to the end of the stylesheet, carried a `border:` shorthand in the
          violet of the block it was copied from, and won on source order over
          the Branches rule above it. The node rendered violet among the rose
-         ones with this suite green — the AggregateRows bug exactly, wearing
+         ones with this suite green. The AggregateRows bug exactly, wearing
          the one disguise the suite had no eye for.
 
          So: walk every rule that sets a border colour on a shape class and

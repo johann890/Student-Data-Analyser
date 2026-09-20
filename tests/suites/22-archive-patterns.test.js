@@ -5,7 +5,7 @@
    about a pattern someone deliberately put in it: a course that keeps getting
    easier, a course losing students year on year, a student who changes degree.
    Those patterns were asserted once, in an email, and nothing in the repository
-   held them to it — which is how two of them had quietly stopped being true by
+   held them to it, which is how two of them had quietly stopped being true by
    the time anyone looked.
 
    So they are pinned here, read through the shipped parser rather than by a
@@ -13,7 +13,7 @@
    loads it is not a pattern the tool can be demonstrated on.
 
    These tests are about the DATA, not the code. A failure here means a year
-   file changed, not that a node broke — and the message should say which
+   file changed, not that a node broke, and the message should say which
    pattern went, so the next person knows what they are being asked to restore.
 
    Like 19-data-files they return early when ../data is absent, so a checkout
@@ -64,7 +64,7 @@ module.exports = ({ describe, test }) => {
 
      - the MEAN level will not do. A final-year student carrying three 300-level
        papers averages 3.4 and reads as a third year, which puts graduands back
-       into the attrition pool — the very confusion these tests exist to pin.
+       into the attrition pool. The very confusion these tests exist to pin.
      - the modal level will not do on its own either, because a tie has to break
        somewhere. Four 300s and four 400s broke DOWNWARD, and three finishing
        students were enough to hold up the assertion about leavers on their own.
@@ -107,7 +107,7 @@ module.exports = ({ describe, test }) => {
   /* ══ 2. MIGRATION ══════════════════════════════════════════════════════════
      Movement between programmes, which is the pattern the head of school and
      the programme directors were said to care about most. It was absent from
-     the archive entirely until 2024 — nobody in 2022 or 2023 changes anything —
+     the archive entirely until 2024 (nobody in 2022 or 2023 changes anything),
      so this test is the one that says it is there now. */
   describe('students migrate between programmes', () => {
     const migrants = [...S[2024].keys()].filter(id =>
@@ -261,13 +261,13 @@ module.exports = ({ describe, test }) => {
     });
 
     /* Half true, and deliberately so. Most students who go before finishing were
-       struggling — but not all of them, because some leave for a job while doing
+       struggling, but not all of them, because some leave for a job while doing
        well, and an archive in which every leaver is weak would answer the
        question before it is asked. The test pins both halves: the group mean is
        down, and the top of the leaving group is not. */
     test('students who leave before finishing were mostly, but not only, struggling', () => {
       // A final-year student who goes has finished; that is graduation, not
-      // attrition, and including them inverts the whole pattern — they are the
+      // attrition, and including them inverts the whole pattern. They are the
       // strongest students in the archive.
       const left = [...S[2023].keys()].filter(id =>
         !S[2024].has(id) && yearOfStudy(S[2023].get(id)) < 4 && S[2023].get(id).gpa !== null);

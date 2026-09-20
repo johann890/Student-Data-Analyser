@@ -2,7 +2,7 @@
    Boots the application inside jsdom and exposes its internals to the tests.
 
    The application is three classic scripts sharing one global scope, with no
-   module system — deliberate, since it must run from a file:// URL with no
+   module system. Deliberate, since it must run from a file:// URL with no
    build step, where module scripts are refused outright. They are loaded here
    in the same order the page loads them, and the last of them answers the
    access question itself: setting
@@ -14,7 +14,7 @@
    ("silently broken by any edit near the end of this file"), and it was: the
    injected block named functions that a later refactor deleted, so every test
    died at boot rather than failing on anything it was testing. The sanctioned
-   flag cannot rot that way — if a symbol goes, the suite that uses it fails on
+   flag cannot rot that way, if a symbol goes, the suite that uses it fails on
    its own line and says which one.
 
    The shipped file is never modified, in either scheme. */
@@ -62,8 +62,8 @@ const APP_HTML = findHtml(APP_DIR);
 /* The real archive, beside the application rather than inside it. The data
    suites read from here, because a parser tested only against fixtures written
    by the same person who wrote the parser is a parser tested against its own
-   assumptions. Fixtures still have their place — a file has to be malformed
-   deliberately to test a refusal — but "does it read the actual export" is a
+   assumptions. Fixtures still have their place (a file has to be malformed
+   deliberately to test a refusal), but "does it read the actual export" is a
    question only the actual export answers. */
 const DATA_DIR = path.resolve(APP_DIR, '..', 'data');
 
@@ -78,7 +78,7 @@ function hasDataDir() {
 /* __qb hands back live state through functions, because `nodes` and
    `connections` are reassigned wholesale by clearAll() and applyGraph() and a
    captured value would go stale. The suites were written against getters, so
-   the two are bridged here rather than by editing several hundred assertions —
+   the two are bridged here rather than by editing several hundred assertions,
    and by keeping the bridge in one place, a later change to either side is one
    edit. Everything else passes through untouched. */
 function shim(qb) {
@@ -112,7 +112,7 @@ function boot() {
      these tests see what a browser would be handed. downloadFile() keeps the
      anchor in the document and revokes the object URL forty seconds later
      rather than immediately, because WebKit reads the blob after the click
-     handler returns — so the anchor is still there to be read when click()
+     handler returns, so the anchor is still there to be read when click()
      fires, which is the whole point of the change. */
   const saved = [];
   w.URL.createObjectURL = () => 'blob:test';
@@ -160,8 +160,8 @@ function boot() {
   return { w, doc, app, saved, copied, ...helpers(w, doc, app), ...fileHelpers(w, doc, app) };
 }
 
-/* Helpers that drive the UI the way a user would — set a control's value and
-   dispatch the event the app listens for — rather than calling setCfg directly.
+/* Helpers that drive the UI the way a user would (set a control's value and
+   dispatch the event the app listens for), rather than calling setCfg directly.
    Tests that bypass the DOM would not catch a control that renders with the
    wrong data-key, which is exactly the class of bug worth catching. */
 function helpers(w, doc, app) {
@@ -183,7 +183,7 @@ function helpers(w, doc, app) {
   }
 
   /* One node, unwired. build() covers a straight chain, but every multi-input
-     node — Combine, Compare — needs a graph that forks, and those have to be
+     node (Combine, Compare) needs a graph that forks, and those have to be
      wired deliberately rather than in sequence. */
   function add(type) {
     w.addNode(type);
@@ -232,7 +232,7 @@ function helpers(w, doc, app) {
 /* DRIVING THE FILE PICKERS
    ---------------------------------------------------------------------------
    The two data inputs are hidden and opened by a button, so a test cannot
-   "click" its way to a file — no browser lets script choose one, which is the
+   "click" its way to a file. No browser lets script choose one, which is the
    whole point of the control. What a test CAN do is stand where the browser
    stands: build real File objects, put them on the input, and fire the change
    event the application listens for.
@@ -250,7 +250,7 @@ function fileHelpers(w, doc, app) {
 
   /* Put a selection on a hidden input and fire `change`, which is exactly the
      sequence a real pick produces. `files` is read-only on an <input>, so it is
-     redefined — the alternative is a DataTransfer, which jsdom does not
+     redefined. The alternative is a DataTransfer, which jsdom does not
      implement. */
   function choose(inputId, nodeId, files) {
     const input = doc.getElementById(inputId);

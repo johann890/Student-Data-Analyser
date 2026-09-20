@@ -9,7 +9,14 @@
 </head>
 <body>
 
-<div class="toolbar">
+<div class="toolbar" id="toolbar">
+  <!-- Each labelled run of controls is one flex item, so a bar that has been
+       pulled taller wraps between groups and never inside one. Without this the
+       break lands wherever the row happens to run out, which strands a heading
+       like QUERY at the end of one row with its buttons at the start of the
+       next. The gap inside a group is the gap between them, so the spacing is
+       the same as it was when they were all direct children. -->
+  <div class="tgroup">
   <span class="tlabel">Add</span>
   <button class="add-btn source" onclick="addNode('source')">Source</button>
   <button class="add-btn filter" onclick="addNode('filter')">Filter</button>
@@ -25,7 +32,7 @@
       </button>
       <button class="proc-item cat-reshape" onclick="addProcNode('reverse')">
         <span class="proc-name">Reverse</span>
-        <span class="proc-desc">Flip row order &mdash; put before Take for the last N</span>
+        <span class="proc-desc">Flip row order: Put before Take for the last N</span>
       </button>
       <button class="proc-item cat-reshape" onclick="addProcNode('take')">
         <span class="proc-name">Take</span>
@@ -47,7 +54,7 @@
       <div class="proc-group cat-expand">Expand</div>
       <button class="proc-item cat-expand" onclick="addProcNode('project')">
         <span class="proc-name">Project</span>
-        <span class="proc-desc">One row per course &mdash; a row stops being a student</span>
+        <span class="proc-desc">One row per course: A row stops being a student</span>
       </button>
       <div class="proc-group cat-summarise">Summarise</div>
       <button class="proc-item cat-summarise" onclick="addProcNode('aggregate')">
@@ -65,7 +72,7 @@
       <div class="proc-group cat-branches">Branches</div>
       <button class="proc-item cat-branches" onclick="addProcNode('selectFor')">
         <span class="proc-name">Select For</span>
-        <span class="proc-desc">One row per group &mdash; name the column to split on</span>
+        <span class="proc-desc">One row per group: Name the column to split on</span>
       </button>
       <button class="proc-item cat-branches" onclick="addProcNode('combine')">
         <span class="proc-name">Combine</span>
@@ -78,7 +85,17 @@
     </div>
   </div>
   <button class="add-btn output" onclick="addNode('output')">Output</button>
+  </div>
+  <!-- Where the bar breaks when it needs a second row, rather than wherever the
+       row happens to run out. Left to flex, the break lands on whichever control
+       crosses the edge first, so growing the bar walks through states like Run
+       Query alone on a line with everything else above it. This puts the break
+       in one place: Add on the first row, everything from Query onwards on the
+       second. It is a full-width flex item with no height, inert until the bar
+       is stacked. -->
+  <div class="tbreak" aria-hidden="true"></div>
   <div class="sep"></div>
+  <div class="tgroup">
   <span class="tlabel">Query</span>
   <button class="file-btn" onclick="saveGraph(this)" title="Save this query as a file you can re-open and re-run">Save</button>
   <button class="file-btn" onclick="openGraphFile(this)" title="Open a saved query">Load</button>
@@ -89,12 +106,14 @@
 
        `accept` is a courtesy to the dialog and is trusted by nothing. The year
        input carries none at all, because the archive's year files have no
-       extension for a filter to match on — which is precisely why the name
+       extension for a filter to match on, which is precisely why the name
        rules live in data.js, where the file is actually taken, rather than in an
        attribute a rename walks straight past. -->
   <input type="file" id="headersFile" accept="text/plain,.txt" hidden>
   <input type="file" id="yearFiles" multiple hidden>
+  </div>
   <div class="sep"></div>
+  <div class="tgroup">
   <span class="tlabel">View</span>
   <div class="zoom-group">
     <button class="zoom-btn" onclick="zoomOut()" title="Zoom out  ( -  or scroll )">&minus;</button>
@@ -102,7 +121,9 @@
     <button class="zoom-btn" onclick="zoomIn()" title="Zoom in  ( +  or scroll )">+</button>
   </div>
   <button class="file-btn" onclick="zoomToFit()" title="Fit every node on screen  ( F )">Fit</button>
+  </div>
   <div class="sep"></div>
+  <div class="tgroup">
   <button class="clear-btn" onclick="clearAll()">Clear</button>
   <!-- Help sits with Clear at the end of the left-hand run of controls. Both are
        things you reach for occasionally rather than while building, so they read
@@ -111,8 +132,15 @@
        between keeps the destructive Clear well away from the button people press
        constantly. -->
   <button class="help-btn" onclick="openHelp(this)" title="How to use this tool  ( ? )" aria-label="Help">?</button>
+  </div>
   <button class="run-btn" onclick="runQuery()">Run Query</button>
 </div>
+<!-- The bar's own resize handle, the horizontal twin of the results panel's.
+     Pulling it down gives the controls more room and takes that room from the
+     canvas, which is the same trade the panel handle makes sideways. -->
+<div class="toolbar-resize" id="toolbarResize" role="separator" aria-orientation="horizontal"
+     tabindex="0" aria-label="Resize the toolbar"
+     title="Drag to make the toolbar taller  ( double-click to reset )"></div>
 
 <div class="main">
   <div class="canvas" id="canvas">
@@ -137,7 +165,7 @@
        narrow canvas, and most of the time the canvas is what is being worked on.
        Two ways to widen it, because they answer different needs. The handle is
        for settling on a width and leaving it there. The Wide button is for the
-       one table with too many columns to read at the default width — one click
+       one table with too many columns to read at the default width: one click
        out, one click back, with the chosen handle width remembered underneath so
        returning does not lose it. The label flips to Thin while the panel is
        wide, so it always names the press rather than the state. -->
@@ -374,6 +402,17 @@
                   sequence finishes.</li>
             </ol>
           </figure>
+
+          <h4>Making the toolbar bigger</h4>
+          <p>The edge along the bottom of the bar can be dragged downwards, and the controls grow
+             with it, so a bar you have pulled down is a bar with bigger buttons rather than one
+             with the same buttons floating in a gap. Drag it back up, or double-click it, to
+             return to the starting size.</p>
+          <p>It stops when the controls would run off the edge of the window or leave too little
+             canvas to build in, so there is no way to pull it far enough to lose a button. On a
+             narrower window the groups wrap onto a second row rather than being pushed out of
+             sight. Like the panel width, the size you settle on is remembered and is yours alone:
+             it is not part of a saved query.</p>
         </section>
 
         <!-- ── NODE ANATOMY ────────────────────────────────── -->
@@ -820,6 +859,7 @@
             <tr><td><kbd>F</kbd></td><td>Fit every node on screen</td></tr>
             <tr><td><kbd>W</kbd></td><td>Widen the results panel, and back again</td></tr>
             <tr><td>Drag the panel's left edge</td><td>Set the results panel to any width</td></tr>
+            <tr><td>Drag the toolbar's bottom edge</td><td>Make the toolbar and its buttons bigger</td></tr>
             <tr><td><kbd>?</kbd></td><td>Open this window</td></tr>
           </table>
         </section>
@@ -835,7 +875,7 @@
      inspected and restyled without reading the script.
 
      The buttons are wired inline like the toolbar's. Dismissing by clicking the
-     backdrop is not, because it carries a condition — see ui.js. -->
+     backdrop is not, because it carries a condition. See ui.js. -->
 <div class="save-dialog" id="saveDialog">
   <div class="save-card" role="dialog" aria-modal="true" aria-labelledby="saveTitle">
     <h2 class="save-title" id="saveTitle">Save query</h2>
@@ -859,7 +899,7 @@
      from Finder at file://, where a module script is fetched with CORS against an
      opaque origin and refused; classic scripts sharing one global scope are what
      works there. data.js declares the archive and the Table type, engine.js the
-     evaluation, ui.js the canvas — and ui.js last, because it ends by wiring the
+     evaluation, ui.js the canvas, and ui.js last, because it ends by wiring the
      events and painting the first frame. -->
 <script src="data.js"></script>
 <script src="engine.js"></script>

@@ -2,7 +2,7 @@
    Compare was output-only. It no longer is, because a comparison is the only
    labelled multi-row answer the tool currently produces and refusing to let it
    be aggregated made "count per year, then average those counts" unbuildable
-   through it — the case app.js:212 cites as the reason for the table refactor.
+   through it: The case app.js:212 cites as the reason for the table refactor.
 
    Two things have to hold. Every downstream node must handle a comparison table
    like any other table, and the branch metadata a Compare attaches must stop
@@ -128,7 +128,7 @@ module.exports = ({ describe, test }) => {
          branch metadata was present and the view was not the summary. That was
          the same thing only while metadata could reach an Output across a direct
          wire. Sort and Take carry it through, quite correctly, so one row on
-         screen exported as every row of every branch — the export silently
+         screen exported as every row of every branch. The export silently
          ignored the Take. */
       const r = rig('take');
       r.set(r.n.id, 'n', '1');

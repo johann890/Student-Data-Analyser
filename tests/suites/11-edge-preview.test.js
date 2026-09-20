@@ -1,6 +1,6 @@
 /* The edge data preview.
    Hovering a connection shows what is flowing along it. The panel is small and
-   floating, so it shows a capped slice rather than the whole table — and the
+   floating, so it shows a capped slice rather than the whole table, and the
    cap is paired with a width in the stylesheet, which is the thing most likely
    to drift. These tests hold the two together. */
 
@@ -40,7 +40,7 @@ module.exports = ({ describe, test }) => {
          what is left, less the 18px "more columns" marker, evenly.
 
          The point of raising the cap was more columns, NOT thinner ones. The
-         four-column layout at 230px is the baseline to beat — assert it rather
+         four-column layout at 230px is the baseline to beat. Assert it rather
          than eyeballing the result, because nothing else would notice the cap
          being raised on its own. */
       const w = Number(CSS.match(/\.edge-preview\s*\{[\s\S]*?width:\s*(\d+)px/)[1]);

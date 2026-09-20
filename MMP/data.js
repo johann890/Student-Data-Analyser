@@ -1,12 +1,12 @@
 /* ============================================================================
-   DATA — the archive, and the one type that travels on a wire
+   DATA: The archive, and the one type that travels on a wire
    ============================================================================
    The dataset registries, file admission, the parser, what a Source holds, and
    the Table type every node hands to the next. Nothing in here touches the DOM
    except failSource(), which asks for a repaint after it has said no.
    ============================================================================
-   Part of the query builder. LOAD ORDER MATTERS: data.js, engine.js, ui.js —
-   see querybuilder_MMP.html. These are deliberately NOT ES modules; the tool is
+   Part of the query builder. LOAD ORDER MATTERS: data.js, engine.js, ui.js.
+   See querybuilder_MMP.html. These are deliberately NOT ES modules; the tool is
    opened from Finder at file://, where module scripts are fetched with CORS
    against an opaque origin and refused. Classic scripts sharing one global
    scope are what works there, which is why nothing here is wrapped in an IIFE
@@ -31,8 +31,8 @@ var edgeColorIndex = 0;
    definitions knowing that data arrives from a file. Reassigning would leave
    every column pointing at the empty array it was built from.
 
-   They are the UNION across every Source. Rows stay per-Source — two Sources
-   holding two different exports each answer about their own — but a dropdown
+   They are the UNION across every Source. Rows stay per-Source (two Sources
+   holding two different exports each answer about their own), but a dropdown
    that offered only one Source's courses would be wrong for the graph as a
    whole, and the alternative (a per-node schema pass) buys nothing: offering a
    course no rows contain costs an empty result, which is the honest answer.  */
@@ -47,7 +47,7 @@ var COURSE_BY_CODE = {};
 
 /* Rebuilt from scratch on every load or clear, because a registry that only
    ever grows would keep offering a course from a file that has since been
-   unloaded. Cheap enough to do wholesale — a few thousand enrolments — and a
+   unloaded. Cheap enough to do wholesale (a few thousand enrolments), and a
    great deal easier to reason about than incremental bookkeeping. */
 function rebuildRegistries() {
   var seenSpec = {}, seenDeg = {}, seenYear = {}, seenSubj = {}, seenLvl = {}, seenCode = {};
@@ -106,7 +106,7 @@ function defaultLevel()   { return LEVELS.length ? LEVELS[0] : ''; }
 
    Derived rather than stored, because the archive has no level column and the
    code is the only place the fact lives. That is the same reasoning `subject`
-   already follows — both are properties OF the code, and reading them out of it
+   already follows. Both are properties OF the code, and reading them out of it
    keeps them true for a course this catalogue has never seen.
 
    Worth having because the archive is not the honours-only year the built-in
@@ -118,7 +118,7 @@ function courseLevel(code) {
   return m ? parseInt(m[0], 10) : null;
 }
 
-/* SYNTHETIC DATASET — reachable only from the test harness
+/* SYNTHETIC DATASET: Reachable only from the test harness
    ---------------------------------------------------------------------------
    This was the dataset the tool shipped with, and it is now what the suites run
    against: several hundred assertions are written in terms of its forty
@@ -128,7 +128,7 @@ function courseLevel(code) {
 
    installSyntheticDataset() is called from the __QB_TEST__ block at the foot of
    this file and from nowhere else, so a production page never reaches any of
-   it. The Source falls back to it only when it holds no files of its own —
+   it. The Source falls back to it only when it holds no files of its own,
    which, with the flag unset, is a fallback to null and therefore an error. */
 var SYN_SPECS = ["Software Engineering","Computer Science","Information Technology","Data Science","Cybersecurity","Artificial Intelligence"];
 var G22 = [78,82,91,65,88,72,95,55,83,70,61,79,86,73,90,68,77,84,62,92,75,80,58,87,71,94,66,85,76,89,63,74,81,93,69,78,85,72,60,88];
@@ -137,7 +137,7 @@ var G23 = [82,85,78,70,91,76,88,60,86,74,65,83,89,77,92,71,80,87,66,95,78,84,62,
 /* THE GRADE MODEL
    The archive records a letter Grade and the course's Pts. It does not record a
    percentage mark, so there is no numeric column to average. Every numeric
-   question about attainment — "average grade", "better than", "in this range" —
+   question about attainment ("average grade", "better than", "in this range")
    therefore has to be answered in the grade points the university itself
    assigns, not in marks the data does not contain.
 
@@ -145,7 +145,7 @@ var G23 = [82,85,78,70,91,76,88,60,86,74,65,83,89,77,92,71,80,87,66,95,78,84,62,
    points: sum(gradePoint x points) / sum(points). Every failing grade is worth
    zero, which is why D, E and K share a value: they are different reasons for
    the same outcome. The letter travels alongside the number so the reason is
-   never lost — sorting still distinguishes a D from an E even though averaging
+   never lost. Sorting still distinguishes a D from an E even though averaging
    cannot. */
 var GRADE_POINTS = {
   'A+':9, 'A':8, 'A-':7,
@@ -162,7 +162,7 @@ var GRADE_ORDER = ['A+','A','A-','B+','B','B-','C+','C','C-','D','E','K'];
 /* null, never 0, for anything ungraded. A blank Grade in the archive is a
    course still in progress or withdrawn from, and scoring it zero would drag an
    average down to report a result that does not exist yet. Ungraded enrolments
-   are left out of the GPA entirely — which is what the university does, and
+   are left out of the GPA entirely, which is what the university does, and
    what the supervisor confirmed. */
 function gradePoint(g) {
   var p = GRADE_POINTS[String(g === undefined || g === null ? '' : g).trim()];
@@ -171,7 +171,7 @@ function gradePoint(g) {
 
 /* Points-weighted, so a 30-point ENGR489 counts twice a 15-point course.
    Rounded to two places because a GPA is a summary and the third decimal is
-   noise. A student with nothing graded has no GPA at all — null for the same
+   noise. A student with nothing graded has no GPA at all. Null for the same
    reason a blank grade is not a zero. */
 function gpaOf(enrolments) {
   var pts = 0, weighted = 0;
@@ -186,7 +186,7 @@ function gpaOf(enrolments) {
 }
 
 /* A GPA read back as a letter, for the overall standing shown on a student row.
-   Indexed by grade point, so the array position IS the value — 7 is an A-, the
+   Indexed by grade point, so the array position IS the value. 7 is an A-, the
    way the university describes a 7.0 GPA. Every failing grade is worth zero, so
    zero can only come back as one of them; D is the least specific claim of the
    three and therefore the honest one to make from a number alone. */
@@ -212,7 +212,7 @@ function gradeFromMark(g) {
    exactly eight enrolments for the year they are enrolled in.
 
    The subject list is derived from the codes rather than hardcoded, so
-   replacing this array with the real catalogue — more courses, new prefixes —
+   replacing this array with the real catalogue (more courses, new prefixes)
    requires no other change: the filter dropdowns, the subject criterion and
    the breakdown tables all read from it. That replacement has now happened for
    real: COURSES is built from the Crse column of the loaded files, and this
@@ -258,7 +258,7 @@ SYN_COURSES.forEach(function(c) {
   if (SYN_SUBJECTS.indexOf(c.subject) === -1) SYN_SUBJECTS.push(c.subject);
 });
 
-// Taken by everyone regardless of specialisation — the project and the
+// Taken by everyone regardless of specialisation: The project and the
 // professional-practice course are core to the Honours year.
 var CORE_COURSES = ['ENGR489', 'ENGR401'];
 
@@ -283,7 +283,7 @@ function subjectWeight(spec, subject) {
 
 /* Deterministic generation. A fixed seed means the dataset is identical on
    every page load, so a query that returned 23 students yesterday still
-   returns 23 today — screenshots, notes and marking stay reproducible. */
+   returns 23 today. Screenshots, notes and marking stay reproducible. */
 function makeRng(seed) {
   var t = seed >>> 0;
   return function() {
@@ -323,9 +323,9 @@ function clampMark(m) { return Math.max(MARK_MIN, Math.min(MARK_MAX, m)); }
 function sumOf(a) { return a.reduce(function(x, y){ return x + y; }, 0); }
 
 /* Marks that scatter around the student's overall average and then sum back to
-   it exactly. The mark itself never reaches a table — it is the latent ability
+   it exactly. The mark itself never reaches a table (it is the latent ability
    score the letter grade is drawn from, the same way a real generator would
-   work — so keeping the mean intact is what makes the resulting GPA land near
+   work), so keeping the mean intact is what makes the resulting GPA land near
    the student's intended standing. */
 function marksAround(rand, target, n) {
   var m = [], i;
@@ -406,7 +406,7 @@ function buildSyntheticStudents() {
 
 
 /* ============================================================================
-   LOADING THE ARCHIVE — admission, parsing, and what a Source holds
+   LOADING THE ARCHIVE: Admission, parsing, and what a Source holds
    ============================================================================
    The tool ships with no data. A Source is handed two things, in this order:
 
@@ -422,7 +422,7 @@ function buildSyntheticStudents() {
 
    WHY ADMISSION IS A SECURITY CONCERN AND NOT MERELY TIDINESS
    ---------------------------------------------------------------------------
-   Every cell that survives this module reaches the DOM — the results table, the
+   Every cell that survives this module reaches the DOM: The results table, the
    edge preview, a filter dropdown, an exported CSV. A file read without
    question is arbitrary attacker-chosen content given a path to all four. The
    checks below are therefore layered, cheapest first, and each one refuses
@@ -442,7 +442,7 @@ function buildSyntheticStudents() {
                   that makes the pair a pair: a file with the right name but
                   another archive's columns is refused on line one rather than
                   silently read into the wrong fields.
-     4. CONTENT   NUL and other C0 control characters are refused outright — no
+     4. CONTENT   NUL and other C0 control characters are refused outright. No
                   legitimate export contains them, and they are how a payload
                   hides from a reader. Fields are capped, rows are capped, the
                   ID must be digits, Pts must be a small non-negative number,
@@ -451,7 +451,7 @@ function buildSyntheticStudents() {
                   mcs-students-2022 whose rows say 202301 is not the 2022 data
                   and is not treated as though it were.
 
-   None of this replaces escaping — esc() still runs on every value on its way
+   None of this replaces escaping. Esc() still runs on every value on its way
    into markup, because defence at the boundary and defence at the sink are
    different jobs. What it does is keep the boundary narrow enough to describe
    in a sentence: two file names, a fixed column count, and printable text.
@@ -461,7 +461,7 @@ function buildSyntheticStudents() {
    A Source owns its files. Two Sources can hold two different exports and each
    answers about its own rows, which is what makes "last year's archive against
    this year's" a graph rather than two sessions. The registries above are the
-   union across all of them, for dropdowns only — see rebuildRegistries().
+   union across all of them, for dropdowns only. See rebuildRegistries().
 
    WHY THE DATA IS NEVER SAVED
    ---------------------------------------------------------------------------
@@ -470,7 +470,7 @@ function buildSyntheticStudents() {
    own: the archive is student records, and a query file gets emailed around.
    The second is that a query is meant to be re-run against next year's data, so
    baking in a snapshot defeats the point. The third is that a .json file is
-   trusted no further than any other input — data pasted into it would arrive
+   trusted no further than any other input. Data pasted into it would arrive
    already parsed, past every check in this module.
 
    So loading a query re-creates the graph and clears the data, and the Source
@@ -491,7 +491,7 @@ var MAX_DATA_FILE_BYTES = 32 * 1024 * 1024;
 
 /* Row and field caps. A quarter of a million enrolments is far more than any
    single year of one school, and 512 characters is far more than any field in
-   this archive — the longest is an email address. Both exist so that a file
+   this archive. The longest is an email address. Both exist so that a file
    which passed the name check cannot still arrive as a denial of service or as
    a single cell that unbalances every table it appears in. */
 var MAX_DATA_ROWS   = 250000;
@@ -500,7 +500,7 @@ var MAX_FIELD_CHARS = 512;
 /* One Source accumulates year files, so there has to be a ceiling on how many.
    Fifty is longer than the archive has existed and longer than any question
    anyone will ask of it, and it matches the cap the saved descriptor applies to
-   the same list — two limits on one thing that disagreed would mean a Source
+   the same list. Two limits on one thing that disagreed would mean a Source
    holding a year its own saved query could not name. */
 var MAX_YEAR_FILES = 50;
 
@@ -512,8 +512,8 @@ var MAX_COURSE_POINTS = 200;
 /* The columns this tool reads. `deg1` joined them when the archive turned out
    to hold three degrees rather than the single honours programme the built-in
    dataset assumed, and it is a student-level fact: no student in either year
-   carries two of them, or changes between years. Everything else in the file —
-   the names, the usernames, the email addresses, the ethnicity — is parsed past
+   carries two of them, or changes between years. Everything else in the file
+   (the names, the usernames, the email addresses, the ethnicity) is parsed past
    and dropped on the floor. It is not needed to answer any of the supervisor's questions, and
    the least exposed way to hold personal data is not to hold it. */
 var REQUIRED_HEADER_COLUMNS = ['ID', 'gender', 'deg1', 'maj1', 'Year', 'Crse', 'Grade', 'Pts'];
@@ -523,7 +523,7 @@ var REQUIRED_HEADER_COLUMNS = ['ID', 'gender', 'deg1', 'maj1', 'Year', 'Crse', '
    file is before it has become anything more structured than a string. */
 var CONTROL_CHAR_RE = new RegExp('[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]');
 
-/* PER-SOURCE STATE — deliberately not part of the node model
+/* PER-SOURCE STATE: Deliberately not part of the node model
    ---------------------------------------------------------------------------
    Keyed by node id and reset by applyGraph(), so it cannot travel through a
    saved file or survive a load. Keeping it out of `node.cfg` is what makes
@@ -532,8 +532,8 @@ var CONTROL_CHAR_RE = new RegExp('[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\
 var SOURCE_DATA = {};
 
 /* A header accepted but not yet paired with any year file. Held apart from
-   SOURCE_DATA because a header on its own is not a dataset — there is nothing
-   to run a query against until a year file arrives — and the panel should say
+   SOURCE_DATA because a header on its own is not a dataset (there is nothing
+   to run a query against until a year file arrives), and the panel should say
    so rather than showing a Source that looks ready. */
 var PENDING_HEADERS = {};
 
@@ -544,7 +544,7 @@ var SOURCE_NOTICE = {};
 
 /* The synthetic dataset, installed only under __QB_TEST__ and null otherwise.
    A Source with no files of its own falls back to it, which in a real page is a
-   fallback to nothing — and therefore the error this feature exists to raise. */
+   fallback to nothing, and therefore the error this feature exists to raise. */
 var SYNTHETIC_DATASET = null;
 
 function loadedDatasets() {
@@ -611,7 +611,7 @@ function headersFileProblem(file) {
 
 /* The year lives in the name, and the name is the only place the tool will take
    it from. Deriving it from the contents instead would mean trusting the file
-   to say which year it is — and then the agreement check in parseYearFile()
+   to say which year it is, and then the agreement check in parseYearFile()
    would be comparing a value with itself. */
 function yearFileProblem(file) {
   if (!file) return 'No file was chosen.';
@@ -663,8 +663,8 @@ function parseHeaderFile(text, name) {
       ' columns, which is too few to be the archive header.' };
   }
 
-  /* The index line is optional — a header trimmed to its names alone is still a
-     usable header — but if it is there it has to be right. Present and wrong is
+  /* The index line is optional (a header trimmed to its names alone is still a
+     usable header), but if it is there it has to be right. Present and wrong is
      the case worth refusing: it means the two halves of the file describe
      different things, and picking one of them would be a guess. */
   if (lines.length > 1) {
@@ -687,7 +687,7 @@ function parseHeaderFile(text, name) {
 
   /* Duplicate names are expected, not an error: the archive carries maj1 and
      maj2 twice, once for each degree. First occurrence wins, which is the first
-     degree — the one every other column on the row is about. */
+     degree. The one every other column on the row is about. */
   var byName = {};
   names.forEach(function(n, i) { if (!(n in byName)) byName[n] = i; });
 
@@ -701,7 +701,7 @@ function parseHeaderFile(text, name) {
 }
 
 /* The Year column reads 202201: a calendar year and a trimester. Only the year
-   half is used — the trimester is already in Sem — and it has to be the year
+   half is used (the trimester is already in Sem), and it has to be the year
    the FILE NAME claims. */
 function calendarYearOf(raw) {
   var v = String(raw == null ? '' : raw).trim();
@@ -709,7 +709,7 @@ function calendarYearOf(raw) {
   return parseInt(v.slice(0, 4), 10);
 }
 
-/* One year file to a list of students, enrolments nested — the same shape the
+/* One year file to a list of students, enrolments nested. The same shape the
    synthetic generator produces, so nothing downstream can tell which it was
    handed.
 
@@ -787,8 +787,8 @@ function parseYearFile(text, year, header) {
 
     var grade = f[at.Grade].trim();
     /* An unrecognised grade is a warning, not a refusal. gradePoint() already
-       answers null for anything off the scale — the same answer it gives a
-       dropped course's blank — so the row is safe to keep and the GPA stays
+       answers null for anything off the scale (the same answer it gives a
+       dropped course's blank), so the row is safe to keep and the GPA stays
        honest. Refusing the file would be refusing real data over a code this
        tool has not been told about yet, which is a worse failure than saying so
        and carrying on. */
@@ -904,8 +904,8 @@ function clearSourceData(nodeId) {
   render();
 }
 
-/* Every Source forgets its files. Called by applyGraph() — see the note at the
-   top of this section about why a loaded query starts with no data — and by
+/* Every Source forgets its files. Called by applyGraph() (see the note at the
+   top of this section about why a loaded query starts with no data), and by
    clearAll(), which is starting over in every other respect too. */
 function clearAllSourceData() {
   Object.keys(SOURCE_DATA).forEach(function(k){ delete SOURCE_DATA[k]; });
@@ -941,7 +941,7 @@ function readFileText(file, cb) {
 /* THE HEADER STEP.
    Accepting a new header discards any year files already loaded on this Source.
    They were parsed against the old column list, and keeping them would leave a
-   Source whose rows and whose header came from different exports — the precise
+   Source whose rows and whose header came from different exports. The precise
    thing the field-count check exists to prevent, arrived at by a different
    route. */
 function loadHeadersFor(nodeId, file, done) {
@@ -1091,8 +1091,8 @@ function finishYearLoad(nodeId, header, existing, added, held, done) {
    correct, which is how a user ends up re-picking four files to drop one.
 
    Removing the last year leaves the HEADER in place rather than clearing the
-   Source outright. The header is still valid — it describes the shape of files
-   that have not been chosen yet — and throwing it away would make "I picked the
+   Source outright. The header is still valid (it describes the shape of files
+   that have not been chosen yet), and throwing it away would make "I picked the
    wrong year" cost two steps instead of one. */
 function removeSourceYear(nodeId, year) {
   var header = headerFor(nodeId);
@@ -1137,7 +1137,7 @@ function applyDatasetToNode(nodeId, dataset) {
   }
 }
 
-/* One refusal path. The Source is left as it was — nothing half-applied — the
+/* One refusal path. The Source is left as it was (nothing half-applied), the
    reason is shown on the node rather than in the results panel, because that is
    where the button that caused it lives, and the caller is told. */
 function failSource(nodeId, message, done) {
@@ -1175,18 +1175,18 @@ function installSyntheticDataset() {
 }
 
 /* ============================================================================
-   TABLE — the single data type carried on every wire
+   TABLE: The single data type carried on every wire
    ============================================================================
    Before this refactor a wire carried one of two incompatible things: an array
    of student objects, or a bespoke Compare table. Every node that wanted to
    handle both had to fork on `if (r.table)`, and a Compare result could not be
-   processed any further — which is why "count per year, then average those
+   processed any further, which is why "count per year, then average those
    counts" was unbuildable.
 
    Now there is one shape:
-     columns : [{ key, label, type, ... }]   — the header
-     rows    : [[v, v, ...]]                 — aligned to columns by position
-     meta    : {}                            — optional extras (e.g. Compare branches)
+     columns : [{ key, label, type, ... }]   the header
+     rows    : [[v, v, ...]]                 aligned to columns by position
+     meta    : {}                            optional extras (Compare branches)
 
    A student list is a table. A histogram is a table. A count is a 1x1 table.
    Nodes are written once and work on all of them.
@@ -1199,13 +1199,13 @@ function installSyntheticDataset() {
 var COLTYPE = {
   NUMBER:  'number',  // right-aligned, averageable, comparable with < > =
   TEXT:    'text',    // free text
-  ENUM:    'enum',    // small fixed set — rendered as a dropdown in Filter
+  ENUM:    'enum',    // small fixed set: Rendered as a dropdown in Filter
   COURSES: 'courses'  // cell holds an array of enrolment objects (see below)
 };
 
 /* The COURSES column type is the one place a cell holds a structured value
-   rather than a scalar. The alternative — flattening every student into eight
-   rows at the Source — would make "count students" wrong by a factor of eight,
+   rather than a scalar. The alternative (flattening every student into eight
+   rows at the Source) would make "count students" wrong by a factor of eight,
    which is the trap the old "One per enrolment" Source mode set. Keeping the
    nesting means a row is always a student, so a count is always a count of
    students. Filter reads inside the nesting through coursesColIndex() to ask
@@ -1227,7 +1227,7 @@ function colByKey(t, key) { var i = colIndex(t, key); return i === -1 ? null : t
 function hasCol(t, key) { return colIndex(t, key) !== -1; }
 function cellAt(t, row, key) { var i = colIndex(t, key); return i === -1 ? undefined : row[i]; }
 
-// Same header, no rows — used for schema propagation and empty results
+// Same header, no rows. Used for schema propagation and empty results
 function headerOnly(t) { return makeTable(t.columns, [], {}); }
 
 function numericCols(t) {
@@ -1248,8 +1248,8 @@ function coursesColIndex(t) {
 
 /* SOURCE SCHEMAS
    Two row granularities are available. They are genuinely different tables, not
-   two views of one — "how many students" and "how many enrolments" are
-   different questions — so the Source says which it emits and every downstream
+   two views of one ("how many students" and "how many enrolments" are
+   different questions), so the Source says which it emits and every downstream
    node adapts through the schema rather than through special cases. */
 
 var STUDENT_COLUMNS = [
@@ -1257,8 +1257,8 @@ var STUDENT_COLUMNS = [
   { key:'gender',         label:'Gender',         type:COLTYPE.ENUM,   values:['M','F'] },
   { key:'year',           label:'Year',           type:COLTYPE.ENUM,   values:YEARS },
   /* Degree sits beside Specialisation because they are the same kind of fact at
-     two widths — BSC and BEHONS are programmes, SWEN and CYBR are majors within
-     them — and a question about one is nearly always a question about both. */
+     two widths (BSC and BEHONS are programmes, SWEN and CYBR are majors within
+     them), and a question about one is nearly always a question about both. */
   { key:'degree',         label:'Degree',         type:COLTYPE.ENUM,   values:DEGREES },
   { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
   { key:'gpa',            label:'GPA',            type:COLTYPE.NUMBER, def:'5' },
@@ -1270,12 +1270,12 @@ var STUDENT_COLUMNS = [
    student. The student's courses ride along nested in the last cell rather than
    being flattened into rows of their own. */
 /* Built from the COLUMN LIST rather than from a hand-written array, because the
-   two were positional and could disagree — and did, the moment Degree was added
+   two were positional and could disagree, and did, the moment Degree was added
    to STUDENT_COLUMNS and the row builder was not updated with it. Every cell
    shifted one place left, and a Filter on Specialisation started reading grades.
 
    Driving both from `key` means a column added tomorrow needs no second edit,
-   and the invariant the suite asserts — one cell per column, in order — is true
+   and the invariant the suite asserts (one cell per column, in order) is true
    by construction instead of by vigilance. */
 function studentsTable(list) {
   return makeTable(STUDENT_COLUMNS, list.map(function(s) {
@@ -1295,7 +1295,7 @@ function fmtCell(col, v) {
 }
 function isNumInt(v) { return Math.abs(v - Math.round(v)) < 1e-9; }
 
-/* Two decimal places, with trailing zeros dropped — not toFixed, which pads.
+/* Two decimal places, with trailing zeros dropped, not toFixed, which pads.
    Two because a GPA is quoted to two ("a 6.25 average") and one place would
    round it to a different grade band; dropping the padding because a count of
    6.5 courses should not read as 6.50. Rounding at all is the point: averaging

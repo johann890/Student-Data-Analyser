@@ -1,6 +1,6 @@
 /* Output nodes.
-   The governing requirement is that every Output emits a table — a count is a
-   1x1 table — so one renderer and one exporter serve all of them.
+   The governing requirement is that every Output emits a table (a count is a
+   1x1 table), so one renderer and one exporter serve all of them.
 
    The Output's own Average and Course-breakdown shortcuts were removed: both
    made the same operation exist in two places, and the breakdown hid two of the
@@ -182,8 +182,8 @@ module.exports = ({ describe, test }) => {
   });
 
   /* 'course breakdown' (5 tests) went with the Output's breakdown shortcut in
-     52d5e6a. The same answer is now built on the canvas — filter, then group,
-     then aggregate — where each step appears in the query log. The per-course
+     52d5e6a. The same answer is now built on the canvas (filter, then group,
+     then aggregate) where each step appears in the query log. The per-course
      aggregation itself is covered in 02-table-model's note. */
 
   describe('show-type normalisation', () => {
