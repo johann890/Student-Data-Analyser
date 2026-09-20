@@ -84,6 +84,21 @@
       </button>
     </div>
   </div>
+  <!-- The third menu. Histogram is not Reshape (it does not keep the rows) and
+       it is not one of Processing's three families either: it neither multiplies
+       rows, nor collapses them to one, nor joins branches. It answers a
+       different kind of question, "how are these spread out", and a menu of its
+       own is how the toolbar says so. One item today; percentiles and
+       cumulative counts are the same kind of question if they are ever wanted. -->
+  <div class="proc-wrap">
+    <button class="add-btn distribution" onclick="toggleProcMenu(event, 'distMenu')">Distribution <span class="caret">&#9662;</span></button>
+    <div class="proc-menu" id="distMenu" onclick="event.stopPropagation()">
+      <button class="proc-item cat-distribution" onclick="addProcNode('histogram')">
+        <span class="proc-name">Histogram</span>
+        <span class="proc-desc">Count rows into bands of a number</span>
+      </button>
+    </div>
+  </div>
   <button class="add-btn output" onclick="addNode('output')">Output</button>
   </div>
   <!-- Where the bar breaks when it needs a second row, rather than wherever the
@@ -231,9 +246,9 @@
             <li><b>A Source</b>, where the rows come from. Every query starts with one, and you
                 have to give each Source its data files before it can run. See
                 <b>Loading the data</b>.</li>
-            <li><b>The middle</b>: any number of nodes that narrow, reorder, summarise or combine
-                those rows. You add them from the <b>Reshape</b> and <b>Processing</b> menus. This
-                part can be empty.</li>
+            <li><b>The middle</b>: any number of nodes that narrow, reorder, summarise, combine or
+                count up those rows. You add them from the <b>Reshape</b>, <b>Processing</b> and
+                <b>Distribution</b> menus. This part can be empty.</li>
             <li><b>An Output</b>, where the answer appears in the panel on the right.</li>
           </ol>
 
@@ -332,9 +347,9 @@
              the left, manage the file in the middle, change your view on the right.</p>
 
           <figure class="help-fig">
-            <svg viewBox="0 0 986 78" xmlns="http://www.w3.org/2000/svg" role="img"
+            <svg viewBox="0 0 1090 78" xmlns="http://www.w3.org/2000/svg" role="img"
                  aria-label="The toolbar, with its six groups of controls numbered">
-              <rect x="4" y="14" width="978" height="44" rx="6" fill="#181818" stroke="#252525"/>
+              <rect x="4" y="14" width="1082" height="44" rx="6" fill="#181818" stroke="#252525"/>
 
               <text x="18" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">ADD</text>
               <rect x="44"  y="25" width="58" height="22" rx="5" fill="none" stroke="#2d6640"/>
@@ -345,53 +360,58 @@
               <text x="204" y="40" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Reshape &#9662;</text>
               <rect x="250" y="25" width="94" height="22" rx="5" fill="none" stroke="#3d3d3d"/>
               <text x="297" y="40" fill="#9a9a9a" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Processing &#9662;</text>
-              <rect x="350" y="25" width="56" height="22" rx="5" fill="none" stroke="#1e7fff"/>
-              <text x="378" y="40" fill="#3db8ff" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Output</text>
+              <rect x="454" y="25" width="56" height="22" rx="5" fill="none" stroke="#1e7fff"/>
+              <text x="482" y="40" fill="#3db8ff" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Output</text>
 
-              <line x1="418" y1="26" x2="418" y2="46" stroke="#2a2a2a"/>
-              <text x="430" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">QUERY</text>
-              <rect x="470" y="25" width="42" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
-              <text x="491" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Save</text>
-              <rect x="518" y="25" width="42" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
-              <text x="539" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Load</text>
+              <rect x="350" y="25" width="98" height="22" rx="5" fill="none" stroke="#3a4a8a"/>
+              <text x="399" y="40" fill="#8fa8f0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Distribution &#9662;</text>
 
-              <line x1="572" y1="26" x2="572" y2="46" stroke="#2a2a2a"/>
-              <text x="584" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">VIEW</text>
-              <rect x="622" y="25" width="98" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
-              <line x1="654" y1="27" x2="654" y2="45" stroke="#2a2a2a"/>
-              <line x1="688" y1="27" x2="688" y2="45" stroke="#2a2a2a"/>
-              <text x="638" y="40" fill="#b0b0b0" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">&minus;</text>
-              <text x="671" y="40" fill="#b0b0b0" font-size="10" font-family="system-ui, sans-serif" text-anchor="middle">100%</text>
-              <text x="704" y="40" fill="#b0b0b0" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">+</text>
-              <rect x="728" y="25" width="36" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
-              <text x="746" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Fit</text>
+              <line x1="522" y1="26" x2="522" y2="46" stroke="#2a2a2a"/>
+              <text x="534" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">QUERY</text>
+              <rect x="574" y="25" width="42" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
+              <text x="595" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Save</text>
+              <rect x="622" y="25" width="42" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
+              <text x="643" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Load</text>
 
-              <rect x="774" y="25" width="44" height="22" rx="5" fill="none" stroke="#7a2828"/>
-              <text x="796" y="40" fill="#e35d5d" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Clear</text>
+              <line x1="676" y1="26" x2="676" y2="46" stroke="#2a2a2a"/>
+              <text x="688" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">VIEW</text>
+              <rect x="726" y="25" width="98" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
+              <line x1="758" y1="27" x2="758" y2="45" stroke="#2a2a2a"/>
+              <line x1="792" y1="27" x2="792" y2="45" stroke="#2a2a2a"/>
+              <text x="742" y="40" fill="#b0b0b0" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">&minus;</text>
+              <text x="775" y="40" fill="#b0b0b0" font-size="10" font-family="system-ui, sans-serif" text-anchor="middle">100%</text>
+              <text x="808" y="40" fill="#b0b0b0" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">+</text>
+              <rect x="832" y="25" width="36" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
+              <text x="850" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Fit</text>
 
-              <circle cx="835" cy="36" r="13" fill="none" stroke="#7a6418"/>
-              <text x="835" y="40" fill="#e8c84a" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">?</text>
-              <rect x="888" y="25" width="78" height="22" rx="5" fill="#051830" stroke="#1e7fff"/>
-              <text x="927" y="40" fill="#3db8ff" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle" font-weight="600">Run Query</text>
+              <rect x="878" y="25" width="44" height="22" rx="5" fill="none" stroke="#7a2828"/>
+              <text x="900" y="40" fill="#e35d5d" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Clear</text>
+
+              <circle cx="939" cy="36" r="13" fill="none" stroke="#7a6418"/>
+              <text x="939" y="40" fill="#e8c84a" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">?</text>
+              <rect x="992" y="25" width="78" height="22" rx="5" fill="#051830" stroke="#1e7fff"/>
+              <text x="1031" y="40" fill="#3db8ff" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle" font-weight="600">Run Query</text>
 
               <g font-family="system-ui, sans-serif" font-size="10" font-weight="700" text-anchor="middle">
                 <circle cx="44"  cy="14" r="8.5" fill="#e8e8e8"/><text x="44"  y="17.5" fill="#111">1</text>
                 <circle cx="164" cy="14" r="8.5" fill="#e8e8e8"/><text x="164" y="17.5" fill="#111">2</text>
-                <circle cx="470" cy="14" r="8.5" fill="#e8e8e8"/><text x="470" y="17.5" fill="#111">3</text>
-                <circle cx="622" cy="14" r="8.5" fill="#e8e8e8"/><text x="622" y="17.5" fill="#111">4</text>
-                <circle cx="822" cy="20" r="8.5" fill="#e8e8e8"/><text x="822" y="23.5" fill="#111">5</text>
-                <circle cx="888" cy="14" r="8.5" fill="#e8e8e8"/><text x="888" y="17.5" fill="#111">6</text>
+                <circle cx="574" cy="14" r="8.5" fill="#e8e8e8"/><text x="574" y="17.5" fill="#111">3</text>
+                <circle cx="726" cy="14" r="8.5" fill="#e8e8e8"/><text x="726" y="17.5" fill="#111">4</text>
+                <circle cx="926" cy="20" r="8.5" fill="#e8e8e8"/><text x="926" y="23.5" fill="#111">5</text>
+                <circle cx="992" cy="14" r="8.5" fill="#e8e8e8"/><text x="992" y="17.5" fill="#111">6</text>
               </g>
             </svg>
             <ol class="help-key">
               <li><b>Add</b> puts a new node on the canvas. Source and Output are single buttons
                   because there is only one of each.</li>
-              <li><b>Reshape</b> and <b>Processing</b> are two menus of nodes, split by what they do
-                  to the shape of the table. <b>Reshape</b> holds the five that keep the rows as
-                  they are and only change which of them you see, or in what order. It is violet,
-                  and so is every node inside it. <b>Processing</b> holds the rest: the ones that
-                  multiply rows, collapse them, or bring branches together. It stays grey, because
-                  it covers three colours and cannot honestly wear any one of them.</li>
+              <li><b>Reshape</b>, <b>Processing</b> and <b>Distribution</b> are three menus of
+                  nodes, split by what they do to the shape of the table. <b>Reshape</b> holds the
+                  five that keep the rows as they are and only change which of them you see, or in
+                  what order. It is violet, and so is every node inside it. <b>Distribution</b>
+                  holds Histogram, and is indigo for the same reason. <b>Processing</b> holds the
+                  rest: the ones that multiply rows, collapse them, or bring branches together. It
+                  stays grey, because it covers three colours and cannot honestly wear any one of
+                  them.</li>
               <li><b>Query</b>: Save writes the whole graph to a <code>.json</code> file, and Load
                   opens one back.</li>
               <li><b>View</b>: zoom out, the current zoom (click it to return to 100%), zoom in,
@@ -534,20 +554,21 @@
         <!-- ── NODE REFERENCE ──────────────────────────────── -->
         <section id="help-nodes">
           <h3>Node reference</h3>
-          <p>Two menus hold the twelve nodes that sit between a Source and an Output, split by what
-             each one does to the shape of the table. A node's colour on the canvas is its group, so
-             you can read an unfamiliar graph at a glance and see where it narrows, where it
-             multiplies, where it collapses, and where branches meet.</p>
+          <p>Three menus hold the thirteen nodes that sit between a Source and an Output, split by
+             what each one does to the shape of the table. A node's colour on the canvas is its
+             group, so you can read an unfamiliar graph at a glance and see where it narrows, where
+             it multiplies, where it collapses, and where branches meet.</p>
 
           <p><b>Reshape</b> is the menu you will reach for most, and it is the one group whose nodes
              all leave the meaning of the table intact: a row is still whatever it was before.
              <b>Processing</b> holds the three groups that change that. Expand makes a row mean
              something new, Summarise replaces many rows with one, and Branches pulls several tables
-             into one.</p>
+             into one. <b>Distribution</b> holds the one node that answers a different kind of
+             question altogether: not what the rows are, but how they are spread out.</p>
 
           <figure class="help-fig help-fig-narrow">
-            <svg viewBox="0 0 340 610" xmlns="http://www.w3.org/2000/svg" role="img"
-                 aria-label="The Reshape menu, and the Processing menu with its three colour-coded groups">
+            <svg viewBox="0 0 340 712" xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="The Reshape menu, the Processing menu with its three colour-coded groups, and the Distribution menu">
               <rect x="8" y="8" width="92" height="22" rx="5" fill="none" stroke="#5a3a7a"/>
               <text x="54" y="23" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Reshape &#9662;</text>
               <rect x="8" y="38" width="324" height="186" rx="6" fill="#141414" stroke="#2a2a2a"/>
@@ -582,6 +603,12 @@
               <text x="24" y="551" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
               <text x="24" y="572" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
               <text x="24" y="585" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
+
+              <rect x="8" y="620" width="106" height="22" rx="5" fill="none" stroke="#3a4a8a"/>
+              <text x="61" y="635" fill="#8fa8f0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Distribution &#9662;</text>
+              <rect x="8" y="650" width="324" height="52" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <text x="24" y="672" fill="#8fa8f0" font-size="11" font-family="system-ui, sans-serif">Histogram</text>
+              <text x="24" y="685" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Count rows into bands of a number</text>
             </svg>
           </figure>
 
@@ -721,6 +748,34 @@
                 a branch per degree, <b>Select For</b> says the same thing in a single node instead
                 of one wire per group, and it can say it for values that are not in the data yet.
                 Compare is kept for the other case, and for queries already built on it.</dd>
+          </dl>
+
+          <h4 class="help-cat help-cat-distribution">Distribution (indigo)</h4>
+          <p class="help-note">How the rows are spread across a number, rather than what they
+             are.</p>
+          <dl class="help-defs">
+            <dt>Histogram</dt>
+            <dd>Counts the rows into bands of a number you choose: how many students in each GPA
+                band, how many enrolments at each mark. Pick the column and the width of a band, and
+                you get one row per band with a count beside it, plus any other measure you add.
+                <br>For anything with only a few values, you do not need this node at all.
+                <b>Select For</b> grouped by <b>Grade</b> is already a grade distribution, in the
+                declared A+ to D order. Histogram is for the columns where grouping by value would
+                give you one row per student, which is every genuinely numeric one.
+                <br><b>Bands start at a multiple of the width</b>, not at the smallest value in your
+                data. That is what makes two years binned the same way comparable: bands of 1 always
+                run 4 to 5 and 5 to 6, whoever is looking and whatever year they loaded.
+                <br><b>A value on a boundary belongs to the band above it</b>, except at the very
+                top, where the last band is closed so the largest value has somewhere to go. This is
+                the one rule you cannot check by looking at the result, and it is what makes the
+                counts add up to the rows you started with rather than double-counting every
+                boundary.
+                <br>A band nothing falls in is still a row, with a count of zero, because a gap in
+                the middle of a distribution is usually the thing worth seeing. Rows with no value
+                at all, like a withdrawn enrolment with no mark, are in no band and are reported
+                separately in the query log: a missing mark is not a mark of zero.
+                <br>It does not reorder. The bands come out in order, and the column knows that
+                order, so a <b>Sort</b> after it sorts by band properly rather than alphabetically.</dd>
           </dl>
 
           <h4 class="help-cat help-cat-output">Output</h4>

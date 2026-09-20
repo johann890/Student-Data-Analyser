@@ -44,6 +44,7 @@ var SHAPE = {
   // two labelled port stubs down its left edge, and they need room not to
   // collide with each other or with the shape's own text.
   selectFor:{ w:118, h:88 },
+  histogram:{ w:106, h:72 },
   sort:    { w:106, h:72 },
   reverse: { w:106, h:72 },
   take:    { w:106, h:72 },
@@ -290,6 +291,11 @@ function deleteSelection() {
    would be work thrown away when it retires. */
 var TABLE_NODES = ['filter', 'sort', 'reverse', 'take', 'unique', 'select', 'project',
                    'aggregate', 'aggregateColumns', 'aggregateRows', 'combine',
+                   /* A histogram takes a table and emits one, so it goes wherever
+                      the other row nodes go. Downstream it IS a breakdown, in
+                      SelectFor's shape, which is what lets a Sort or a Take
+                      follow it without either of them knowing that. */
+                   'histogram',
                    /* Both of its ports take an ordinary table, so anything that
                       produces one may feed it, including another SelectFor,
                       which is how a breakdown becomes the label set for the
@@ -310,6 +316,7 @@ var CONNECT_RULES = {
   aggregateColumns: TABLE_NODES.concat(['compare', 'output']),
   aggregateRows:    TABLE_NODES.concat(['compare', 'output']),
   combine:          TABLE_NODES.concat(['compare', 'output']),
+  histogram:        TABLE_NODES.concat(['compare', 'output']),
   /* Compare was output-only, on the grounds that it is superseded by SelectFor
      and widening its reach would be work thrown away. That reasoning held while
      the cost was hypothetical. It is not: a Compare's result is the only
@@ -548,6 +555,11 @@ function defaultCfg(type) {
      `labelCol` is which column of the labels branch supplies the values, and
      is ignored entirely while nothing is wired there. */
   if (type === 'selectFor') return { by:'', stats:[newStat()], labelCol:'' };
+  /* `by` empty means "the first column that can be binned", resolved against
+     the arriving table the way SelectFor resolves its own. `width` is stored as
+     typed and coerced on read, exactly as Take stores N. `stats` is the same
+     key and the same shape SelectFor uses, because it is the same machinery. */
+  if (type === 'histogram') return { by:'', width:'', stats:[newStat()] };
   // cols:null means "every column", the same convention Select uses, so the
   // validator mergeCfg already applies to that key covers this one too.
   if (type === 'output')  return { show:'rows', filename:'', cols:null };
@@ -854,10 +866,18 @@ function removeSortKey(nodeId, idx) {
 
 /* SelectFor's measures use the same list shape again (add at the end, first
    row not removable), so a third panel does not introduce a third set of
-   manners. */
+   manners.
+
+   Guarded on holding a measure list rather than on being one named type. A
+   second node arrived with the same list a fortnight later and the buttons
+   under it did nothing: the panel rendered them, the handler checked the type
+   and returned. Asking what the node HAS rather than what it IS is what makes
+   the next such node work without an edit here. */
+function hasStats(n) { return !!n && (n.type === 'selectFor' || n.type === 'histogram'); }
+
 function addStat(nodeId) {
   var n = findNode(nodeId);
-  if (!n || n.type !== 'selectFor') return;
+  if (!hasStats(n)) return;
   n.cfg.stats = n.cfg.stats || [];
   n.cfg.stats.push(newStat());
   markStale();
@@ -866,7 +886,7 @@ function addStat(nodeId) {
 }
 function removeStat(nodeId, idx) {
   var n = findNode(nodeId);
-  if (!n || n.type !== 'selectFor') return;
+  if (!hasStats(n)) return;
   n.cfg.stats.splice(idx, 1);
   // A breakdown with no measures is a list of labels, which Unique already
   // does better. The first row is not removable and this is its backstop.
@@ -1155,7 +1175,8 @@ var NODE_LABELS = {
   source:'Source', filter:'Filter', sort:'Sort', reverse:'Reverse', take:'Take',
   unique:'Unique', select:'Select', project:'Project',
   aggregate:'Aggregate', aggregateColumns:'Agg. Columns', aggregateRows:'Agg. Rows',
-  combine:'Combine', compare:'Compare', selectFor:'Select For', output:'Output'
+  combine:'Combine', compare:'Compare', selectFor:'Select For',
+  histogram:'Histogram', output:'Output'
 };
 function upstreamLabel(node) {
   return (NODE_LABELS[node.type] || node.type) + ' #' + node.id;
@@ -1424,6 +1445,64 @@ function configHTML(node, schemas) {
     html += '<div class="cmp-hint">One row per group: ' +
       selectForColumns(node, schema).map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(', ') +
       '. Sort or Take it downstream: This node does not reorder.</div>';
+  }
+
+  if (node.type === 'histogram') {
+    var bcols = binnableCols(schema);
+    var bf = binField(node, schema);
+
+    if (!bcols.length) {
+      html += '<div class="cmp-hint">Nothing to bin. This node needs a number ' +
+        'column, and there are none arriving.</div>';
+    } else {
+      html += '<div class="cfg-label">Distribution of</div>' +
+        '<select' + ctl(id, 'by') + '>' +
+          bcols.map(function(c){ return opt(c.key, bf ? bf.key : '', c.label); }).join('') +
+        '</select>' +
+        '<div class="cfg-label">In bands of</div>' +
+        // Left empty it says "auto", because empty is a real setting here: the
+        // width is then chosen from the data, which the panel cannot see.
+        '<input type="number" min="0" step="any" placeholder="auto" ' +
+          'value="' + esc(cfg.width === undefined ? '' : cfg.width) + '"' + ctl(id, 'width') + '>';
+
+      /* The boundary rule, said once, where the bins are chosen. It is the one
+         thing about a histogram a reader cannot check by looking at it: two
+         adjacent bins print a shared number and only one of them owns it. */
+      html += '<div class="cmp-hint">Left empty, the width is chosen from the data ' +
+        'to give about ten bands. Bands start at a multiple of the width, so two ' +
+        'years binned the same way line up. A value on a boundary belongs to the ' +
+        'band above it, except at the very top, so every row is counted exactly ' +
+        'once.</div>';
+    }
+
+    var hstats = statsOf(node);
+    html += '<div class="cfg-label">Measure</div><div class="stat-list">' +
+      hstats.map(function(st, si) {
+        var hop = selectForOp(st && st.op);
+        var hcol = hop.needsCol ? statCol(st, schema) : null;
+        return '<div class="stat-row">' +
+          '<select class="stat-op"' + ctl(id, 'stat.' + si + '.op') + '>' +
+            SELECTFOR_OPS.map(function(o){ return opt(o.key, hop.key, o.label); }).join('') +
+          '</select>' +
+          (hop.needsCol
+            ? '<select class="stat-col"' + ctl(id, 'stat.' + si + '.col') + '>' +
+                measurableCols(schema).map(function(c) {
+                  return opt(c.key, hcol ? hcol.key : '', c.label);
+                }).join('') +
+              '</select>'
+            : '<span class="stat-nocol"></span>') +
+          (si > 0
+            ? '<button class="remove-criterion-btn" onclick="removeStat(' + id + ',' + si + ')">x</button>'
+            : '<span class="stat-nodel"></span>') +
+        '</div>';
+      }).join('') +
+    '</div>' +
+    '<button class="add-criterion-btn sort-add" onclick="addStat(' + id + ')">+ add measure</button>';
+
+    html += '<div class="cmp-hint">One row per band: ' +
+      histogramColumns(node, schema).map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(', ') +
+      '. A band nothing falls in is still a row, with a count of zero, which is ' +
+      'the gap in a distribution you came to see.</div>';
   }
 
   if (node.type === 'sort') {
@@ -1891,6 +1970,16 @@ function shapeHTML(node) {
       '<span class="sf-row"><b></b><i style="width:11px"></i></span>' +
       '<span class="sf-row"><b></b><i style="width:15px"></i></span></span>';
     return '<div class="node-shape shape-selectfor">' + removeBtn + sfg + 'Select For</div>';
+  }
+  if (node.type === 'histogram') {
+    /* Bars of unequal height with no gaps between them, which is the one thing
+       that distinguishes a histogram from the bar charts the other glyphs draw:
+       Sort's bars ascend and are spaced, Compare's three are held apart. Touching
+       bars say the axis underneath is continuous, which is the whole idea here. */
+    var hg = '<span class="hist-glyph">' +
+      '<i style="height:5px"></i><i style="height:9px"></i><i style="height:14px"></i>' +
+      '<i style="height:11px"></i><i style="height:6px"></i></span>';
+    return '<div class="node-shape shape-histogram">' + removeBtn + hg + 'Histogram</div>';
   }
   if (node.type === 'output') return '<div class="node-shape shape-output">' + removeBtn + 'Output</div>';
   return '';
@@ -4547,10 +4636,35 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     SELECTFOR_OPS: SELECTFOR_OPS, selectForOp: selectForOp,
     groupFields: groupFields, groupField: groupField, groupColumn: groupColumn,
     statsOf: statsOf, newStat: newStat, defaultStats: defaultStats, statCol: statCol,
+    hasStats: hasStats,
     selectForColumns: selectForColumns, evaluateSelectFor: evaluateSelectFor,
+    measureColumns: measureColumns, measureValues: measureValues,
+
+    // histogram
+    HIST_BINS_WANTED: HIST_BINS_WANTED, HIST_MAX_BINS: HIST_MAX_BINS,
+    autoWidth: autoWidth,
+    binnableCols: binnableCols, binField: binField, binWidth: binWidth,
+    binsFor: binsFor, binLabel: binLabel, fmtEdge: fmtEdge,
+    binColumn: binColumn, histogramColumns: histogramColumns,
+    applyHistogram: applyHistogram,
     labelCols: labelCols, labelsFromTable: labelsFromTable,
     labelsFromData: labelsFromData, rowsForLabel: rowsForLabel,
     addStat: addStat, removeStat: removeStat,
+
+    /* toolbar height. The drag itself is layout, and layout is the one thing
+       jsdom does not do, so what is exposed here is the arithmetic around it:
+       the ceiling, the clamp, the height-to-size lookup and the table they all
+       read. A test supplies the heights by standing in for the bar's own
+       measurement, which is what the browser does anyway. */
+    BAR_S_MIN: BAR_S_MIN, BAR_S_MAX: BAR_S_MAX, BAR_S_STEP: BAR_S_STEP,
+    CANVAS_MIN_H: CANVAS_MIN_H, BAR_HANDLE_H: BAR_HANDLE_H,
+    buildBarSteps: buildBarSteps, barStepTable: barStepTable, barStepFor: barStepFor,
+    barRowCount: barRowCount, barMaxScale: barMaxScale, barHeightBudget: barHeightBudget,
+    clampBarScale: clampBarScale, barFitForHeight: barFitForHeight,
+    applyBarScale: applyBarScale, saveBarPrefs: saveBarPrefs, loadBarPrefs: loadBarPrefs,
+    barScaleNow: function(){ return barScale; },
+    barFillNow:  function(){ return barFill; },
+    barStepsDrop: function(){ barSteps = null; barStepsW = -1; },
 
     // unique
     uniqueCols: uniqueCols, uniqueCol: uniqueCol, uniqueCellKey: uniqueCellKey,

@@ -144,7 +144,8 @@ body {
   border-radius: calc(5px * var(--bar-s));
 }
 .toolbar .add-btn.reshape,
-.toolbar .add-btn.processing { gap: calc(6px * var(--bar-s)); }
+.toolbar .add-btn.processing,
+.toolbar .add-btn.distribution { gap: calc(6px * var(--bar-s)); }
 .toolbar .caret { font-size: calc(13px * var(--bar-s)); }
 .toolbar .sep { height: calc(22px * var(--bar-s)); margin: 0 calc(2px * var(--bar-s)); }
 .toolbar .file-btn {
@@ -1021,7 +1022,8 @@ body.panel-resizing * { cursor: col-resize !important; }
 /* ── PROCESSING DROPDOWN ─────────────────────────────────── */
 .proc-wrap { position: relative; display: inline-flex; }
 .add-btn.reshape,
-.add-btn.processing {
+.add-btn.processing,
+.add-btn.distribution {
   /* inline-flex so the caret centres on the label's optical midline rather
      than sitting on the text baseline */
   display: inline-flex;
@@ -1033,6 +1035,10 @@ body.panel-resizing * { cursor: col-resize !important; }
   color: #b48ce0;
 }
 .add-btn.reshape:hover { background: #180e22; }
+/* Like Reshape and unlike Processing: one family sits behind this button, so it
+   can wear that family's colour honestly. */
+.add-btn.distribution { border-color: #3a4a8a; color: #8fa8f0; }
+.add-btn.distribution:hover { background: #0c1024; }
 .caret {
   font-size: 13px;
   line-height: 1;
@@ -1836,6 +1842,44 @@ th.cmp-num { color: #383838 !important; }
   opacity: 0.35;
 }
 
+/* ── DISTRIBUTION ── indigo ─────────────────────────────── */
+/* Its own hue because it is its own menu, and its own menu because "how is this
+   spread out" is a different question from anything in Reshape or Processing.
+   Indigo sits between the violet of Reshape and the blue of Output without
+   being either: this node is neither a reshuffle nor an endpoint. */
+.shape-histogram {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  /* Width and style here, colour in the family rule below, and never both in a
+     shorthand. A `border:` shorthand carrying a colour is what let SelectFor
+     ship violet among the rose nodes: the shorthand won on source order over
+     the family rule meant to colour it, with the suite green because the class
+     WAS named in a rule setting the right colour. */
+  border-width: 2.5px;
+  border-style: solid;
+  background: #090c18;
+  color: #8fa8f0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-histogram:active { cursor: grabbing; }
+
+/* Bars of unequal height sharing a baseline with no gaps between them. The
+   touching is the whole signal: Sort's bars are spaced because its axis is a
+   list of rows, and these are flush because the axis underneath them is a
+   number line. */
+.hist-glyph { display: flex; align-items: flex-end; gap: 1px; height: 14px; }
+.hist-glyph i {
+  display: block; width: 4px;
+  border-radius: 1px 1px 0 0;
+  background: currentColor; opacity: 0.75;
+}
+
+/* The family colour, stated the way every other family states it. */
+.shape-histogram { border-color: #3a4a8a; }
+
 /* ── SUMMARISE ── teal ──────────────────────────────────── */
 .shape-aggregate,
 .shape-aggcols,
@@ -1890,6 +1934,7 @@ th.cmp-num { color: #383838 !important; }
 .cmb-glyph b,
 .sf-row i,
 .sf-row b,
+.hist-glyph i,
 .cmp-glyph i {
   background: currentColor;
 }
@@ -1934,6 +1979,8 @@ th.cmp-num { color: #383838 !important; }
 .proc-item.cat-branches  .proc-name { color: #e089ae; }
 .proc-group.cat-expand,
 .proc-item.cat-expand    .proc-name { color: #a8d050; }
+.proc-group.cat-distribution,
+.proc-item.cat-distribution .proc-name { color: #8fa8f0; }
 
 .proc-group { opacity: 0.72; }
 
@@ -1941,6 +1988,7 @@ th.cmp-num { color: #383838 !important; }
 .proc-item.cat-expand:hover    { background: #141c08; }
 .proc-item.cat-summarise:hover { background: #0a1e20; }
 .proc-item.cat-branches:hover  { background: #21101a; }
+.proc-item.cat-distribution:hover { background: #10152b; }
 
 /* The Processing button stays neutral, and now for a sharper reason than
    before. The violet nodes have their own button beside it, so what is left
@@ -1956,8 +2004,16 @@ th.cmp-num { color: #383838 !important; }
 
 /* A one-family menu needs no heading. The button already says Reshape, and a
    heading repeating it would read as the first of several groups. The rule
-   below restores the padding the absent heading used to provide. */
-#reshapeMenu .proc-item:first-child { margin-top: 2px; }
+   below restores the padding the absent heading used to provide. Distribution
+   is the second such menu and wants the same treatment. */
+#reshapeMenu .proc-item:first-child,
+#distMenu .proc-item:first-child { margin-top: 2px; }
+
+/* One item, so the menu is only as wide as it needs to be. The 208px minimum
+   exists to stop Processing's three groups reflowing against each other, and a
+   single row does not have that problem: at that width the menu is mostly
+   empty space hanging under a button narrower than it. */
+#distMenu { min-width: 176px; }
 
 /* ═══════════════════════════════════════════════════════════
    SAVE DIALOG
@@ -2299,6 +2355,7 @@ th.cmp-num { color: #383838 !important; }
 .help-cat-summarise { color: #5ac8c8; }
 .help-cat-expand    { color: #a8d050; }
 .help-cat-branches  { color: #e089ae; }
+.help-cat-distribution { color: #8fa8f0; }
 .help-cat-output    { color: #3db8ff; }
 
 .help-node-desc { margin-bottom: 4px; }
