@@ -210,6 +210,10 @@ body.toolbar-resizing * { cursor: row-resize !important; }
   background: #000;
   position: relative;
   overflow: hidden;
+  /* So the overlays inside can answer to the canvas's own width rather than
+     the window's. The canvas is a flex child and gets its width from the row,
+     which a panel dragged wide can halve without the window changing at all. */
+  container-type: inline-size;
 }
 .canvas-hint {
   position: absolute; top: 50%; left: 50%;
@@ -1481,6 +1485,34 @@ th.cmp-num { color: #383838 !important; }
 }
 
 /* ── SELECTION ACTION BAR ────────────────────────────────── */
+/* ── VIEW DOCK ───────────────────────────────────────────
+   Zoom and Fit, docked on the canvas rather than filed in the toolbar. Same
+   treatment as the selection bar, because they are the same kind of thing: a
+   small panel floating over the canvas rather than part of the page around it,
+   and reading as one family is what stops the second one looking like a
+   mistake. More rounded than the bar's controls, because a floating panel with
+   square corners reads as a fragment of the layout that has come loose.
+
+   Bottom left is the only free corner. Bottom centre belongs to the selection
+   bar, and the two appear together more often than not. */
+.view-dock {
+  position: absolute;
+  z-index: 60;
+  bottom: 16px; left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #131316;
+  border: 1px solid #2e2e34;
+  border-radius: 10px;
+  padding: 6px 8px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.65);
+}
+/* Nested radii: the inner group follows the outer curve rather than cutting
+   across it. */
+.view-dock .zoom-group { border-radius: 6px; }
+.view-dock .file-btn   { border-radius: 6px; }
+
 .sel-bar {
   position: absolute;
   display: none;
@@ -1497,6 +1529,19 @@ th.cmp-num { color: #383838 !important; }
   font-size: 11px;
 }
 .sel-bar.show { display: flex; }
+
+/* Centred along the bottom, until the canvas is too narrow to hold it beside
+   the view dock. The two are on screen together whenever someone zooms in on a
+   selection, and at the panel's full width there is no room for both in one
+   row, so the selection bar takes the row above rather than landing on the
+   dock.
+
+   After the rule it overrides, not before it: a container query adds no
+   specificity of its own, so the plain `bottom: 16px` above wins on source
+   order wherever this is placed first. */
+@container (max-width: 660px) {
+  .sel-bar { bottom: 66px; }
+}
 .sel-count { color: #9dd0ff; font-weight: 600; letter-spacing: 0.02em; }
 .sel-hint { color: #4a4a4a; font-size: 10px; }
 /* Clear was removed from the bar: deselecting already has two ways to happen

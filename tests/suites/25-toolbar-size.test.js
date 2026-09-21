@@ -21,8 +21,15 @@
    The structural half needs no layout at all: which menus exist, where the
    break is, and that the groups are the thing that wraps. */
 
-const { boot } = require('../lib/harness');
+const fs = require('fs');
+const path = require('path');
+const { boot, APP_DIR } = require('../lib/harness');
 const { assert } = require('../lib/assert');
+
+const CSS = (() => {
+  const f = fs.readdirSync(APP_DIR).filter(x => x.endsWith('.css'))[0];
+  return fs.readFileSync(path.join(APP_DIR, f), 'utf8');
+})();
 
 module.exports = ({ describe, test }) => {
 
@@ -98,8 +105,12 @@ module.exports = ({ describe, test }) => {
          QUERY at the end of one row and Save at the start of the next. */
       const h = boot();
       const groups = h.qa('.tgroup');
-      assert.ok(groups.length >= 4, 'the bar is not grouped');
+      assert.ok(groups.length >= 3, 'the bar is not grouped');
       groups.forEach(g => assert.ok(g.children.length >= 1, 'an empty group'));
+      // Every control in the bar is inside a group or is Run Query, which is
+      // pushed to the corner on its own. Anything else would wrap by itself.
+      h.qa('.toolbar > button').forEach(b =>
+        assert.includes(b.className, 'run-btn', b.className + ' is a loose control in the bar'));
     });
 
     test('the break is a real element, before the Query group', () => {
@@ -123,6 +134,142 @@ module.exports = ({ describe, test }) => {
          has grown taller or wrapped still opens its menus under them. */
       h.qa('.proc-menu').forEach(m =>
         assert.ok(m.closest('.proc-wrap'), m.id + ' is not anchored to a button'));
+    });
+  });
+
+  /* ------------------------------------------------------- the view dock */
+
+  describe('the view controls sit on the canvas, not in the bar', () => {
+    test('zoom and Fit are in a dock on the canvas', () => {
+      const h = boot();
+      const dock = h.doc.getElementById('viewDock');
+      assert.ok(dock, 'no view dock');
+      assert.ok(dock.closest('.canvas'), 'the dock is not on the canvas');
+      assert.notOk(dock.closest('.toolbar'), 'the dock is still in the bar');
+      assert.ok(dock.querySelector('#zoomLevel'), 'no zoom readout');
+      assert.equal(dock.querySelectorAll('.zoom-btn').length, 2, 'zoom in and out');
+      assert.ok([...dock.querySelectorAll('button')].some(b => /Fit/.test(b.textContent)),
+        'no Fit button');
+    });
+
+    test('nothing about the view is left in the bar', () => {
+      const h = boot();
+      const bar = h.doc.getElementById('toolbar');
+      assert.notOk(bar.querySelector('.zoom-group'), 'the zoom group is still in the bar');
+      assert.notOk(/Fit/.test(bar.textContent), 'Fit is still in the bar');
+      assert.notOk(/VIEW/i.test(bar.textContent), 'the View heading outlived its group');
+    });
+
+    test('each button is still wired to the view function it names', () => {
+      /* jsdom is built with scripts off, so an inline handler never runs here
+         and clicking would prove nothing. What the markup promises is checked
+         instead, and the functions themselves below. */
+      const h = boot();
+      const dock = h.doc.getElementById('viewDock');
+      const wired = [...dock.querySelectorAll('button')]
+        .map(b => (b.getAttribute('onclick') || '').replace(/\(\)$/, ''));
+      assert.deepEqual(wired, ['zoomOut', 'zoomReset', 'zoomIn', 'zoomToFit']);
+      wired.forEach(fn => assert.ok(typeof h.w[fn] === 'function',
+        fn + ' is named by a button and is not a function'));
+    });
+
+    test('the readout follows the zoom the dock sets', () => {
+      const h = boot();
+      const read = () => h.doc.getElementById('zoomLevel').textContent;
+      h.w.zoomIn(); h.w.render();
+      assert.notOk(read() === '100%', 'zoom in did not move the readout');
+      h.w.zoomReset(); h.w.render();
+      assert.equal(read(), '100%', 'the readout does not return to 100%');
+      h.w.zoomOut(); h.w.render();
+      assert.notOk(read() === '100%', 'zoom out did not move the readout');
+      h.w.zoomToFit(); h.w.render();
+      assert.ok(read().endsWith('%'), 'Fit left the readout unreadable');
+    });
+
+    test('a press on the dock is not a press on the canvas', () => {
+      /* It sits inside the canvas element, so without this a click on Fit
+         would also start a marquee and clear the selection behind it. */
+      const h = boot();
+      const dock = h.doc.getElementById('viewDock');
+      assert.notOk(h.app.isCanvasBackground(dock), 'the dock reads as empty canvas');
+      dock.querySelectorAll('*').forEach(el =>
+        assert.notOk(h.app.isCanvasBackground(el), el.className + ' reads as empty canvas'));
+    });
+
+    test('the selection bar steps up when the canvas is too narrow for both', () => {
+      /* At the panel's full width the canvas is down to its floor, and the two
+         overlays do not fit in one row. jsdom evaluates no container queries,
+         so what is checked here is that the rule exists and that it is placed
+         where it can win: a container query carries no specificity of its own,
+         so written above `.sel-bar` it loses to it on source order and does
+         nothing at all. That is exactly how it was written the first time. */
+      assert.includes(CSS, 'container-type: inline-size',
+        'the canvas is not a container, so the bar cannot answer to its width');
+      const rule = CSS.indexOf('@container');
+      const plain = CSS.indexOf('.sel-bar {');
+      assert.ok(rule > -1, 'no container query for the narrow case');
+      assert.ok(rule > plain,
+        'the container query is above the rule it overrides, so it never wins');
+    });
+
+    test('it keeps out of the selection bar\'s corner', () => {
+      // Both are bottom-anchored overlays and both are on screen at once
+      // whenever someone zooms with nodes selected.
+      const h = boot();
+      const dock = h.doc.getElementById('viewDock');
+      const bar = h.doc.getElementById('selBar');
+      assert.ok(dock.closest('.canvas') && bar.closest('.canvas'));
+      assert.notOk(dock === bar.parentElement || bar === dock.parentElement);
+    });
+  });
+
+  /* -------------------------------------------------- the panel's ceiling */
+
+  describe('the results panel leaves the canvas something to work with', () => {
+    function atWidth(px) {
+      const h = boot();
+      Object.defineProperty(h.w, 'innerWidth', { value: px, configurable: true });
+      return h;
+    }
+
+    test('the widest panel still leaves the canvas its minimum', () => {
+      [1024, 1280, 1440, 1920].forEach(w => {
+        const A = atWidth(w).app;
+        const max = A.panelMaxWidth();
+        assert.equal(w - max - A.HANDLE_W, A.CANVAS_MIN,
+          'at ' + w + 'px the canvas is left with the wrong amount');
+      });
+      /* The share the panel can take rises with the window, because the floor
+         is a number of pixels rather than a fraction: a canvas is unusable
+         below a certain size, not below a certain proportion. Pinned at the
+         laptop width this is mostly used at. */
+      [[1280, 0.7], [1024, 0.65]].forEach(([w, cap]) => {
+        const A = atWidth(w).app;
+        const share = A.panelMaxWidth() / w;
+        assert.ok(share <= cap,
+          'at ' + w + 'px the panel can take ' + Math.round(100 * share) + '% of the window');
+      });
+    });
+
+    test('the canvas floor is what sets the ceiling, and it is not a token amount', () => {
+      /* Raised from 320, which let the panel take about three quarters of a
+         1280px window and left the canvas holding barely two nodes side by
+         side. This is the number that decision lives in. */
+      const A = boot().app;
+      assert.ok(A.CANVAS_MIN >= 400, 'the canvas floor is back where it was');
+    });
+
+    test('a width past the ceiling is clamped rather than honoured', () => {
+      const A = atWidth(1280).app;
+      assert.equal(A.clampPanelWidth(99999), A.panelMaxWidth());
+      assert.equal(A.clampPanelWidth(10), A.PANEL_MIN, 'and it has a floor of its own');
+    });
+
+    test('Wide still fits under the ceiling on an ordinary window', () => {
+      // Otherwise the button would silently do less than it says.
+      const A = atWidth(1280).app;
+      assert.ok(A.PANEL_WIDE <= A.panelMaxWidth(),
+        'Wide asks for more than the panel is allowed to be');
     });
   });
 

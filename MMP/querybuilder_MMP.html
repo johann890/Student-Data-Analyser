@@ -129,16 +129,6 @@
   </div>
   <div class="sep"></div>
   <div class="tgroup">
-  <span class="tlabel">View</span>
-  <div class="zoom-group">
-    <button class="zoom-btn" onclick="zoomOut()" title="Zoom out  ( -  or scroll )">&minus;</button>
-    <button class="zoom-level" id="zoomLevel" onclick="zoomReset()" title="Back to 100%">100%</button>
-    <button class="zoom-btn" onclick="zoomIn()" title="Zoom in  ( +  or scroll )">+</button>
-  </div>
-  <button class="file-btn" onclick="zoomToFit()" title="Fit every node on screen  ( F )">Fit</button>
-  </div>
-  <div class="sep"></div>
-  <div class="tgroup">
   <button class="clear-btn" onclick="clearAll()">Clear</button>
   <!-- Help sits with Clear at the end of the left-hand run of controls. Both are
        things you reach for occasionally rather than while building, so they read
@@ -174,6 +164,24 @@
     <div class="sel-bar" id="selBar">
       <span class="sel-count" id="selCount">0 selected</span>
       <button class="sel-del" onclick="deleteSelection()" title="Delete selected nodes  ( Delete )">Delete</button>
+    </div>
+
+    <!-- The view controls sit on the thing they act on. In the bar they were
+         filed with Save and Load, which are about the query; zoom and Fit are
+         about nothing but this canvas, and are the one group whose effect is
+         entirely visible from where they now are.
+
+         Bottom left, because bottom centre is the selection bar's and the two
+         must never cover each other: that bar appears exactly when nodes are
+         selected, which is exactly when someone is likely to be zooming to
+         look at them. -->
+    <div class="view-dock" id="viewDock" aria-label="View controls">
+      <div class="zoom-group">
+        <button class="zoom-btn" onclick="zoomOut()" title="Zoom out  ( -  or scroll )">&minus;</button>
+        <button class="zoom-level" id="zoomLevel" onclick="zoomReset()" title="Back to 100%">100%</button>
+        <button class="zoom-btn" onclick="zoomIn()" title="Zoom in  ( +  or scroll )">+</button>
+      </div>
+      <button class="file-btn" onclick="zoomToFit()" title="Fit every node on screen  ( F )">Fit</button>
     </div>
   </div>
   <!-- The panel is deliberately narrow by default: a wide results column is a
@@ -344,12 +352,14 @@
         <section id="help-toolbar">
           <h3>The toolbar</h3>
           <p>Everything you can do to a query lives along the top, grouped by purpose: build it on
-             the left, manage the file in the middle, change your view on the right.</p>
+             the left, manage the file in the middle, run it on the right. Changing your view is
+             not in the bar at all, because it is not something you do to a query: those controls
+             sit on the canvas, in its bottom left corner.</p>
 
           <figure class="help-fig">
-            <svg viewBox="0 0 1090 78" xmlns="http://www.w3.org/2000/svg" role="img"
-                 aria-label="The toolbar, with its six groups of controls numbered">
-              <rect x="4" y="14" width="1082" height="44" rx="6" fill="#181818" stroke="#252525"/>
+            <svg viewBox="0 0 888 78" xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="The toolbar, with its five groups of controls numbered">
+              <rect x="4" y="14" width="880" height="44" rx="6" fill="#181818" stroke="#252525"/>
 
               <text x="18" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">ADD</text>
               <rect x="44"  y="25" width="58" height="22" rx="5" fill="none" stroke="#2d6640"/>
@@ -373,32 +383,20 @@
               <rect x="622" y="25" width="42" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
               <text x="643" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Load</text>
 
-              <line x1="676" y1="26" x2="676" y2="46" stroke="#2a2a2a"/>
-              <text x="688" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">VIEW</text>
-              <rect x="726" y="25" width="98" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
-              <line x1="758" y1="27" x2="758" y2="45" stroke="#2a2a2a"/>
-              <line x1="792" y1="27" x2="792" y2="45" stroke="#2a2a2a"/>
-              <text x="742" y="40" fill="#b0b0b0" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">&minus;</text>
-              <text x="775" y="40" fill="#b0b0b0" font-size="10" font-family="system-ui, sans-serif" text-anchor="middle">100%</text>
-              <text x="808" y="40" fill="#b0b0b0" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">+</text>
-              <rect x="832" y="25" width="36" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
-              <text x="850" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Fit</text>
+              <rect x="676" y="25" width="44" height="22" rx="5" fill="none" stroke="#7a2828"/>
+              <text x="698" y="40" fill="#e35d5d" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Clear</text>
 
-              <rect x="878" y="25" width="44" height="22" rx="5" fill="none" stroke="#7a2828"/>
-              <text x="900" y="40" fill="#e35d5d" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Clear</text>
-
-              <circle cx="939" cy="36" r="13" fill="none" stroke="#7a6418"/>
-              <text x="939" y="40" fill="#e8c84a" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">?</text>
-              <rect x="992" y="25" width="78" height="22" rx="5" fill="#051830" stroke="#1e7fff"/>
-              <text x="1031" y="40" fill="#3db8ff" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle" font-weight="600">Run Query</text>
+              <circle cx="737" cy="36" r="13" fill="none" stroke="#7a6418"/>
+              <text x="737" y="40" fill="#e8c84a" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">?</text>
+              <rect x="790" y="25" width="78" height="22" rx="5" fill="#051830" stroke="#1e7fff"/>
+              <text x="829" y="40" fill="#3db8ff" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle" font-weight="600">Run Query</text>
 
               <g font-family="system-ui, sans-serif" font-size="10" font-weight="700" text-anchor="middle">
                 <circle cx="44"  cy="14" r="8.5" fill="#e8e8e8"/><text x="44"  y="17.5" fill="#111">1</text>
                 <circle cx="164" cy="14" r="8.5" fill="#e8e8e8"/><text x="164" y="17.5" fill="#111">2</text>
                 <circle cx="574" cy="14" r="8.5" fill="#e8e8e8"/><text x="574" y="17.5" fill="#111">3</text>
-                <circle cx="726" cy="14" r="8.5" fill="#e8e8e8"/><text x="726" y="17.5" fill="#111">4</text>
-                <circle cx="926" cy="20" r="8.5" fill="#e8e8e8"/><text x="926" y="23.5" fill="#111">5</text>
-                <circle cx="992" cy="14" r="8.5" fill="#e8e8e8"/><text x="992" y="17.5" fill="#111">6</text>
+                <circle cx="724" cy="20" r="8.5" fill="#e8e8e8"/><text x="724" y="23.5" fill="#111">4</text>
+                <circle cx="790" cy="14" r="8.5" fill="#e8e8e8"/><text x="790" y="17.5" fill="#111">5</text>
               </g>
             </svg>
             <ol class="help-key">
@@ -414,14 +412,22 @@
                   them.</li>
               <li><b>Query</b>: Save writes the whole graph to a <code>.json</code> file, and Load
                   opens one back.</li>
-              <li><b>View</b>: zoom out, the current zoom (click it to return to 100%), zoom in,
-                  and Fit to bring every node back on screen.</li>
               <li><b>Help</b> opens this window.</li>
               <li><b>Run Query</b> evaluates the graph and fills the results panel. Nothing computes
                   until you press it. It sits at the right-hand end of the bar, where the building
                   sequence finishes.</li>
             </ol>
           </figure>
+
+          <h4>Zoom and Fit are on the canvas</h4>
+          <p>The view controls are not in the bar. They sit in a small panel in the bottom left of
+             the canvas: zoom out, the current zoom, zoom in, and <b>Fit</b>. Clicking the
+             percentage returns you to 100%, and <b>Fit</b> brings every node back on screen.</p>
+          <p>They are there because that is what they act on. Everything in the bar is about the
+             query; these are about nothing but your view of it, and none of them changes the
+             answer. The bottom left is also the one corner nothing else uses, so they never cover
+             the selection bar that appears along the bottom when nodes are picked. <kbd>+</kbd>,
+             <kbd>&minus;</kbd>, <kbd>F</kbd> and scrolling do the same jobs from the keyboard.</p>
 
           <h4>Making the toolbar bigger</h4>
           <p>The edge along the bottom of the bar can be dragged downwards, and the controls grow

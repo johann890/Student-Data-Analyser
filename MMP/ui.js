@@ -3707,7 +3707,13 @@ document.addEventListener('mouseup', onCanvasMouseUp);
 var PANEL_MIN     = 240;   // narrower than this and the table headers wrap
 var PANEL_DEFAULT = 300;   // matches the CSS default, which is the real one
 var PANEL_WIDE    = 720;   // enough for the full enrolment row at 11px
-var CANVAS_MIN    = 320;   // canvas is never squeezed past this, however wide the panel goes
+/* The canvas floor, and so the panel's ceiling: the widest the panel goes is
+   whatever is left after this. Raised from 320, which let the panel take about
+   three quarters of a 1280px window. At that width the canvas holds barely two
+   nodes side by side, and the graph being built is the thing the panel's
+   results are about. A few points back leaves the canvas usable at any panel
+   width someone would actually settle on. */
+var CANVAS_MIN    = 400;
 var HANDLE_W      = 5;
 
 var panelWidth   = PANEL_DEFAULT;  // what the panel is now
@@ -4045,10 +4051,14 @@ function clampBarScale(v) {
    firing, so the two things that measure it are told by hand. */
 function applyBarScale(v, persist, fill) {
   barScale = clampBarScale(v);
-  barFill = (typeof fill === 'number' && isFinite(fill) && fill > 0) ? Math.round(fill) : 0;
+  barFill = (typeof fill === 'number' && isFinite(fill) && fill > 0) ? fill : 0;
   var root = document.documentElement;
   root.style.setProperty('--bar-s', String(barScale));
-  root.style.setProperty('--bar-fill', (barFill / 2) + 'px');   // half above, half below
+  /* Half above, half below, and not rounded to whole pixels: the measured
+     heights are fractional, so rounding the difference left the bar up to a
+     pixel away from the height the drag asked for. Trimmed to two places so the
+     value reads as a number rather than as floating-point noise. */
+  root.style.setProperty('--bar-fill', String(+(barFill / 2).toFixed(2)) + 'px');
   var t = toolbarEl();
   var step = barStepFor(barScale);
   if (t) t.classList.toggle('stacked', !!(step && step.stacked));
@@ -4665,6 +4675,14 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     barScaleNow: function(){ return barScale; },
     barFillNow:  function(){ return barFill; },
     barStepsDrop: function(){ barSteps = null; barStepsW = -1; },
+
+    // canvas gestures
+    isCanvasBackground: isCanvasBackground,
+
+    // results panel width
+    PANEL_MIN: PANEL_MIN, PANEL_DEFAULT: PANEL_DEFAULT, PANEL_WIDE: PANEL_WIDE,
+    CANVAS_MIN: CANVAS_MIN, HANDLE_W: HANDLE_W,
+    panelMaxWidth: panelMaxWidth, clampPanelWidth: clampPanelWidth,
 
     // unique
     uniqueCols: uniqueCols, uniqueCol: uniqueCol, uniqueCellKey: uniqueCellKey,
