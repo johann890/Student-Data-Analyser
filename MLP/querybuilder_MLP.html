@@ -1,0 +1,998 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ENGR489 Honours Project - Student Data Analyser
+</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<div class="toolbar" id="toolbar">
+  <!-- Each labelled run of controls is one flex item, so a bar that has been
+       pulled taller wraps between groups and never inside one. Without this the
+       break lands wherever the row happens to run out, which strands a heading
+       like QUERY at the end of one row with its buttons at the start of the
+       next. The gap inside a group is the gap between them, so the spacing is
+       the same as it was when they were all direct children. -->
+  <div class="tgroup">
+  <span class="tlabel">Add</span>
+  <button class="add-btn source" onclick="addNode('source')">Source</button>
+  <button class="add-btn filter" onclick="addNode('filter')">Filter</button>
+  <!-- Reshape is its own button because it is its own colour. Every node behind
+       it is violet, so the button can be violet and mean it; the Processing
+       button next to it holds three different colours and stays neutral. -->
+  <div class="proc-wrap">
+    <button class="add-btn reshape" onclick="toggleProcMenu(event, 'reshapeMenu')">Reshape <span class="caret">&#9662;</span></button>
+    <div class="proc-menu" id="reshapeMenu" onclick="event.stopPropagation()">
+      <button class="proc-item cat-reshape" onclick="addProcNode('sort')">
+        <span class="proc-name">Sort</span>
+        <span class="proc-desc">Order rows by one or more columns</span>
+      </button>
+      <button class="proc-item cat-reshape" onclick="addProcNode('reverse')">
+        <span class="proc-name">Reverse</span>
+        <span class="proc-desc">Flip row order: Put before Take for the last N</span>
+      </button>
+      <button class="proc-item cat-reshape" onclick="addProcNode('take')">
+        <span class="proc-name">Take</span>
+        <span class="proc-desc">Keep only the first N rows</span>
+      </button>
+      <button class="proc-item cat-reshape" onclick="addProcNode('unique')">
+        <span class="proc-name">Unique</span>
+        <span class="proc-desc">Drop duplicates, or list a column's distinct values</span>
+      </button>
+      <button class="proc-item cat-reshape" onclick="addProcNode('select')">
+        <span class="proc-name">Select</span>
+        <span class="proc-desc">Keep only the columns you choose</span>
+      </button>
+    </div>
+  </div>
+  <div class="proc-wrap">
+    <button class="add-btn processing" onclick="toggleProcMenu(event, 'procMenu')">Processing <span class="caret">&#9662;</span></button>
+    <div class="proc-menu" id="procMenu" onclick="event.stopPropagation()">
+      <div class="proc-group cat-expand">Expand</div>
+      <button class="proc-item cat-expand" onclick="addProcNode('project')">
+        <span class="proc-name">Project</span>
+        <span class="proc-desc">One row per course: A row stops being a student</span>
+      </button>
+      <div class="proc-group cat-summarise">Summarise</div>
+      <button class="proc-item cat-summarise" onclick="addProcNode('aggregate')">
+        <span class="proc-name">Aggregate</span>
+        <span class="proc-desc">Whole table down to one value</span>
+      </button>
+      <button class="proc-item cat-summarise" onclick="addProcNode('aggregateColumns')">
+        <span class="proc-name">Aggregate Columns</span>
+        <span class="proc-desc">One row out, one value per column</span>
+      </button>
+      <button class="proc-item cat-summarise" onclick="addProcNode('aggregateRows')">
+        <span class="proc-name">Aggregate Rows</span>
+        <span class="proc-desc">One value per row, one column out</span>
+      </button>
+      <div class="proc-group cat-branches">Branches</div>
+      <button class="proc-item cat-branches" onclick="addProcNode('selectFor')">
+        <span class="proc-name">Select For</span>
+        <span class="proc-desc">One row per group: Name the column to split on</span>
+      </button>
+      <button class="proc-item cat-branches" onclick="addProcNode('combine')">
+        <span class="proc-name">Combine</span>
+        <span class="proc-desc">Stack rows, or join columns side by side</span>
+      </button>
+      <button class="proc-item cat-branches" onclick="addProcNode('compare')">
+        <span class="proc-name">Compare</span>
+        <span class="proc-desc">Put branches side by side</span>
+      </button>
+    </div>
+  </div>
+  <!-- The third menu. Histogram is not Reshape (it does not keep the rows) and
+       it is not one of Processing's three families either: it neither multiplies
+       rows, nor collapses them to one, nor joins branches. It answers a
+       different kind of question, "how are these spread out", and a menu of its
+       own is how the toolbar says so. One item today; percentiles and
+       cumulative counts are the same kind of question if they are ever wanted. -->
+  <div class="proc-wrap">
+    <button class="add-btn distribution" onclick="toggleProcMenu(event, 'distMenu')">Distribution <span class="caret">&#9662;</span></button>
+    <div class="proc-menu" id="distMenu" onclick="event.stopPropagation()">
+      <button class="proc-item cat-distribution" onclick="addProcNode('histogram')">
+        <span class="proc-name">Histogram</span>
+        <span class="proc-desc">Count rows into bands of a number</span>
+      </button>
+    </div>
+  </div>
+  <button class="add-btn output" onclick="addNode('output')">Output</button>
+  </div>
+  <!-- Where the bar breaks when it needs a second row, rather than wherever the
+       row happens to run out. Left to flex, the break lands on whichever control
+       crosses the edge first, so growing the bar walks through states like Run
+       Query alone on a line with everything else above it. This puts the break
+       in one place: Add on the first row, everything from Query onwards on the
+       second. It is a full-width flex item with no height, inert until the bar
+       is stacked. -->
+  <div class="tbreak" aria-hidden="true"></div>
+  <div class="sep"></div>
+  <div class="tgroup">
+  <span class="tlabel">Query</span>
+  <button class="file-btn" onclick="saveGraph(this)" title="Save this query as a file you can re-open and re-run">Save</button>
+  <button class="file-btn" onclick="openGraphFile(this)" title="Open a saved query">Load</button>
+  <input type="file" id="loadFile" accept="application/json,.json" hidden>
+
+  <!-- The two data pickers, shared by every Source on the canvas: which node
+       asked is carried on the element by pickHeadersFile()/pickYearFiles().
+
+       `accept` is a courtesy to the dialog and is trusted by nothing. The year
+       input carries none at all, because the archive's year files have no
+       extension for a filter to match on, which is precisely why the name
+       rules live in data.js, where the file is actually taken, rather than in an
+       attribute a rename walks straight past. -->
+  <input type="file" id="headersFile" accept="text/plain,.txt" hidden>
+  <input type="file" id="yearFiles" multiple hidden>
+  </div>
+  <div class="sep"></div>
+  <div class="tgroup">
+  <button class="clear-btn" onclick="requestClearAll(this)">Clear</button>
+  <!-- Help sits with Clear at the end of the left-hand run of controls. Both are
+       things you reach for occasionally rather than while building, so they read
+       as one group. Run Query alone is pushed to the right edge by its auto
+       margin, anchoring the corner where the eye finishes, and the empty gap in
+       between keeps the destructive Clear well away from the button people press
+       constantly. -->
+  <button class="help-btn" onclick="openHelp(this)" title="How to use this tool  ( ? )" aria-label="Help">?</button>
+  </div>
+  <button class="run-btn" onclick="runQuery()">Run Query</button>
+</div>
+<!-- The bar's own resize handle, the horizontal twin of the results panel's.
+     Pulling it down gives the controls more room and takes that room from the
+     canvas, which is the same trade the panel handle makes sideways. -->
+<div class="toolbar-resize" id="toolbarResize" role="separator" aria-orientation="horizontal"
+     tabindex="0" aria-label="Resize the toolbar"
+     title="Drag to make the toolbar taller  ( double-click to reset )"></div>
+
+<div class="main">
+  <div class="canvas" id="canvas">
+    <div class="canvas-hint" id="hint">Add nodes using the toolbar above<br><span style="font-size:11px">Source &rarr; Filter &rarr; Output</span></div>
+
+    <!-- Everything in world coordinates lives here and is scaled as one layer, so
+         nodes and arrows can never drift out of register with each other. Overlays
+         that must stay legible at any zoom (marquee, selection bar, edge preview)
+         are siblings of this element, not children. -->
+    <div class="viewport" id="viewport">
+      <svg id="svg"></svg>
+    </div>
+
+    <div class="marquee" id="marquee"></div>
+
+    <div class="sel-bar" id="selBar">
+      <span class="sel-count" id="selCount">0 selected</span>
+      <button class="sel-del" onclick="deleteSelection()" title="Delete selected nodes  ( Delete )">Delete</button>
+    </div>
+
+    <!-- The view controls sit on the thing they act on. In the bar they were
+         filed with Save and Load, which are about the query; zoom and Fit are
+         about nothing but this canvas, and are the one group whose effect is
+         entirely visible from where they now are.
+
+         Bottom left, because bottom centre is the selection bar's and the two
+         must never cover each other: that bar appears exactly when nodes are
+         selected, which is exactly when someone is likely to be zooming to
+         look at them. -->
+    <div class="view-dock" id="viewDock" aria-label="View controls">
+      <div class="zoom-group">
+        <button class="zoom-btn" onclick="zoomOut()" title="Zoom out  ( -  or scroll )">&minus;</button>
+        <button class="zoom-level" id="zoomLevel" onclick="zoomReset()" title="Back to 100%">100%</button>
+        <button class="zoom-btn" onclick="zoomIn()" title="Zoom in  ( +  or scroll )">+</button>
+      </div>
+      <button class="file-btn" onclick="zoomToFit()" title="Fit every node on screen  ( F )">Fit</button>
+    </div>
+  </div>
+  <!-- The panel is deliberately narrow by default: a wide results column is a
+       narrow canvas, and most of the time the canvas is what is being worked on.
+       Two ways to widen it, because they answer different needs. The handle is
+       for settling on a width and leaving it there. The Wide button is for the
+       one table with too many columns to read at the default width: one click
+       out, one click back, with the chosen handle width remembered underneath so
+       returning does not lose it. The label flips to Thin while the panel is
+       wide, so it always names the press rather than the state. -->
+  <div class="panel-resize" id="panelResize" role="separator" aria-orientation="vertical"
+       tabindex="0" aria-label="Resize the results panel"
+       title="Drag to resize the results panel  ( double-click to reset )"></div>
+  <div class="output-panel" id="outputPanel">
+    <div class="panel-head">
+      <span>Results</span>
+      <button class="panel-wide-btn" id="panelWideBtn" onclick="togglePanelWide(this)"
+              aria-pressed="false" title="Widen the panel to see every column  ( W )">Wide</button>
+    </div>
+    <div class="panel-body" id="panelBody">
+      <div class="placeholder">Run a query to see results</div>
+    </div>
+  </div>
+</div>
+
+
+<!-- HELP DIALOG
+     Content lives here in markup rather than in a JavaScript string, so it can
+     be read, corrected and translated without touching the application logic.
+     The script only opens, closes and scrolls it.
+
+     The figures are drawn, not captured. Each is inline SVG in the interface's
+     own palette, which means it scales with the page, needs no image files
+     alongside the HTML, and cannot rot into a stale screenshot of an older
+     build the way a PNG would. Numbered badges on the drawing key into the
+     numbered list beneath it, so the explanations stay selectable text. -->
+<div class="help-dialog" id="helpDialog" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
+  <div class="help-card">
+
+    <div class="help-top">
+      <h2 class="help-title" id="helpTitle">Student Data Analyser: how to use it</h2>
+      <button class="help-close" onclick="closeHelp()" aria-label="Close help">&times;</button>
+    </div>
+
+    <div class="help-main">
+      <nav class="help-nav" id="helpNav">
+        <button class="help-navitem" data-goto="help-start">Start here</button>
+        <button class="help-navitem" data-goto="help-data">Loading the data</button>
+        <button class="help-navitem" data-goto="help-toolbar">The toolbar</button>
+        <button class="help-navitem" data-goto="help-node">Anatomy of a node</button>
+        <button class="help-navitem" data-goto="help-connect">Connecting nodes</button>
+        <button class="help-navitem" data-goto="help-nodes">Node reference</button>
+        <button class="help-navitem" data-goto="help-results">Reading results</button>
+        <button class="help-navitem" data-goto="help-files">Saving a query</button>
+        <button class="help-navitem" data-goto="help-keys">Keyboard and mouse</button>
+      </nav>
+
+      <div class="help-body" id="helpBody">
+
+        <!-- ── START ───────────────────────────────────────── -->
+        <section id="help-start">
+          <h3>Start here</h3>
+          <p>This tool answers questions about student enrolment data. Instead of writing a query
+             in a language, you build the question out of parts. Each part is a <b>node</b> on the
+             canvas. You wire nodes together, and the data flows along the wires from left to
+             right.</p>
+
+          <p>Every query has the same three parts:</p>
+          <ol class="help-steps">
+            <li><b>A Source</b>, where the rows come from. Every query starts with one, and you
+                have to give each Source its data files before it can run. See
+                <b>Loading the data</b>.</li>
+            <li><b>The middle</b>: any number of nodes that narrow, reorder, summarise, combine or
+                count up those rows. You add them from the <b>Reshape</b>, <b>Processing</b> and
+                <b>Distribution</b> menus. This part can be empty.</li>
+            <li><b>An Output</b>, where the answer appears in the panel on the right.</li>
+          </ol>
+
+          <p>Nothing is calculated until you press <b>Run Query</b>. Until then the canvas is just a
+             description of a question, so you can build and rearrange it freely without waiting for
+             anything.</p>
+
+          <div class="help-tip">
+            <b>The quickest possible start:</b> click <b>Source</b>, load <code>headers.txt</code>
+            and then a <code>mcs-students-</code> year file into it, click <b>Output</b>, drag the
+            Output near the Source until a wire appears, and press <b>Run Query</b>.
+          </div>
+        </section>
+
+        <!-- ── DATA FILES ──────────────────────────────────── -->
+        <section id="help-data">
+          <h3>Loading the data</h3>
+          <p>The tool ships with <b>no data at all</b>. You give every Source its own files, and
+             until it has them it will not run. A Source with nothing loaded shows a dashed ring
+             with an amber dot on it, and pressing Run Query tells you which one to fix.</p>
+
+          <p>There are two files, and they go in this order:</p>
+          <ol class="help-steps">
+            <li><b><code>headers.txt</code></b>, the column names and the numbering under them.
+                This has to come first. A year file is a grid of tab-separated fields with no names
+                on it, so nothing can be read out of one until the tool knows what each position
+                holds.</li>
+            <li><b><code>mcs-students-2022</code></b> and friends: one file per year, named for the
+                year, with <b>no extension</b>. Choose as many as you like, in as many goes as you
+                like. The Source then answers about all of them together, or about one year at a
+                time through its <b>Population</b> setting.</li>
+          </ol>
+
+          <p><b>One column file, many year files.</b> A Source holds a single
+             <code>headers.txt</code>, because one column list describes the shape of every year
+             file. The years are a collection it builds up instead. <b>Add</b> puts more in beside
+             what is already loaded rather than replacing them, so 2022 and 2023 today plus 2024
+             when it arrives is three trips to the file picker and nothing to re-choose.</p>
+
+          <p>Each loaded year is listed under step 2 with its own student count and its own
+             <b>x</b> to take just that one back off. Removing the last of them leaves
+             <code>headers.txt</code> in place, so you can pick different years straight away. Use
+             <b>Unload everything</b> when you want to clear both.</p>
+
+          <p>Choosing a year the Source already holds <b>replaces</b> that year, which is what you
+             want when a corrected export arrives. The panel says <q>Replaced 2022</q> rather than
+             making the swap silently, since holding both copies would count that cohort twice.</p>
+
+          <p>If any file in one selection is refused, none of that selection loads and whatever the
+             Source already held is left exactly as it was. A half-loaded Source would be answering
+             about a cohort nobody asked for.</p>
+
+          <p>The file names are not a convention you can bend. A file is only read if it is named
+             exactly <code>headers.txt</code>, or exactly <code>mcs-students-</code> followed by a
+             four-digit year. Anything else is refused on its name before a single byte is read, and
+             the panel tells you what it was expecting.</p>
+
+          <p>Renaming a file does not change what is inside it, and the tool checks. A file called
+             <code>mcs-students-2023</code> whose rows are 2022 enrolments is refused, and so is a
+             year file whose rows do not carry exactly as many fields as <code>headers.txt</code>
+             declares. Both refusals name the line that failed, so you can find a bad export rather
+             than guess at it.</p>
+
+          <div class="help-tip">
+            <b>Each Source owns its files.</b> Two Sources can hold two different sets of years and
+            be compared against each other: load 2022 into one and 2023 into the other, then wire
+            both into a Compare. If you want one Source to span several years, just load several
+            year files into it.
+          </div>
+
+          <p>Eight columns are read: the ID, gender, the first degree, the first major, the year,
+             the course, the grade and the points. Names, usernames, email addresses and ethnicity
+             are in the file, and the tool deliberately does not keep them. Data that is never
+             loaded cannot leak out of an export or a screenshot.</p>
+
+          <p>One more column is worked out rather than read. The first digit of a course code says
+             what level it is taught at, so <code>CGRA151</code> is 100-level and <code>SWEN421</code>
+             is 400-level. Every enrolment therefore gets a <b>Level</b> alongside its subject. The
+             archive is not a single honours year: 2022 alone holds 697 enrolments at 100-level
+             against 454 at 400-level, and averaging those together without being able to see the
+             difference gives you an answer that is wrong without looking wrong.</p>
+
+          <div class="help-tip">
+            <b>Level is a number, so you can measure it.</b> <b>Took level</b> on a Filter keeps
+            students who took at least one course at a given level, and since the comparisons come
+            with it, <q>at 300-level or above</q> becomes the progression question. Put a
+            <b>Project</b> in front of an <b>Aggregate</b> to ask for the highest level a student
+            reached, or the average level across a cohort.
+          </div>
+        </section>
+
+        <!-- ── TOOLBAR ─────────────────────────────────────── -->
+        <section id="help-toolbar">
+          <h3>The toolbar</h3>
+          <p>Everything you can do to a query lives along the top, grouped by purpose: build it on
+             the left, manage the file in the middle, run it on the right. Changing your view is
+             not in the bar at all, because it is not something you do to a query: those controls
+             sit on the canvas, in its bottom left corner.</p>
+
+          <figure class="help-fig">
+            <svg viewBox="0 0 888 78" xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="The toolbar, with its five groups of controls numbered">
+              <rect x="4" y="14" width="880" height="44" rx="6" fill="#181818" stroke="#252525"/>
+
+              <text x="18" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">ADD</text>
+              <rect x="44"  y="25" width="58" height="22" rx="5" fill="none" stroke="#2d6640"/>
+              <text x="73"  y="40" fill="#5ec87a" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Source</text>
+              <rect x="108" y="25" width="50" height="22" rx="5" fill="none" stroke="#7a4a18"/>
+              <text x="133" y="40" fill="#f0944a" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Filter</text>
+              <rect x="164" y="25" width="80" height="22" rx="5" fill="none" stroke="#5a3a7a"/>
+              <text x="204" y="40" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Reshape &#9662;</text>
+              <rect x="250" y="25" width="94" height="22" rx="5" fill="none" stroke="#3d3d3d"/>
+              <text x="297" y="40" fill="#9a9a9a" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Processing &#9662;</text>
+              <rect x="454" y="25" width="56" height="22" rx="5" fill="none" stroke="#1e7fff"/>
+              <text x="482" y="40" fill="#3db8ff" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Output</text>
+
+              <rect x="350" y="25" width="98" height="22" rx="5" fill="none" stroke="#3a4a8a"/>
+              <text x="399" y="40" fill="#8fa8f0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Distribution &#9662;</text>
+
+              <line x1="522" y1="26" x2="522" y2="46" stroke="#2a2a2a"/>
+              <text x="534" y="40" fill="#555" font-size="9" font-family="system-ui, sans-serif" letter-spacing="1">QUERY</text>
+              <rect x="574" y="25" width="42" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
+              <text x="595" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Save</text>
+              <rect x="622" y="25" width="42" height="22" rx="5" fill="none" stroke="#2a2a2a"/>
+              <text x="643" y="40" fill="#b0b0b0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Load</text>
+
+              <rect x="676" y="25" width="44" height="22" rx="5" fill="none" stroke="#7a2828"/>
+              <text x="698" y="40" fill="#e35d5d" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Clear</text>
+
+              <circle cx="737" cy="36" r="13" fill="none" stroke="#7a6418"/>
+              <text x="737" y="40" fill="#e8c84a" font-size="12" font-family="system-ui, sans-serif" text-anchor="middle">?</text>
+              <rect x="790" y="25" width="78" height="22" rx="5" fill="#051830" stroke="#1e7fff"/>
+              <text x="829" y="40" fill="#3db8ff" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle" font-weight="600">Run Query</text>
+
+              <g font-family="system-ui, sans-serif" font-size="10" font-weight="700" text-anchor="middle">
+                <circle cx="44"  cy="14" r="8.5" fill="#e8e8e8"/><text x="44"  y="17.5" fill="#111">1</text>
+                <circle cx="164" cy="14" r="8.5" fill="#e8e8e8"/><text x="164" y="17.5" fill="#111">2</text>
+                <circle cx="574" cy="14" r="8.5" fill="#e8e8e8"/><text x="574" y="17.5" fill="#111">3</text>
+                <circle cx="724" cy="20" r="8.5" fill="#e8e8e8"/><text x="724" y="23.5" fill="#111">4</text>
+                <circle cx="790" cy="14" r="8.5" fill="#e8e8e8"/><text x="790" y="17.5" fill="#111">5</text>
+              </g>
+            </svg>
+            <ol class="help-key">
+              <li><b>Add</b> puts a new node on the canvas. Source and Output are single buttons
+                  because there is only one of each.</li>
+              <li><b>Reshape</b>, <b>Processing</b> and <b>Distribution</b> are three menus of
+                  nodes, split by what they do to the shape of the table. <b>Reshape</b> holds the
+                  five that keep the rows as they are and only change which of them you see, or in
+                  what order. It is violet, and so is every node inside it. <b>Distribution</b>
+                  holds Histogram, and is indigo for the same reason. <b>Processing</b> holds the
+                  rest: the ones that multiply rows, collapse them, or bring branches together. It
+                  stays grey, because it covers three colours and cannot honestly wear any one of
+                  them.</li>
+              <li><b>Query</b>: Save writes the whole graph to a <code>.json</code> file, and Load
+                  opens one back.</li>
+              <li><b>Help</b> opens this window.</li>
+              <li><b>Run Query</b> evaluates the graph and fills the results panel. Nothing computes
+                  until you press it. It sits at the right-hand end of the bar, where the building
+                  sequence finishes.</li>
+            </ol>
+          </figure>
+
+          <h4>Zoom and Fit are on the canvas</h4>
+          <p>The view controls are not in the bar. They sit in a small panel in the bottom left of
+             the canvas: zoom out, the current zoom, zoom in, and <b>Fit</b>. Clicking the
+             percentage returns you to 100%, and <b>Fit</b> brings every node back on screen.</p>
+          <p>They are there because that is what they act on. Everything in the bar is about the
+             query; these are about nothing but your view of it, and none of them changes the
+             answer. The bottom left is also the one corner nothing else uses, so they never cover
+             the selection bar that appears along the bottom when nodes are picked. <kbd>+</kbd>,
+             <kbd>&minus;</kbd>, <kbd>F</kbd> and scrolling do the same jobs from the keyboard.</p>
+
+          <h4>Making the toolbar bigger</h4>
+          <p>The edge along the bottom of the bar can be dragged downwards, and the controls grow
+             with it, so a bar you have pulled down is a bar with bigger buttons rather than one
+             with the same buttons floating in a gap. Drag it back up, or double-click it, to
+             return to the starting size.</p>
+          <p>It stops when the controls would run off the edge of the window or leave too little
+             canvas to build in, so there is no way to pull it far enough to lose a button. On a
+             narrower window the groups wrap onto a second row rather than being pushed out of
+             sight. Like the panel width, the size you settle on is remembered and is yours alone:
+             it is not part of a saved query.</p>
+        </section>
+
+        <!-- ── NODE ANATOMY ────────────────────────────────── -->
+        <section id="help-node">
+          <h3>Anatomy of a node</h3>
+          <p>Every node has the same two parts: a coloured shape you drag around, and a settings
+             panel underneath it. The shape tells you what kind of node it is, and the panel tells
+             you what this particular one does.</p>
+
+          <figure class="help-fig">
+            <svg viewBox="0 0 420 250" xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="A Filter node, with its shape, remove button, result readout and settings panel numbered">
+              <rect x="157" y="26" width="106" height="84" rx="3" fill="#110900" stroke="#7a4a18" stroke-width="2.5"/>
+              <text x="210" y="62" fill="#f0944a" font-size="9" font-weight="700" letter-spacing="1"
+                    font-family="system-ui, sans-serif" text-anchor="middle">FILTER</text>
+              <text x="210" y="82" fill="#9dd0ff" font-size="11" font-weight="700"
+                    font-family="system-ui, sans-serif" text-anchor="middle">112 rows</text>
+
+              <circle cx="252" cy="36" r="9" fill="#1a1a1a" stroke="#3a3a3a"/>
+              <text x="252" y="40" fill="#888" font-size="10" font-family="system-ui, sans-serif" text-anchor="middle">&times;</text>
+
+              <rect x="100" y="120" width="220" height="106" rx="7" fill="#0c0c0c" stroke="#202020"/>
+              <text x="112" y="138" fill="#888" font-size="8" letter-spacing="0.8"
+                    font-family="system-ui, sans-serif">FIELD</text>
+              <rect x="110" y="144" width="200" height="24" rx="4" fill="#121212" stroke="#282828"/>
+              <text x="121" y="160" fill="#d0d0d0" font-size="10" font-family="system-ui, sans-serif">Grade average</text>
+              <text x="297" y="160" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">&#9662;</text>
+              <rect x="110" y="180" width="86" height="24" rx="4" fill="#121212" stroke="#282828"/>
+              <text x="121" y="196" fill="#d0d0d0" font-size="10" font-family="system-ui, sans-serif">at least</text>
+              <text x="183" y="196" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">&#9662;</text>
+              <rect x="204" y="180" width="106" height="24" rx="4" fill="#121212" stroke="#282828"/>
+              <text x="215" y="196" fill="#d0d0d0" font-size="10" font-family="system-ui, sans-serif">5.0</text>
+
+              <g font-family="system-ui, sans-serif" font-size="10" font-weight="700" text-anchor="middle">
+                <circle cx="157" cy="26" r="8.5" fill="#e8e8e8"/><text x="157" y="29.5" fill="#111">1</text>
+                <circle cx="272" cy="28" r="8.5" fill="#e8e8e8"/><text x="272" y="31.5" fill="#111">2</text>
+                <circle cx="290" cy="82" r="8.5" fill="#e8e8e8"/><text x="290" y="85.5" fill="#111">3</text>
+                <circle cx="100" cy="120" r="8.5" fill="#e8e8e8"/><text x="100" y="123.5" fill="#111">4</text>
+              </g>
+            </svg>
+            <ol class="help-key">
+              <li><b>The shape.</b> Drag it to move the node. Colour and outline say what it is:
+                  a green circle is a Source, an orange rectangle a Filter, a blue rounded box an
+                  Output, and processing nodes take the colour of their category.</li>
+              <li><b>Remove.</b> Appears when you hover over the node. Deletes it and any wires
+                  attached to it.</li>
+              <li><b>Result readout.</b> After a run, each node shows what came out of it, usually
+                  a row count. This is how you find the step where a query went wrong, instead of
+                  only seeing the final answer.</li>
+              <li><b>Settings.</b> What this node does. The options you are offered depend on the
+                  columns actually arriving, so a node wired to a different branch may offer
+                  different choices.</li>
+            </ol>
+          </figure>
+        </section>
+
+        <!-- ── CONNECTING ──────────────────────────────────── -->
+        <section id="help-connect">
+          <h3>Connecting nodes</h3>
+          <p>There are no wires to draw by hand. <b>Drag one node near another</b> and a wire
+             appears between them. Drag it away again and the wire goes. The direction is worked out
+             from what the two nodes are, so a Filter dropped beside a Source is always fed by it,
+             never the other way round.</p>
+
+          <figure class="help-fig">
+            <svg viewBox="0 0 540 200" xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="Two Source nodes feeding a Combine node, which feeds an Output node">
+              <defs>
+                <marker id="hArrow" markerWidth="9" markerHeight="9" refX="8" refY="3"
+                        orient="auto"><path d="M0,0 L8,3 L0,6 z" fill="#4a4a4a"/></marker>
+              </defs>
+
+              <circle cx="62" cy="52" r="33" fill="#071510" stroke="#2d6640" stroke-width="2.5"/>
+              <text x="62" y="49" fill="#5ec87a" font-size="8" font-weight="700" letter-spacing="1"
+                    font-family="system-ui, sans-serif" text-anchor="middle">SOURCE</text>
+              <text x="62" y="62" fill="#6f6f6f" font-size="8" font-family="system-ui, sans-serif" text-anchor="middle">2022</text>
+
+              <circle cx="62" cy="148" r="33" fill="#071510" stroke="#2d6640" stroke-width="2.5"/>
+              <text x="62" y="145" fill="#5ec87a" font-size="8" font-weight="700" letter-spacing="1"
+                    font-family="system-ui, sans-serif" text-anchor="middle">SOURCE</text>
+              <text x="62" y="158" fill="#6f6f6f" font-size="8" font-family="system-ui, sans-serif" text-anchor="middle">2023</text>
+
+              <path d="M96,58 C150,66 165,80 208,90" fill="none" stroke="#4a4a4a" stroke-width="1.5" marker-end="url(#hArrow)"/>
+              <path d="M96,142 C150,134 165,120 208,110" fill="none" stroke="#4a4a4a" stroke-width="1.5" marker-end="url(#hArrow)"/>
+
+              <rect x="220" y="62" width="106" height="76" rx="3" fill="#170a11" stroke="#7a2f52" stroke-width="2.5"/>
+              <text x="273" y="105" fill="#e089ae" font-size="9" font-weight="700" letter-spacing="1"
+                    font-family="system-ui, sans-serif" text-anchor="middle">COMBINE</text>
+
+              <path d="M330,100 L400,100" fill="none" stroke="#4a4a4a" stroke-width="1.5" marker-end="url(#hArrow)"/>
+
+              <rect x="410" y="67" width="106" height="66" rx="10" fill="#051830" stroke="#1e7fff" stroke-width="2.5"/>
+              <text x="463" y="104" fill="#3db8ff" font-size="9" font-weight="700" letter-spacing="1"
+                    font-family="system-ui, sans-serif" text-anchor="middle">OUTPUT</text>
+
+              <g font-family="system-ui, sans-serif" font-size="10" font-weight="700" text-anchor="middle">
+                <circle cx="152" cy="62" r="8.5" fill="#e8e8e8"/><text x="152" y="65.5" fill="#111">1</text>
+                <circle cx="220" cy="62" r="8.5" fill="#e8e8e8"/><text x="220" y="65.5" fill="#111">2</text>
+                <circle cx="365" cy="88" r="8.5" fill="#e8e8e8"/><text x="365" y="91.5" fill="#111">3</text>
+              </g>
+            </svg>
+            <ol class="help-key">
+              <li><b>A wire</b> carries a table from one node to the next. Hover over it to see the
+                  columns and the first rows passing through. It is the fastest way to check that a
+                  step did what you meant.</li>
+              <li><b>Combine and Compare accept several wires.</b> They exist to bring branches
+                  together, so more than one arrow may land on them.</li>
+              <li><b>Every other node takes exactly one input.</b> If you drag a second wire onto a
+                  node that is already fed, the tool refuses it rather than merging the two quietly,
+                  so a query never ends up meaning something other than what it looks like.</li>
+            </ol>
+          </figure>
+
+          <p>To branch, wire several nodes to the <b>same</b> source. One table can feed any number
+             of nodes downstream, and that is how you ask two questions of one population and then
+             bring the answers back together with Compare.</p>
+        </section>
+
+        <!-- ── NODE REFERENCE ──────────────────────────────── -->
+        <section id="help-nodes">
+          <h3>Node reference</h3>
+          <p>Three menus hold the thirteen nodes that sit between a Source and an Output, split by
+             what each one does to the shape of the table. A node's colour on the canvas is its
+             group, so you can read an unfamiliar graph at a glance and see where it narrows, where
+             it multiplies, where it collapses, and where branches meet.</p>
+
+          <p><b>Reshape</b> is the menu you will reach for most, and it is the one group whose nodes
+             all leave the meaning of the table intact: a row is still whatever it was before.
+             <b>Processing</b> holds the three groups that change that. Expand makes a row mean
+             something new, Summarise replaces many rows with one, and Branches pulls several tables
+             into one. <b>Distribution</b> holds the one node that answers a different kind of
+             question altogether: not what the rows are, but how they are spread out.</p>
+
+          <figure class="help-fig help-fig-narrow">
+            <svg viewBox="0 0 340 712" xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="The Reshape menu, the Processing menu with its three colour-coded groups, and the Distribution menu">
+              <rect x="8" y="8" width="92" height="22" rx="5" fill="none" stroke="#5a3a7a"/>
+              <text x="54" y="23" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Reshape &#9662;</text>
+              <rect x="8" y="38" width="324" height="186" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <text x="24" y="60" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Sort</text>
+              <text x="24" y="73" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Order rows by one or more columns</text>
+              <text x="24" y="94" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Reverse</text>
+              <text x="24" y="107" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Flip row order</text>
+              <text x="24" y="128" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Take</text>
+              <text x="24" y="141" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Keep only the first N rows</text>
+              <text x="24" y="162" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Unique</text>
+              <text x="24" y="175" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Drop duplicates, or list distinct values</text>
+              <text x="24" y="196" fill="#b48ce0" font-size="11" font-family="system-ui, sans-serif">Select</text>
+              <text x="24" y="209" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Keep only the columns you choose</text>
+
+              <rect x="8" y="244" width="104" height="22" rx="5" fill="none" stroke="#3d3d3d"/>
+              <text x="60" y="259" fill="#9a9a9a" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Processing &#9662;</text>
+              <rect x="8" y="274" width="324" height="326" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <text x="22" y="296" fill="#a8d050" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">EXPAND</text>
+              <text x="24" y="316" fill="#a8d050" font-size="11" font-family="system-ui, sans-serif">Project</text>
+              <text x="24" y="329" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row per course</text>
+              <text x="22" y="356" fill="#5ac8c8" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">SUMMARISE</text>
+              <text x="24" y="376" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate</text>
+              <text x="24" y="389" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Whole table down to one value</text>
+              <text x="24" y="410" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Columns</text>
+              <text x="24" y="423" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row out, one value per column</text>
+              <text x="24" y="444" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Rows</text>
+              <text x="24" y="457" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One value per row, one column out</text>
+              <text x="22" y="484" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
+              <text x="24" y="504" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Select For</text>
+              <text x="24" y="517" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row per group, named by a column</text>
+              <text x="24" y="538" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
+              <text x="24" y="551" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
+              <text x="24" y="572" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
+              <text x="24" y="585" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
+
+              <rect x="8" y="620" width="106" height="22" rx="5" fill="none" stroke="#3a4a8a"/>
+              <text x="61" y="635" fill="#8fa8f0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Distribution &#9662;</text>
+              <rect x="8" y="650" width="324" height="52" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <text x="24" y="672" fill="#8fa8f0" font-size="11" font-family="system-ui, sans-serif">Histogram</text>
+              <text x="24" y="685" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Count rows into bands of a number</text>
+            </svg>
+          </figure>
+
+          <h4 class="help-cat help-cat-source">Source</h4>
+          <p class="help-node-desc">Where a query begins. It reads the rows in the data file and
+             hands them on, one row per student, with that student's courses carried inside the row.
+             Every query needs at least one, and a query with none has nothing to compute. Several
+             Sources in one graph is perfectly normal, and it is how you reach across years.</p>
+
+          <h4 class="help-cat help-cat-filter">Filter</h4>
+          <p class="help-node-desc">Keeps the rows that match a condition and discards the rest.
+             Add more than one condition to narrow things further, and a row then has to satisfy all
+             of them. The fields on offer come from whatever is arriving, and the comparison changes
+             to suit the column: a number gets <b>at least</b> and <b>at most</b>, while a category
+             gets <b>is</b> and <b>is not</b>.</p>
+          <p class="help-node-desc">The comparison dropdown holds six comparisons under
+             <b>Compare</b>, and one more under <b>Range</b>. Choosing <b>in range</b> opens an amber
+             band under the condition with a bound at each end. Both ends count as inside, so a mark
+             range of 70 to 80 keeps a mark of exactly 80. Entering the bounds the other way round
+             means the same band, and the query log prints the one that was actually applied.</p>
+          <p class="help-node-desc">Ranges are offered wherever the ordering is a real one: on any
+             number, on <b>Year</b>, and on <b>Grade</b>, whose letters carry a declared ranking from
+             A+ down to D. That makes &ldquo;grade between A+ and B&rdquo; a band of grades rather
+             than a comparison of spellings. They are not offered on Gender or Specialisation, where
+             the only ordering would be the order somebody typed the list in.</p>
+
+          <h4 class="help-cat help-cat-reshape">Reshape (violet)</h4>
+          <p class="help-note">The same data, narrowed or reordered. Nothing is summarised.</p>
+          <dl class="help-defs">
+            <dt>Sort</dt>
+            <dd>Orders rows by a column, ascending or descending. Add further keys to break ties:
+                the first key decides, the second settles what the first left equal.</dd>
+            <dt>Reverse</dt>
+            <dd>Turns the row order upside down. Same rows, same columns, same count, with the last
+                row becoming the first. Its real use is in front of <b>Take</b>. Take keeps the first
+                N rows, so Sort, Reverse, Take is how you ask for the <b>last</b> N. It needs no
+                column, which is what lets it work on a table whose order did not come from a Sort at
+                all: the order rows arrived in from a Combine, or the order branches were wired into
+                a Compare.</dd>
+            <dt>Take</dt>
+            <dd>Keeps the first N rows and drops the rest. On its own that is arbitrary, so it is
+                nearly always used straight after a Sort. Together they mean <b>top N</b>, or
+                <b>bottom N</b> with a Reverse between them.</dd>
+            <dt>Unique</dt>
+            <dd>Two modes. With no column named it removes duplicate rows by comparing whole rows.
+                Name a column and it gives you that column's distinct values instead, one per row,
+                which is how you get a list of the courses or the years present in a table.</dd>
+            <dt>Select</dt>
+            <dd>Keeps the columns you tick and drops the rest. The rows are untouched, so you get the
+                same rows in the same order with the same count. This narrows a table without
+                summarising it. Put one in front of an Output to show three columns instead of seven,
+                or in front of an Aggregate to make it plain which column is being measured. Columns
+                stay in the order they arrive, and you have to keep at least one.</dd>
+          </dl>
+
+          <h4 class="help-cat help-cat-expand">Expand (lime)</h4>
+          <p class="help-note">The one node that changes what a row <b>means</b>, which is why it
+             has a group to itself.</p>
+          <dl class="help-defs">
+            <dt>Project</dt>
+            <dd>Turns each row into one row per course taken, so a student with eight courses
+                becomes eight rows. <b>From here on a row is an enrolment, not a student</b>, and a
+                Count after a Project counts course registrations rather than people. The node says
+                as much on its panel, and the query log prints the row counts before and after,
+                because this is the one step that can make a later number look eight times too
+                big.
+                <br><br>
+                It is also how a mark or a grade <b>in a particular course</b> becomes something you
+                can filter, sort or average. Without it the tool can tell you whether a student took
+                SWEN421 but never what they got for it, because the marks sit nested inside the row
+                rather than in a column of their own. Wire it after a Source, filter on
+                <b>Course</b>, and from that point <b>Mark</b> and <b>Grade</b> are ordinary
+                columns.
+                <br><br>
+                To get back to one row per student afterwards, use <b>Unique</b> on Student.</dd>
+          </dl>
+
+          <h4 class="help-cat help-cat-summarise">Summarise (teal)</h4>
+          <p class="help-note">Rows collapse to a summary, and the columns are rewritten.</p>
+          <dl class="help-defs">
+            <dt>Aggregate</dt>
+            <dd>Reduces the whole table to a single value: a count, sum, average, median,
+                minimum or maximum of one column.</dd>
+            <dt>Aggregate Columns</dt>
+            <dd>One row out, with the chosen calculation applied to every numeric column at once.
+                Use it for a profile of a group rather than a single figure.</dd>
+            <dt>Aggregate Rows</dt>
+            <dd>The mirror of Aggregate Columns, and the one that runs across the page instead of
+                down it: one value for every row, and a single column out. The row count does not
+                change. It replaces the whole row rather than adding to it, because totalling a row
+                that still carries an ID is not a meaningful thing to have done. Put a <b>Select</b>
+                in front to narrow the row down to the figures you actually mean to combine.</dd>
+          </dl>
+
+          <h4 class="help-cat help-cat-branches">Branches (rose)</h4>
+          <p class="help-note">Several tables in, one out. These are the only nodes that take more
+             than one wire.</p>
+          <dl class="help-defs">
+            <dt>Select For</dt>
+            <dd>A breakdown: one row per group, with the measures you pick alongside. Name the
+                column to split on, such as <b>For each Year</b> or <b>For each Degree</b>, and it
+                runs that split once per value. That turns &ldquo;how many in each year, and their
+                average mark&rdquo; into one node instead of one branch per year.
+                <br>It groups by the same things a <b>Filter</b> can test, including the ones that
+                are not really columns. <b>Took course</b> and <b>Took subject</b> reach inside a
+                student's course list, so you can break a cohort down by course without a
+                <b>Project</b> first. A row stays a student, and a count stays a count of students.
+                <br>It has a second input called <b>Labels</b>, and leaving it empty is the common
+                case: the groups are then whatever values happen to be in the data. Wire a
+                one-column table in and those values become the groups instead, which buys you two
+                things the data alone cannot give. First, a group that nothing matches still gets a
+                row, with a count of zero, and a course nobody took this year is usually exactly the
+                row you are looking for. Second, the groups can come from a different branch
+                entirely, such as the courses that ran in 2022 measured against the enrolments of
+                2024.
+                <br>It does not reorder anything. Put a <b>Sort</b> after it, and then a <b>Take</b>
+                after that, if you want the largest few.</dd>
+            <dt>Combine</dt>
+            <dd>Four modes, in two kinds. <b>Merge</b> adds vertically, stacking branches into one
+                longer table, so their columns have to match. Duplicates are kept unless you ask for
+                them to be dropped. <b>Intersect</b> and <b>Difference</b> narrow that stack to the
+                rows present in every branch, or present in the base alone, which is how you ask who
+                left between two years.
+                <br><b>Join</b> adds horizontally instead. It matches rows on a column you name and
+                puts the other branches' columns onto the end of each base row, so one student's 2022
+                and 2023 figures sit side by side on a single row. The result has the base's rows and
+                never more. A base row with no match is dropped unless you tick <b>Keep base rows
+                with no match</b>, which leaves the missing cells blank instead. Where two branches
+                carry the same column name, the incoming one is renamed after the node it came from
+                rather than overwriting what is already there.</dd>
+            <dt>Compare</dt>
+            <dd>Puts branches beside each other instead: one row per branch, with a column per
+                measure. Use it to hold two populations up against one another rather than to pool
+                them. It suits branches that are not a split of anything, which is the one case
+                <b>Select For</b> cannot cover.
+                <br>Where the branches <b>are</b> a split of one column, such as a branch per year or
+                a branch per degree, <b>Select For</b> says the same thing in a single node instead
+                of one wire per group, and it can say it for values that are not in the data yet.
+                Compare is kept for the other case, and for queries already built on it.</dd>
+          </dl>
+
+          <h4 class="help-cat help-cat-distribution">Distribution (indigo)</h4>
+          <p class="help-note">How the rows are spread across a number, rather than what they
+             are.</p>
+          <dl class="help-defs">
+            <dt>Histogram</dt>
+            <dd>Counts the rows into bands of a number you choose: how many students in each GPA
+                band, how many enrolments at each mark. Pick the column and the width of a band, and
+                you get one row per band with a count beside it, plus any other measure you add.
+                <br>For anything with only a few values, you do not need this node at all.
+                <b>Select For</b> grouped by <b>Grade</b> is already a grade distribution, in the
+                declared A+ to D order. Histogram is for the columns where grouping by value would
+                give you one row per student, which is every genuinely numeric one.
+                <br><b>Bands start at a multiple of the width</b>, not at the smallest value in your
+                data. That is what makes two years binned the same way comparable: bands of 1 always
+                run 4 to 5 and 5 to 6, whoever is looking and whatever year they loaded.
+                <br><b>A value on a boundary belongs to the band above it</b>, except at the very
+                top, where the last band is closed so the largest value has somewhere to go. This is
+                the one rule you cannot check by looking at the result, and it is what makes the
+                counts add up to the rows you started with rather than double-counting every
+                boundary.
+                <br>A band nothing falls in is still a row, with a count of zero, because a gap in
+                the middle of a distribution is usually the thing worth seeing. Rows with no value
+                at all, like a withdrawn enrolment with no mark, are in no band and are reported
+                separately in the query log: a missing mark is not a mark of zero.
+                <br>It does not reorder. The bands come out in order, and the column knows that
+                order, so a <b>Sort</b> after it sorts by band properly rather than alphabetically.</dd>
+          </dl>
+
+          <h4 class="help-cat help-cat-output">Output</h4>
+          <p class="help-node-desc">Where an answer appears. Each Output becomes a block in the
+             results panel, and a graph may have several, so one run can answer several questions at
+             once. Its setting chooses between showing the rows themselves and showing how many of
+             them there are. It only displays what arrives, so for an average or any other figure,
+             wire an <b>Aggregate</b> in front of it.</p>
+          <p class="help-node-desc">When it is showing the rows, it also offers a tick box per
+             column, so you can look at three columns of a wide table without wiring anything up.
+             This changes the view and never the answer: no rows are lost, and Copy and Save write
+             exactly the columns shown. A <b>Select</b> upstream does the same job to the data
+             itself, and the two work together, with Select narrowing what arrives and this
+             narrowing what you see of it.</p>
+        </section>
+
+        <!-- ── RESULTS ─────────────────────────────────────── -->
+        <section id="help-results">
+          <h3>Reading results</h3>
+          <p>Pressing Run Query fills the panel on the right, one block per Output node, in the
+             order the Outputs were added.</p>
+
+          <figure class="help-fig help-fig-narrow">
+            <svg viewBox="0 0 300 250" xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="The results panel showing a table of rows and the export controls">
+              <rect x="4" y="4" width="292" height="242" rx="4" fill="#0e0e0e" stroke="#1c1c1c"/>
+              <text x="18" y="26" fill="#484848" font-size="9" letter-spacing="1" font-family="system-ui, sans-serif">RESULTS</text>
+              <line x1="4" y1="36" x2="296" y2="36" stroke="#1c1c1c"/>
+
+              <text x="18" y="56" fill="#3db8ff" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">OUTPUT 1</text>
+              <text x="282" y="56" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif" text-anchor="end">112 rows</text>
+
+              <rect x="18" y="66" width="264" height="20" fill="#141414"/>
+              <text x="28"  y="80" fill="#8f8f8f" font-size="9" font-family="system-ui, sans-serif">ID</text>
+              <text x="130" y="80" fill="#8f8f8f" font-size="9" font-family="system-ui, sans-serif">Course</text>
+              <text x="228" y="80" fill="#8f8f8f" font-size="9" font-family="system-ui, sans-serif">Grade</text>
+              <text x="28"  y="100" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">300103250</text>
+              <text x="130" y="100" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">COMP261</text>
+              <text x="228" y="100" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">A</text>
+              <rect x="18" y="106" width="264" height="20" fill="#121212"/>
+              <text x="28"  y="120" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">300103250</text>
+              <text x="130" y="120" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">DATA201</text>
+              <text x="228" y="120" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">D</text>
+              <text x="28"  y="140" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">300118904</text>
+              <text x="130" y="140" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">SWEN221</text>
+              <text x="228" y="140" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">B+</text>
+
+              <rect x="18" y="162" width="44" height="20" rx="4" fill="none" stroke="#2f2f2f"/>
+              <text x="40" y="176" fill="#9a9a9a" font-size="9" font-family="system-ui, sans-serif" text-anchor="middle">Copy</text>
+              <rect x="68" y="162" width="44" height="20" rx="4" fill="none" stroke="#2f2f2f"/>
+              <text x="90" y="176" fill="#9a9a9a" font-size="9" font-family="system-ui, sans-serif" text-anchor="middle">Save</text>
+
+              <rect x="18" y="196" width="180" height="24" rx="4" fill="#121212" stroke="#282828"/>
+              <text x="28"  y="212" fill="#d0d0d0" font-size="10" font-family="system-ui, sans-serif">output1</text>
+              <text x="176" y="212" fill="#4a4a4a" font-size="10" font-family="system-ui, sans-serif">.csv</text>
+
+              <g font-family="system-ui, sans-serif" font-size="10" font-weight="700" text-anchor="middle">
+                <circle cx="18"  cy="56"  r="8.5" fill="#e8e8e8"/><text x="18"  y="59.5" fill="#111">1</text>
+                <circle cx="18"  cy="66"  r="0"   fill="none"/>
+                <circle cx="18"  cy="162" r="8.5" fill="#e8e8e8"/><text x="18"  y="165.5" fill="#111">2</text>
+                <circle cx="18"  cy="196" r="8.5" fill="#e8e8e8"/><text x="18"  y="199.5" fill="#111">3</text>
+              </g>
+            </svg>
+            <ol class="help-key">
+              <li><b>One block per Output</b>, with the row count beside its name, then the table
+                  itself. Long tables scroll inside the panel.</li>
+              <li><b>Copy</b> puts the table on the clipboard, ready to paste into a spreadsheet.
+                  <b>Save</b> writes it out as a CSV file.</li>
+              <li><b>The file name</b> for that CSV. The <code>.csv</code> ending is fixed and
+                  cannot be typed over.</li>
+            </ol>
+          </figure>
+
+          <h4>Making the panel wider</h4>
+          <p>The panel starts narrow so that the canvas has room. When a table has more columns
+             than fit, there are two ways to widen it, and the canvas gives up the space rather
+             than being covered.</p>
+          <ul class="help-steps">
+            <li><b>Wide</b>, at the top of the panel, opens it far enough to read a full row at
+               once. The button then reads <b>Thin</b>, and pressing it puts the panel back.
+               <kbd>W</kbd> does the same.</li>
+            <li><b>The edge between the canvas and the panel</b> can be dragged to any width in
+               between. Double-click it to return to the starting width.</li>
+          </ul>
+          <p>Whichever width you settle on is remembered the next time you open the tool. It is a
+             setting of your own rather than part of a query: saved <code>.json</code> files carry
+             the graph only, so opening someone else's query leaves your layout alone.</p>
+
+          <div class="help-tip">
+            <b>Check a query rather than trusting it.</b> Every node shows its own row count after
+            a run, and hovering a wire shows the table passing along it. Between them you can follow
+            the data step by step and find the point where a result stopped being what you
+            expected.
+          </div>
+        </section>
+
+        <!-- ── FILES ───────────────────────────────────────── -->
+        <section id="help-files">
+          <h3>Saving a query</h3>
+          <p><b>Save</b> writes the whole graph to a <code>.json</code> file, meaning every node,
+             its settings and every wire, and it asks you to name the file first. The
+             <code>.json</code> ending is fixed, so a saved query is always one the tool can open
+             again. Save a second time and it offers the name you used before, so revising a query
+             does not scatter near-identical files around.</p>
+          <p><b>Load</b> opens one back onto the canvas, replacing whatever is there. Only
+             <code>.json</code> files are accepted.</p>
+          <p>What a file holds is the <b>question</b>, not the answer. Opening a saved query
+             restores the graph, and pressing Run Query evaluates it against the data as it stands
+             at that moment, so the same query re-run next year gives you next year's answer.</p>
+
+          <p><b>The data is never saved with it.</b> A query file records the <b>names</b> of the
+             files each Source was given and nothing out of them: no student, no grade, not even a
+             course code. That is deliberate. Queries get emailed around, and student records should
+             not travel with them.</p>
+
+          <p>So loading a query gives you the graph back with every Source empty, and each Source
+             then names the files it was built against. Choose them again and the query answers
+             exactly as it did before. A query saved last year and loaded against this year's files
+             is the same question asked of new data, which is the whole point of keeping one.</p>
+        </section>
+
+        <!-- ── KEYS ────────────────────────────────────────── -->
+        <section id="help-keys">
+          <h3>Keyboard and mouse</h3>
+          <table class="help-keys">
+            <tr><td>Drag a node near another</td><td>Wire them together</td></tr>
+            <tr><td>Drag a node away</td><td>Break the wire</td></tr>
+            <tr><td>Hover a wire</td><td>Preview the table passing along it</td></tr>
+            <tr><td>Drag on empty canvas</td><td>Select everything inside the box</td></tr>
+            <tr><td><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>A</kbd></td><td>Select all nodes</td></tr>
+            <tr><td><kbd>Delete</kbd> or <kbd>Backspace</kbd></td><td>Delete the selection</td></tr>
+            <tr><td><kbd>Esc</kbd></td><td>Clear the selection, or close a dialog</td></tr>
+            <tr><td>Hold <kbd>Space</kbd> and drag, or drag with the middle button</td><td>Pan the canvas</td></tr>
+            <tr><td>Scroll, or <kbd>+</kbd> and <kbd>&minus;</kbd></td><td>Zoom in and out</td></tr>
+            <tr><td><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>0</kbd></td><td>Back to 100%</td></tr>
+            <tr><td><kbd>F</kbd></td><td>Fit every node on screen</td></tr>
+            <tr><td><kbd>W</kbd></td><td>Widen the results panel, and back again</td></tr>
+            <tr><td>Drag the panel's left edge</td><td>Set the results panel to any width</td></tr>
+            <tr><td>Drag the toolbar's bottom edge</td><td>Make the toolbar and its buttons bigger</td></tr>
+            <tr><td><kbd>?</kbd></td><td>Open this window</td></tr>
+          </table>
+        </section>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SAVE DIALOG
+     Static markup like the marquee and selection bar, rather than built on
+     demand: it is one fixed shape, and having it in the page means it can be
+     inspected and restyled without reading the script.
+
+     The buttons are wired inline like the toolbar's. Dismissing by clicking the
+     backdrop is not, because it carries a condition. See ui.js. -->
+<div class="save-dialog" id="saveDialog">
+  <div class="save-card" role="dialog" aria-modal="true" aria-labelledby="saveTitle">
+    <h2 class="save-title" id="saveTitle">Save query</h2>
+    <p class="save-sub">The file records the query, not its results. Open it later and press Run Query to evaluate it against the data as it stands then.</p>
+
+    <label class="save-field">
+      <input type="text" id="saveName" spellcheck="false" autocomplete="off"
+             aria-label="File name">
+      <span class="save-ext">.json</span>
+    </label>
+    <div class="save-hint" id="saveHint"></div>
+
+    <div class="save-actions">
+      <button class="file-btn" onclick="closeSaveDialog()">Cancel</button>
+      <button class="save-go" onclick="confirmSaveGraph()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- CLEAR CONFIRMATION
+     The save dialog's card, reused rather than rebuilt: both are one fixed
+     shape the toolbar raises over the canvas, and a second mechanism for the
+     same thing is one more to keep in step. Only the accent differs, because
+     the confirming button here throws work away rather than writing it out.
+
+     role="alertdialog" rather than "dialog": the screen reader should read the
+     question on open, not wait to be asked what the card says.
+
+     The checkbox is answered in ui.js and lasts the session. Nothing about it
+     is written to disk. -->
+<div class="save-dialog confirm-dialog" id="clearDialog">
+  <div class="save-card" role="alertdialog" aria-modal="true"
+       aria-labelledby="clearTitle" aria-describedby="clearSub">
+    <h2 class="save-title" id="clearTitle">Are you sure you want to clear the canvas?</h2>
+    <p class="save-sub" id="clearSub">Every node and connection goes, and the data loaded into the Sources goes with them. There is no undo.</p>
+
+    <label class="confirm-again">
+      <input type="checkbox" id="clearDontAsk">
+      <span>Do not show this again</span>
+    </label>
+
+    <div class="save-actions">
+      <button class="file-btn" id="clearCancel" onclick="closeClearDialog()">Cancel</button>
+      <button class="confirm-go" onclick="confirmClearAll()">Clear canvas</button>
+    </div>
+  </div>
+</div>
+
+<!-- Three classic scripts, in this order and not as modules. The tool is opened
+     from Finder at file://, where a module script is fetched with CORS against an
+     opaque origin and refused; classic scripts sharing one global scope are what
+     works there. data.js declares the archive and the Table type, engine.js the
+     evaluation, ui.js the canvas, and ui.js last, because it ends by wiring the
+     events and painting the first frame. -->
+<script src="data.js"></script>
+<script src="engine.js"></script>
+<script src="ui.js"></script>
+</body>
+</html>
