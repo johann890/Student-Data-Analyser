@@ -129,7 +129,7 @@
   </div>
   <div class="sep"></div>
   <div class="tgroup">
-  <button class="clear-btn" onclick="clearAll()">Clear</button>
+  <button class="clear-btn" onclick="requestClearAll(this)">Clear</button>
   <!-- Help sits with Clear at the end of the left-hand run of controls. Both are
        things you reach for occasionally rather than while building, so they read
        as one group. Run Query alone is pushed to the right edge by its auto
@@ -952,6 +952,35 @@
     <div class="save-actions">
       <button class="file-btn" onclick="closeSaveDialog()">Cancel</button>
       <button class="save-go" onclick="confirmSaveGraph()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- CLEAR CONFIRMATION
+     The save dialog's card, reused rather than rebuilt: both are one fixed
+     shape the toolbar raises over the canvas, and a second mechanism for the
+     same thing is one more to keep in step. Only the accent differs, because
+     the confirming button here throws work away rather than writing it out.
+
+     role="alertdialog" rather than "dialog": the screen reader should read the
+     question on open, not wait to be asked what the card says.
+
+     The checkbox is answered in ui.js and lasts the session. Nothing about it
+     is written to disk. -->
+<div class="save-dialog confirm-dialog" id="clearDialog">
+  <div class="save-card" role="alertdialog" aria-modal="true"
+       aria-labelledby="clearTitle" aria-describedby="clearSub">
+    <h2 class="save-title" id="clearTitle">Are you sure you want to clear the canvas?</h2>
+    <p class="save-sub" id="clearSub">Every node and connection goes, and the data loaded into the Sources goes with them. There is no undo.</p>
+
+    <label class="confirm-again">
+      <input type="checkbox" id="clearDontAsk">
+      <span>Do not show this again</span>
+    </label>
+
+    <div class="save-actions">
+      <button class="file-btn" id="clearCancel" onclick="closeClearDialog()">Cancel</button>
+      <button class="confirm-go" onclick="confirmClearAll()">Clear canvas</button>
     </div>
   </div>
 </div>

@@ -2649,3 +2649,74 @@ th.cmp-num { color: #383838 !important; }
   padding: 6px 2px 2px;
   text-align: center;
 }
+
+/* ═══════════════════════════════════════════════════════════
+   CLEAR CONFIRMATION
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* The card, the backdrop and the entry animation are the save dialog's: the
+   markup carries .save-dialog as well as this class, so everything in that
+   block above applies and only the differences are written here. Two modal
+   cards that drift apart in padding or shadow read as two different tools. */
+
+/* Wider than the save card by the width of a question. The title there is two
+   words; here it is a sentence, and at 330px it breaks across three lines with
+   one word stranded on the last. */
+.confirm-dialog .save-card { width: 364px; }
+
+/* The question is a sentence rather than a label, so it needs the leading a
+   sentence wants, and a little more room before the explanation. */
+.confirm-dialog .save-title {
+  line-height: 1.45;
+  margin-bottom: 7px;
+}
+
+/* Where the save dialog has its name field. The checkbox is an aside to the
+   question, not part of answering it, so it is quieter than the prose above
+   and separated from the buttons rather than grouped with them. */
+.confirm-again {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 11px;
+  color: #6f6f6f;
+  cursor: pointer;
+  user-select: none;
+  /* The whole row is the target, but only as wide as the words: a label that
+     stretched the card's width would arm a session-long setting on a click
+     landing in the empty space beside it. */
+  width: fit-content;
+}
+.confirm-again:hover { color: #9a9a9a; }
+.confirm-again input[type=checkbox] {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  flex-shrink: 0;
+  /* Grey, not the violet the config panels use for picking data. This box
+     turns a safety rail off; it should not look like one more option. */
+  accent-color: #5a5a5a;
+  cursor: pointer;
+}
+.confirm-again input[type=checkbox]:focus-visible {
+  outline: 2px solid #2a5aaa;
+  outline-offset: 2px;
+}
+
+/* .save-go's shape in Clear's colours, and the same red it carries in the
+   toolbar. The button that ends this dialog does what the button that opened
+   it was going to do, so it should look like the same act, not like the blue
+   Save that means "write my work out". */
+.confirm-go {
+  background: #1a0808;
+  border: 1px solid #7a2828;
+  border-radius: 4px;
+  color: #e35d5d;
+  font-family: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 5px 16px;
+  cursor: pointer;
+}
+.confirm-go:hover { background: #2e0d0d; }
