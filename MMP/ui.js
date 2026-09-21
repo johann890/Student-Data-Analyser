@@ -905,6 +905,76 @@ function clearAll() {
   render();
   setOutput('<div class="placeholder">Run a query to see results</div>');
 }
+/* CLEAR CONFIRMATION
+   ---------------------------------------------------------------------------
+   Clear is the only control in the bar that destroys work with no way back:
+   the graph goes, and the loaded data goes with it, because the Sources
+   holding it stop existing. It also sits in the same run of buttons as Help
+   and a short distance from Run Query, which is pressed constantly, so the
+   accidental press is a real one rather than a hypothetical.
+
+   clearAll() stays the unconditional act. The guard is a separate entry point,
+   so anything that clears the canvas as a step in some larger operation keeps
+   doing so without a dialog appearing in the middle of it. */
+
+/* Held for the session and nowhere else. Persisting the answer would let one
+   impatient afternoon switch the guard off for every future one, and a user
+   who does not remember dismissing it has no way back except reloading the
+   page. A reload is a low enough price for the reverse mistake. */
+var skipClearConfirm = false;
+
+function clearDialogEl() { return document.getElementById('clearDialog'); }
+function clearDialogOpen() {
+  var d = clearDialogEl();
+  return !!(d && d.classList.contains('open'));
+}
+
+// The control that opened it, so focus goes back to the press it came from
+// rather than to <body> when the card disappears.
+var clearDialogBtn = null;
+
+function requestClearAll(btn) {
+  // An empty canvas is nothing to lose, so there is nothing to confirm. Asking
+  // anyway would teach the user to dismiss the prompt unread, which is exactly
+  // the habit that makes it useless on the press that matters.
+  if (skipClearConfirm || nodes.length === 0) { clearAll(); return; }
+
+  var d = clearDialogEl();
+  // No markup, no guard: an older page, or a headless harness that loaded the
+  // script alone. A missing dialog should leave Clear working, not silent.
+  if (!d) { clearAll(); return; }
+
+  clearDialogBtn = btn || null;
+  var box = document.getElementById('clearDontAsk');
+  // Unticked on every open. It is a choice about this press, made now, not a
+  // box left however it was last seen.
+  if (box) box.checked = false;
+  d.classList.add('open');
+  // Focus lands on Cancel, not on the destructive button. The dialog exists
+  // because the last press may have been a mistake, and a stray Enter into a
+  // freshly opened card should not finish the job the guard just interrupted.
+  var cancel = document.getElementById('clearCancel');
+  if (cancel && cancel.focus) cancel.focus();
+}
+
+function closeClearDialog() {
+  var d = clearDialogEl();
+  if (d) d.classList.remove('open');
+  var btn = clearDialogBtn;
+  clearDialogBtn = null;
+  if (btn && btn.focus) btn.focus();
+}
+
+function confirmClearAll() {
+  var box = document.getElementById('clearDontAsk');
+  /* Read only on the way through a confirm. Ticking the box and then
+     cancelling is not an answer to "clear this?", so it cannot stand in for
+     one next time; the checkbox suppresses a question the user has answered,
+     not one they backed out of. */
+  if (box && box.checked) skipClearConfirm = true;
+  closeClearDialog();
+  clearAll();
+}
 
 /* Every one of these buttons calls render(), which destroys the button that was
    just clicked along with the rest of the panel. Focus then falls to <body>,
@@ -4605,6 +4675,22 @@ if (saveDialogEl_) {
   });
 }
 
+/* The clear confirmation dismisses the same way, and by the same rule. There
+   is no field to drag across here, but the two cards should not answer the
+   mouse differently for a reason the user cannot see. Dismissing is Cancel:
+   the canvas is left alone. */
+var clearDlgEl = clearDialogEl();
+if (clearDlgEl) {
+  var clearBackdropPress = false;
+  clearDlgEl.addEventListener('mousedown', function(e) {
+    clearBackdropPress = (e.target === clearDlgEl);
+  });
+  clearDlgEl.addEventListener('mouseup', function(e) {
+    if (clearBackdropPress && e.target === clearDlgEl) closeClearDialog();
+    clearBackdropPress = false;
+  });
+}
+
 var saveNameEl = document.getElementById('saveName');
 if (saveNameEl) {
   saveNameEl.addEventListener('input', updateSaveHint);
@@ -4678,8 +4764,11 @@ document.addEventListener('keydown', function(e) {
     // The dialog is modal, so it consumes the key. Without this, cancelling a
     // save would also clear the selection underneath it: A second, unasked-for
     // change from a keystroke that meant "never mind".
-    if (saveDialogOpen()) { e.preventDefault(); closeSaveDialog(); return; }
-    if (helpOpen())       { e.preventDefault(); closeHelp(); return; }
+    if (saveDialogOpen())  { e.preventDefault(); closeSaveDialog(); return; }
+    // Escape on a confirmation means "no", which is what Cancel means, so it
+    // closes without clearing. The checkbox goes with it unread.
+    if (clearDialogOpen()) { e.preventDefault(); closeClearDialog(); return; }
+    if (helpOpen())        { e.preventDefault(); closeHelp(); return; }
     closeProcMenu();
     clearSelection();
     return;
@@ -4690,6 +4779,12 @@ document.addEventListener('keydown', function(e) {
      stray F or Delete rearrange or destroy the graph you came here to learn
      about. Escape above is the deliberate exception: it closes it. */
   if (helpOpen()) return;
+  /* And the confirmation, for the same reason with more at stake. The check
+     below catches this while focus is inside the card, but a click on the
+     backdrop can leave focus on <body> with the dialog still up, and the one
+     moment a stray Delete must not reach the canvas is while the user is being
+     asked whether to destroy it. */
+  if (clearDialogOpen()) return;
   if (isTypingTarget(e.target) || isTypingTarget(document.activeElement)) return;
 
   var mod = e.ctrlKey || e.metaKey;
@@ -4756,6 +4851,9 @@ window.removeStat = removeStat;
 window.removeCriterion = removeCriterion;
 window.clearCritList = clearCritList;
 window.clearAll = clearAll;
+window.requestClearAll = requestClearAll;
+window.closeClearDialog = closeClearDialog;
+window.confirmClearAll = confirmClearAll;
 window.runQuery = runQuery;
 window.copyOutput = copyOutput;
 window.saveOutput = saveOutput;
@@ -5003,6 +5101,9 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     openSaveDialog: openSaveDialog, closeSaveDialog: closeSaveDialog,
     confirmSaveGraph: confirmSaveGraph, saveDialogOpen: saveDialogOpen,
     updateSaveHint: updateSaveHint,
+    requestClearAll: requestClearAll, closeClearDialog: closeClearDialog,
+    confirmClearAll: confirmClearAll, clearDialogOpen: clearDialogOpen,
+    skipClearConfirm: function(){ return skipClearConfirm; },
     openHelp: openHelp, closeHelp: closeHelp, helpOpen: helpOpen,
     syncHelpNav: syncHelpNav, scrollHelpTo: scrollHelpTo,
     QUERY_EXT: QUERY_EXT, MAX_QUERY_FILE_BYTES: MAX_QUERY_FILE_BYTES
