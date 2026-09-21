@@ -1,7 +1,7 @@
 /* The aggregation nodes.
    Two nodes, one implementation: Aggregate reduces a whole table to a single
    value, AggregateColumns reduces each column to one value on a single row.
-   Neither had a suite before — these tests were written alongside the addition
+   Neither had a suite before. These tests were written alongside the addition
    of Median, and cover the operation set as a whole rather than that one op.
 
    Following the convention of the other suites: every expected value is

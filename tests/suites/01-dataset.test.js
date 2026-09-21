@@ -122,7 +122,7 @@ module.exports = ({ describe, test }) => {
 
     test('gpa is the points-weighted mean of the course grades, not a separate figure', () => {
       /* The university's own formula: sum(gradePoint x points) / sum(points).
-         Weighted, so a 30-point course counts twice a 15-point one — which is
+         Weighted, so a 30-point course counts twice a 15-point one, which is
          the part a plain mean would get wrong. */
       S.forEach(s => {
         let pts = 0, weighted = 0;
@@ -201,8 +201,8 @@ module.exports = ({ describe, test }) => {
     });
 
     test('the preference table only names subjects that exist', () => {
-      // A stale entry would not throw — subjectWeight() returns 1 for anything
-      // unlisted — so removing a subject from the catalogue without updating
+      // A stale entry would not throw: SubjectWeight() returns 1 for anything
+      // unlisted, so removing a subject from the catalogue without updating
       // this table would silently flatten the bias into noise.
       Object.keys(app.SPEC_SUBJECTS).forEach(spec => {
         app.SPEC_SUBJECTS[spec].forEach(subj => {

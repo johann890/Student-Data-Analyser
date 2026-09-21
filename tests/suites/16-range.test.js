@@ -1,4 +1,4 @@
-/* The range operator — value in [min .. max].
+/* The range operator: Value in [min .. max].
 
    Point 5 of the settled list: bands should generalise to ranges, "covering
    year ranges and mark ranges rather than grades alone". So the test that
@@ -129,14 +129,25 @@ module.exports = ({ describe, test }) => {
       const [s, f, o] = h.build('source', 'filter', 'output');
       const groups = h.qa('[data-node="' + f.id + '"][data-key="crit.0.op:gpa"] optgroup')
         .map(g => g.getAttribute('label'));
-      assert.deepEqual(groups, ['Compare', 'Range']);
+      // List joined Compare and Range when the `in` operator arrived. A number
+      // carries all three, and the headings are what keep the two that need a
+      // band below the row from reading as two more comparators.
+      assert.deepEqual(groups, ['Compare', 'Range', 'List']);
     });
 
-    test('a field with no range on offer gets a plain list, not an empty group', () => {
+    test('a field with no range on offer gets no Range group', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
       h.set(f.id, 'crit.0.field', 'specialisation');
-      assert.equal(h.qa('[data-node="' + f.id + '"][data-key="crit.0.op:specialisation"] optgroup').length, 0);
+      const groups = h.qa('[data-node="' + f.id + '"][data-key="crit.0.op:specialisation"] optgroup')
+        .map(g => g.getAttribute('label'));
+      /* The empty group this test was written to catch is still caught: an
+         unordered category has no range and gets no heading for one. It does
+         get a List, because "is one of these three specialisations" is a
+         question it can answer, so the assertion is that Range is absent
+         rather than that nothing is grouped. */
+      assert.excludes(groups, 'Range');
+      assert.deepEqual(groups, ['Compare', 'List']);
       assert.equal(h.optionsOf(f.id, 'crit.0.op:specialisation').length, A.ENUM_OPS.length);
     });
 
@@ -237,7 +248,7 @@ module.exports = ({ describe, test }) => {
     test('a declared order supplies a default even with no value set', () => {
       /* letterGrade carries an order and nothing else. Without the fallback the
          control renders with nothing selected, the browser shows option one and
-         the model still says "" — the disagreement the sort keys avoid. */
+         the model still says "": The disagreement the sort keys avoid. */
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
       h.set(f.id, 'crit.0.field', 'letterGrade');
@@ -307,7 +318,7 @@ module.exports = ({ describe, test }) => {
     });
 
     test('a grade band is not a string comparison', () => {
-      /* 'A+' < 'A-' lexically, because '+' precedes '-' in ASCII — the exact
+      /* 'A+' < 'A-' lexically, because '+' precedes '-' in ASCII. The exact
          trap GRADE_ORDER exists for. A band from A+ to A- must contain A. */
       const n = band('letterGrade', 'A+', 'A-').count();
       assert.equal(n, gradeBand('A+', 'A-'));
@@ -356,8 +367,8 @@ module.exports = ({ describe, test }) => {
       h.set(f.id, 'crit.0.op:gpa', 'between');
       h.set(f.id, 'crit.0.value:gpa', '80');
       h.set(f.id, 'crit.0.value:gpa:max', '70');
-      // Typing into a number box does not rebuild the panel — that would
-      // destroy the field being typed into — so the note is read after a redraw
+      // Typing into a number box does not rebuild the panel. That would
+      // destroy the field being typed into, so the note is read after a redraw
       h.w.render();
       assert.includes(h.text('.crit-range-note'), 'other way round');
     });
@@ -367,7 +378,7 @@ module.exports = ({ describe, test }) => {
     test('a cleared bound stops the run instead of ranking as zero', () => {
       /* Number('') is 0. Without a blank check the cleared upper bound ranked
          as zero, the bounds were then put "the right way round", and
-         "between 70 and nothing" quietly became "between 0 and 70" — a
+         "between 70 and nothing" quietly became "between 0 and 70": A
          different question, answered confidently. */
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');

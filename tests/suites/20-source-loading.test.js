@@ -3,7 +3,7 @@
    Suite 19 proves what the parser will and will not accept. This one proves
    what the application does with it: that a Source refuses to run before it has
    files, that the two pickers are ordered, that a Source owns its own data and
-   not its neighbour's, and — the part this feature was asked for — that saving
+   not its neighbour's, and (the part this feature was asked for), that saving
    a query saves the graph and not the records, so loading one asks for the
    files again.
 
@@ -23,7 +23,7 @@ module.exports = ({ describe, test }) => {
 
   /* Every test starts from an empty canvas with no data anywhere. State inside
      the IIFE is module-global, so without this a test would inherit whatever
-     the one before it loaded — which is the exact confusion these tests are
+     the one before it loaded, which is the exact confusion these tests are
      about. */
   function reset() {
     w.clearAll();
@@ -33,8 +33,8 @@ module.exports = ({ describe, test }) => {
   const src = () => { reset(); const [s] = t.build('source'); return s; };
   const chain = () => { reset(); return t.build('source', 'output'); };
   const resultText = () => doc.getElementById('panelBody').textContent.replace(/\s+/g, ' ').trim();
-  /* A node's element carries no id of its own — render() keeps that mapping in a
-     closure — so the node is found through a control inside it, which is the
+  /* A node's element carries no id of its own (render() keeps that mapping in a
+     closure), so the node is found through a control inside it, which is the
      same handle every other helper in the harness uses. */
   const panelOf = (id) => {
     const ctl = doc.querySelector('[data-node="' + id + '"]');
@@ -46,7 +46,7 @@ module.exports = ({ describe, test }) => {
      shipped page is always in: no test flag, so no fallback, so a Source has
      nothing at all until someone hands it files. Restored afterwards even if
      the block throws, or one failing assertion would take the rest of the
-     suite — which runs against the synthetic data — down with it. */
+     suite (which runs against the synthetic data) down with it. */
   function asShipped(fn) {
     const syn = app.syntheticDataset();
     app.setSyntheticDataset(null);
@@ -304,8 +304,8 @@ module.exports = ({ describe, test }) => {
      The archive carries two years, which is not enough to tell "added" from
      "replaced" apart from "there are two of them now". The rest are made by
      rewriting the Year column of the real 2022 export, so they are genuine
-     files by every rule in the parser — same 27 columns, same tab separation,
-     same rows — differing only in the one field the file name has to agree
+     files by every rule in the parser (same 27 columns, same tab separation,
+     same rows) differing only in the one field the file name has to agree
      with. */
   const YEAR_COL = 8;
   function yearFileFor(year) {
@@ -1137,7 +1137,7 @@ module.exports = ({ describe, test }) => {
     });
   });
 
-  /* ══ 7. SAVE AND LOAD — THE POINT OF ALL OF IT ═════════════════════════════ */
+  /* ══ 7. SAVE AND LOAD: THE POINT OF ALL OF IT ═════════════════════════════ */
   describe('a saved query holds the graph and not the records', () => {
     test('the file format says which version it is', () => {
       assert.equal(app.FILE_VERSION, 3, 'the dataset descriptor is version 3');

@@ -54,16 +54,152 @@ body {
   cursor: pointer;
 }
 .run-btn:hover { background: #0a2e5a; }
+/* Red at rest, not only on hover: Clear throws the whole graph away, and the
+   one destructive control in the bar should read as destructive before the
+   pointer reaches it. Hover fades a fill in behind it, the same gesture the
+   Add buttons use, so it belongs to the same family despite the warning. */
 .clear-btn {
   background: transparent;
-  border: 1px solid #2a2a2a;
+  border: 1px solid #7a2828;
   border-radius: 5px;
-  color: #555;
+  color: #e35d5d;
   padding: 5px 13px;
   font-size: 11px;
   cursor: pointer;
+  transition: background 0.12s;
 }
-.clear-btn:hover { color: #c05050; border-color: #4a1a1a; }
+.clear-btn:hover { background: #240d0d; }
+
+/* ── TOOLBAR SCALE ───────────────────────────────────────
+   The bar can be pulled taller by the handle beneath it, and everything in it
+   grows with it: a 60px bar holding 22px buttons would read as a mistake rather
+   than as more room. One number does it. `--bar-s` multiplies every measurement
+   the bar is built from, so the controls keep their proportions to each other
+   and to the space around them at any height.
+
+   Every value below is the value that rule already had, written as a
+   multiplication instead of a constant. At --bar-s: 1 each one computes to the
+   same pixel it always did, so the default bar is unchanged by this feature
+   rather than merely close to what it was.
+
+   Scoped under .toolbar because two of these classes are shared with the save
+   dialog and the node panels, which are not part of the bar and must not move
+   when it does. */
+:root { --bar-s: 1; --bar-gap: calc(8px * var(--bar-s)); --bar-fill: 0px; }
+
+.toolbar {
+  /* --bar-fill is the difference between the height the drag asked for and the
+     height this layout comes to on its own, spread above and below. It is what
+     lets the bar follow the pointer smoothly across the point where the
+     controls go from one row to two: without it the bar has to jump a whole
+     row, since no arrangement of the controls has a height in between. */
+  padding: calc(9px * var(--bar-s) + var(--bar-fill)) calc(16px * var(--bar-s));
+  gap: var(--bar-gap);
+  /* Wrapping is what makes growing safe. The bar is nearly full at its default
+     size on a laptop, so controls that grow have to go somewhere: onto a second
+     row, rather than off the right edge where Run Query would be unreachable.
+     Without this the flex row squeezes instead, and the first thing to give is
+     the label inside Run Query, which breaks across two lines on its own. */
+  flex-wrap: wrap;
+  align-content: center;
+}
+.toolbar > *, .tgroup > * { flex-shrink: 0; }
+.toolbar button { white-space: nowrap; }
+
+/* A labelled run of controls, kept on one row. The gap matches the bar's own,
+   so grouping changes where a wrap may fall and nothing else. */
+.tgroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bar-gap);
+}
+
+/* The chosen break. A full-width item cannot share a row, so everything after
+   it starts a new one. That empty row of its own sits between the two rows of
+   controls and is charged a row gap on each side, and a negative margin cannot
+   take either back, because a flex line is never shorter than nothing. Halving
+   the row gap while stacked is what pays for it: two halves between the rows of
+   controls comes to the one gap they should have, the same gap as between the
+   controls themselves. */
+.tbreak { display: none; }
+.toolbar.stacked {
+  row-gap: calc(var(--bar-gap) / 2);
+}
+.toolbar.stacked .tbreak {
+  display: block;
+  flex-basis: 100%;
+  height: 0;
+}
+/* The divider that separated these groups is doing nothing at the start of a
+   row, and a stray vertical line above Query reads as a mistake. */
+.toolbar.stacked .tbreak + .sep { display: none; }
+.toolbar .tlabel {
+  font-size: calc(10px * var(--bar-s));
+  letter-spacing: calc(1px * var(--bar-s));
+  margin-right: calc(2px * var(--bar-s));
+}
+.toolbar .add-btn {
+  padding: calc(5px * var(--bar-s)) calc(13px * var(--bar-s));
+  font-size: calc(11px * var(--bar-s));
+  border-radius: calc(5px * var(--bar-s));
+}
+.toolbar .add-btn.reshape,
+.toolbar .add-btn.processing,
+.toolbar .add-btn.distribution { gap: calc(6px * var(--bar-s)); }
+.toolbar .caret { font-size: calc(13px * var(--bar-s)); }
+.toolbar .sep { height: calc(22px * var(--bar-s)); margin: 0 calc(2px * var(--bar-s)); }
+.toolbar .file-btn {
+  font-size: calc(11px * var(--bar-s));
+  padding: calc(5px * var(--bar-s)) calc(11px * var(--bar-s));
+  border-radius: calc(4px * var(--bar-s));
+}
+.toolbar .clear-btn {
+  padding: calc(5px * var(--bar-s)) calc(13px * var(--bar-s));
+  font-size: calc(11px * var(--bar-s));
+  border-radius: calc(5px * var(--bar-s));
+}
+.toolbar .run-btn {
+  padding: calc(5px * var(--bar-s)) calc(18px * var(--bar-s));
+  font-size: calc(11px * var(--bar-s));
+  border-radius: calc(5px * var(--bar-s));
+}
+.toolbar .help-btn {
+  width: calc(24px * var(--bar-s));
+  height: calc(24px * var(--bar-s));
+  font-size: calc(12px * var(--bar-s));
+}
+.toolbar .zoom-group { border-radius: calc(5px * var(--bar-s)); }
+.toolbar .zoom-btn { width: calc(24px * var(--bar-s)); font-size: calc(13px * var(--bar-s)); }
+.toolbar .zoom-level {
+  font-size: calc(10px * var(--bar-s));
+  min-width: calc(46px * var(--bar-s));
+  padding: calc(5px * var(--bar-s)) calc(4px * var(--bar-s));
+}
+
+/* The grab strip under the bar, built the same way as the results panel's: a
+   thin visible strip with an invisible hit area hung off both sides, so it is
+   easy to catch without drawing a line across the window. It sits between the
+   bar and the canvas in the column, so a taller bar shortens the canvas rather
+   than covering the top of it. */
+.toolbar-resize {
+  height: 5px;
+  flex-shrink: 0;
+  background: #0e0e0e;
+  cursor: row-resize;
+  position: relative;
+  z-index: 9;
+}
+.toolbar-resize::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: -4px; bottom: -4px;
+}
+.toolbar-resize:hover,
+.toolbar-resize:focus-visible { background: #1e7fff33; outline: none; }
+.toolbar-resize.dragging { background: #1e7fff66; }
+
+body.toolbar-resizing { cursor: row-resize; user-select: none; -webkit-user-select: none; }
+body.toolbar-resizing * { cursor: row-resize !important; }
 
 /* ── LAYOUT ──────────────────────────────────────────────── */
 .main { display: flex; flex: 1; overflow: hidden; }
@@ -74,11 +210,15 @@ body {
   background: #000;
   position: relative;
   overflow: hidden;
+  /* So the overlays inside can answer to the canvas's own width rather than
+     the window's. The canvas is a flex child and gets its width from the row,
+     which a panel dragged wide can halve without the window changing at all. */
+  container-type: inline-size;
 }
 .canvas-hint {
   position: absolute; top: 50%; left: 50%;
   transform: translate(-50%,-50%);
-  color: #1e1e1e; font-size: 13px;
+  color: #7a7a7a; font-size: 13px;
   text-align: center; pointer-events: none; user-select: none;
   line-height: 1.8;
 }
@@ -97,8 +237,8 @@ body {
   width: 220px; /* matches config panel width so shape centering is predictable */
   /* The wrapper is 220px wide but the shape inside is only ~100px, leaving wide
      transparent gutters. Without this those gutters swallow pointer events meant
-     for the connection arrows painted underneath. Only the visible children —
-     the shape and the config panel — capture input. */
+     for the connection arrows painted underneath. Only the visible children
+     (the shape and the config panel) capture input. */
   pointer-events: none;
 }
 .node > * { pointer-events: auto; }
@@ -136,7 +276,7 @@ body {
   display: contents;
 }
 
-/* Output: rounded rectangle — vivid electric blue */
+/* Output: rounded rectangle, vivid electric blue */
 .shape-output {
   width: 106px; height: 66px;
   border-radius: 10px;
@@ -154,7 +294,7 @@ body {
 /* ── REMOVE BUTTON ───────────────────────────────────────── */
 /* Sits just inside the shape's top-right corner. It must not overhang into the
    wrapper gutter: .node is pointer-events:none, and only the button's own
-   painted pixels re-enable events — any overhang beyond the shape lands on dead
+   painted pixels re-enable events. Any overhang beyond the shape lands on dead
    space and can't be clicked. Positive insets keep the whole button on the
    shape. */
 .node-remove {
@@ -193,7 +333,7 @@ body {
   gap: 5px;
 }
 
-/* Field label — slightly brighter than before */
+/* Field label: Slightly brighter than before */
 .cfg-label {
   font-size: 9px;
   color: #888888;
@@ -204,8 +344,8 @@ body {
 
 /* Every control in a node panel, not just selects and number boxes. A text
    input was previously unstyled: it rendered at the browser's default width
-   with a light background, and — because a grid item defaults to min-width:auto
-   — refused to shrink into its column, so it spilled past the panel edge.
+   with a light background, and (because a grid item defaults to min-width:auto)
+   refused to shrink into its column, so it spilled past the panel edge.
    Filtering by Grade (a text column) hit exactly that. */
 select,
 input[type=number],
@@ -249,7 +389,7 @@ input[type=number] { -moz-appearance: textfield; }
 .criterion-controls {
   display: grid;
   gap: 4px;
-  /* field | op | value — fixed columns so nothing clips */
+  /* field | op | value: Fixed columns so nothing clips */
   grid-template-columns: 80px 38px 1fr;
   align-items: center;
 }
@@ -258,7 +398,7 @@ input[type=number] { -moz-appearance: textfield; }
   grid-template-columns: 80px 1fr;
 }
 /* stacked variant: course pickers carry a code and a full title, which will not
-   survive an 80px column — each control gets the panel's whole width instead. */
+   survive an 80px column. Each control gets the panel's whole width instead. */
 .criterion-controls.stack {
   grid-template-columns: 1fr;
 }
@@ -296,7 +436,7 @@ select option {
 /* ── RANGE BAND ──────────────────────────────────────────── */
 /* Appears under a criterion whose operator is "in range", and only then. It is
    banded down the left exactly as .criterion-row is, so it reads as belonging
-   to that criterion rather than as a criterion of its own — but in amber rather
+   to that criterion rather than as a criterion of its own, but in amber rather
    than the panel's grey, so a filter carrying a range announces itself without
    the panel having to be read.
 
@@ -319,7 +459,7 @@ select option {
   color: #c9a227;
   opacity: 0.85;
 }
-/* low | "to" | high — fixed centre column so the two bounds stay equal width
+/* low | "to" | high. Fixed centre column so the two bounds stay equal width
    however long their contents, which matters because one is often a dropdown
    of full specialisation names and the other the same. */
 .crit-range-pair {
@@ -355,6 +495,115 @@ select option {
 }
 .crit-range input:focus,
 .crit-range select:focus { border-color: #c9a227; }
+
+/* ── LIST BAND ───────────────────────────────────────────── */
+/* The range band's sibling: same placement, same left banding, same tag-and-
+   note structure, so the two read as one idea with two settings. Violet rather
+   than amber because a panel may carry both and a glance should tell them
+   apart; the violet is the accent-color the measure tick boxes already use,
+   which is also where this band borrows its controls from. */
+.crit-list {
+  margin-top: 4px;
+  padding: 5px 7px;
+  border-left: 2px solid #7a5aa8;
+  border-radius: 0 4px 4px 0;
+  background: #140f1c;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
+.crit-list-tag {
+  font-size: 8px;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: #a98ad0;
+  opacity: 0.85;
+}
+/* The count rides on the tag rather than in the note, so "how many have I
+   picked" is answerable without reading a sentence. */
+.crit-list-tag b {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: #3a2a55;
+  color: #d0bcf0;
+  font-size: 8px;
+  font-weight: 600;
+}
+.crit-list-clear {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  padding: 1px 5px;
+  border: 1px solid #3a2a55;
+  border-radius: 3px;
+  background: #1c1428;
+  color: #a98ad0;
+  font-size: 9px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.crit-list-clear:hover { border-color: #7a5aa8; color: #d0bcf0; }
+/* A wrapping row of short chips. Course codes are seven characters and
+   specialisation names are twenty, so the boxes size to their content rather
+   than to a column grid that would have to suit both. */
+.crit-list-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  /* Eighty-two courses under thirteen headings is taller than any panel, so the
+     grid scrolls inside the band and the note under it stays reachable. */
+  max-height: 210px;
+  overflow-y: auto;
+}
+.crit-list-group {
+  font-size: 8px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: #6a5a85;
+  margin-top: 3px;
+}
+.crit-list-group:first-child { margin-top: 0; }
+.crit-pick {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: #8a8a9a;
+  cursor: pointer;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.crit-pick input[type=checkbox] {
+  width: 11px;
+  height: 11px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: #7a5aa8;
+  cursor: pointer;
+}
+.crit-pick:hover { color: #c0c0d0; }
+/* A ticked value is legible at a glance without reading its box, which is what
+   makes a grid of eighty scannable. */
+.crit-pick.on { color: #d0bcf0; }
+.crit-list-text {
+  width: 100%;
+  border-color: #3a2a55;
+  background: #0f0b16;
+}
+.crit-list-text:focus { border-color: #7a5aa8; }
+.crit-list-note {
+  font-size: 9px;
+  line-height: 1.35;
+  color: #8578a0;
+}
+/* The operator select wears the band's colour once the list is chosen, the same
+   way .op-wide wears the range's. */
+.op-list {
+  border-color: #3a2a55 !important;
+  color: #a98ad0;
+}
 
 
 /* ── THE DATA FILES ON A SOURCE PANEL ─────────────────────────────────────────
@@ -406,7 +655,7 @@ select option {
 }
 
 /* min-width:0 so a long list of year names truncates inside the row instead of
-   forcing the panel wider — the same reason every other flexed label in this
+   forcing the panel wider. The same reason every other flexed label in this
    stylesheet carries it. */
 .src-what {
   flex: 1;
@@ -451,7 +700,7 @@ select option {
 
 /* The year files a Source is holding, one per line under step 2. Indented and
    banded down the left so they read as the contents of that step rather than as
-   steps of their own — the order they were chosen in carries no meaning, and
+   steps of their own. The order they were chosen in carries no meaning, and
    numbering them would claim it did.
 
    Each row carries its own remove control, because a collection you can only
@@ -491,7 +740,7 @@ select option {
 
 /* Present at rest rather than revealed on hover. These sit inside an already
    busy panel, and a control that appears only under the pointer is a control a
-   keyboard user cannot find — the node's own delete button can be hover-only
+   keyboard user cannot find. The node's own delete button can be hover-only
    because the node is the thing under the pointer, which is not true of a row
    in a list. Dim until hovered, so eight of them do not shout. */
 .src-year-drop {
@@ -538,7 +787,7 @@ select option {
 
 /* The outcome of the last load. Banded down the left in the colour of what
    happened, which is the treatment .cmp-hint.proj-warn already uses for the one
-   hint that warns — a refusal has to be readable as a refusal without being
+   hint that warns. A refusal has to be readable as a refusal without being
    read. word-break, because a refusal quotes the file name that caused it and
    those are not guaranteed to have spaces in them. */
 .src-notice {
@@ -552,7 +801,7 @@ select option {
 .src-notice.bad { border-left-color: #7a2a2a; color: #e08080; }
 
 /* A Source holding no files, on the canvas. The circle keeps its shape and its
-   colour — it is still a Source — and states the difference in its outline: a
+   colour (it is still a Source), and states the difference in its outline: a
    dashed ring in a paler green than the solid one a loaded Source wears.
 
    Green rather than amber because nothing is wrong. The node is unfinished, and
@@ -647,7 +896,7 @@ body.panel-resizing * { cursor: col-resize !important; }
 .panel-head {
   padding: 8px 10px 8px 16px;
   border-bottom: 1px solid #1c1c1c;
-  font-size: 10px; color: #484848;
+  font-size: 10px; color: #909090;
   text-transform: uppercase; letter-spacing: 1px;
   flex-shrink: 0;
   display: flex;
@@ -660,7 +909,7 @@ body.panel-resizing * { cursor: col-resize !important; }
   background: transparent;
   border: 1px solid #242424;
   border-radius: 3px;
-  color: #5a5a5a;
+  color: #909090;
   font-family: inherit;
   font-size: 9px;
   letter-spacing: 0.07em;
@@ -680,7 +929,7 @@ body.panel-resizing * { cursor: col-resize !important; }
   display: flex; flex-direction: column;
   gap: 12px;
 }
-.placeholder { color: #282828; font-size: 12px; text-align: center; margin-top: 40px; }
+.placeholder { color: #7a7a7a; font-size: 12px; text-align: center; margin-top: 40px; }
 
 .query-log {
   background: #080808;
@@ -729,7 +978,7 @@ body.panel-resizing * { cursor: col-resize !important; }
 .rbtn:hover { background: #051830; border-color: #1e7fff; color: #3db8ff; }
 .rbtn.rbtn-done { background: #0e2016; border-color: #2d6640; color: #5ec87a; }
 
-/* Results no longer match the graph — export is withdrawn until re-run */
+/* Results no longer match the graph. Export is withdrawn until re-run */
 .stale-note {
   border: 1px solid #4a3a10;
   background: #191305;
@@ -823,8 +1072,8 @@ body.panel-resizing * { cursor: col-resize !important; }
      original width was chosen while a wide row could still push through the
      border; the fix for that was `table-layout: fixed` plus per-cell ellipsis
      below, not the narrow box, so the box no longer has to pay for it. Sized to
-     hold PREVIEW_COLS columns at the same density the four-column version had —
-     change the two together or columns start to crowd. */
+     hold PREVIEW_COLS columns at the same density the four-column version had.
+     Change the two together or columns start to crowd. */
   width: 340px;
   max-width: 340px;
   overflow: hidden;
@@ -879,14 +1128,15 @@ body.panel-resizing * { cursor: col-resize !important; }
 }
 
 /* ═══════════════════════════════════════════════════════════
-   PROCESSING FAMILY — toolbar dropdown + Compare node
+   PROCESSING FAMILY: Toolbar dropdown + Compare node
    Appended block. Nothing above this line is modified.
    ═══════════════════════════════════════════════════════════ */
 
 /* ── PROCESSING DROPDOWN ─────────────────────────────────── */
 .proc-wrap { position: relative; display: inline-flex; }
 .add-btn.reshape,
-.add-btn.processing {
+.add-btn.processing,
+.add-btn.distribution {
   /* inline-flex so the caret centres on the label's optical midline rather
      than sitting on the text baseline */
   display: inline-flex;
@@ -898,6 +1148,10 @@ body.panel-resizing * { cursor: col-resize !important; }
   color: #b48ce0;
 }
 .add-btn.reshape:hover { background: #180e22; }
+/* Like Reshape and unlike Processing: one family sits behind this button, so it
+   can wear that family's colour honestly. */
+.add-btn.distribution { border-color: #3a4a8a; color: #8fa8f0; }
+.add-btn.distribution:hover { background: #0c1024; }
 .caret {
   font-size: 13px;
   line-height: 1;
@@ -952,7 +1206,7 @@ body.panel-resizing * { cursor: col-resize !important; }
 }
 .shape-compare:active { cursor: grabbing; }
 
-/* Three unequal bars — reads as "several series" next to the Filter rectangle */
+/* Three unequal bars. Reads as "several series" next to the Filter rectangle */
 .cmp-glyph { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
 .cmp-glyph i { display: block; height: 3px; border-radius: 1px; background: #b48ce0; opacity: 0.7; }
 
@@ -1110,7 +1364,7 @@ th.cmp-num { color: #383838 !important; }
 .export-name input:focus { outline: none; }
 .export-name input::placeholder { color: #4a4a4a; }
 
-/* The extension is shown but not editable — it follows the format, not the
+/* The extension is shown but not editable. It follows the format, not the
    user's choice, and letting it be typed would invite ".csv.csv". */
 .export-ext {
   color: #4a4a4a;
@@ -1133,8 +1387,8 @@ th.cmp-num { color: #383838 !important; }
    Appended block. Nothing above this line is modified.
    ═══════════════════════════════════════════════════════════ */
 
-/* Same palette as Compare — both are Processing-family nodes and arrive from
-   the same dropdown — but a squatter shape with its own glyph, so the two are
+/* Same palette as Compare (both are Processing-family nodes and arrive from
+   the same dropdown), but a squatter shape with its own glyph, so the two are
    told apart at a glance on a crowded canvas. */
 .shape-take {
   width: 106px; height: 72px;
@@ -1210,7 +1464,7 @@ th.cmp-num { color: #383838 !important; }
                      100% 72%, 100% 28%, 0 28%);
 }
 
-/* Ascending bars — "ordered". Take's glyph is equal bars with a cut through
+/* Ascending bars: "ordered". Take's glyph is equal bars with a cut through
    them, so the two Processing nodes are distinguishable at a glance even
    though they share the family colour. */
 .sort-glyph { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
@@ -1222,7 +1476,7 @@ th.cmp-num { color: #383838 !important; }
 .sort-list { display: flex; flex-direction: column; gap: 5px; }
 .sort-row {
   display: grid;
-  /* rank | column | direction | delete — fixed so nothing clips or reflows
+  /* rank | column | direction | delete: Fixed so nothing clips or reflows
      when a direction label changes length ("A → Z" vs "high → low") */
   grid-template-columns: 12px 1fr 74px 16px;
   gap: 4px;
@@ -1260,7 +1514,7 @@ th.cmp-num { color: #383838 !important; }
      lagging behind the pointer. */
 }
 
-/* Grid gives the zoom something to read against — without it, zooming out of a
+/* Grid gives the zoom something to read against, without it, zooming out of a
    sparse graph looks identical to zooming in on one. It scales with the world,
    so the squares shrink as you zoom out and reinforce the sense of distance. */
 .viewport::before {
@@ -1330,7 +1584,7 @@ th.cmp-num { color: #383838 !important; }
 
 /* ── SELECTED NODE ───────────────────────────────────────── */
 /* A ring drawn outside the border rather than a border change, so the shape's
-   own colour coding — which is how node type is read — survives selection. */
+   own colour coding (which is how node type is read) survives selection. */
 .node.selected .node-shape {
   box-shadow: 0 0 0 2px #3db8ff, 0 0 14px rgba(61, 184, 255, 0.45);
 }
@@ -1340,6 +1594,34 @@ th.cmp-num { color: #383838 !important; }
 }
 
 /* ── SELECTION ACTION BAR ────────────────────────────────── */
+/* ── VIEW DOCK ───────────────────────────────────────────
+   Zoom and Fit, docked on the canvas rather than filed in the toolbar. Same
+   treatment as the selection bar, because they are the same kind of thing: a
+   small panel floating over the canvas rather than part of the page around it,
+   and reading as one family is what stops the second one looking like a
+   mistake. More rounded than the bar's controls, because a floating panel with
+   square corners reads as a fragment of the layout that has come loose.
+
+   Bottom left is the only free corner. Bottom centre belongs to the selection
+   bar, and the two appear together more often than not. */
+.view-dock {
+  position: absolute;
+  z-index: 60;
+  bottom: 16px; left: 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  background: #131316;
+  border: 1px solid #2e2e34;
+  border-radius: 10px;
+  padding: 6px 8px;
+  box-shadow: 0 6px 22px rgba(0, 0, 0, 0.65);
+}
+/* Nested radii: the inner group follows the outer curve rather than cutting
+   across it. */
+.view-dock .zoom-group { border-radius: 6px; }
+.view-dock .file-btn   { border-radius: 6px; }
+
 .sel-bar {
   position: absolute;
   display: none;
@@ -1356,10 +1638,23 @@ th.cmp-num { color: #383838 !important; }
   font-size: 11px;
 }
 .sel-bar.show { display: flex; }
+
+/* Centred along the bottom, until the canvas is too narrow to hold it beside
+   the view dock. The two are on screen together whenever someone zooms in on a
+   selection, and at the panel's full width there is no room for both in one
+   row, so the selection bar takes the row above rather than landing on the
+   dock.
+
+   After the rule it overrides, not before it: a container query adds no
+   specificity of its own, so the plain `bottom: 16px` above wins on source
+   order wherever this is placed first. */
+@container (max-width: 660px) {
+  .sel-bar { bottom: 66px; }
+}
 .sel-count { color: #9dd0ff; font-weight: 600; letter-spacing: 0.02em; }
 .sel-hint { color: #4a4a4a; font-size: 10px; }
 /* Clear was removed from the bar: deselecting already has two ways to happen
-   that need no button — Esc, and a click on empty canvas — and a destructive
+   that need no button (Esc, and a click on empty canvas), and a destructive
    action reads more clearly on its own than next to a harmless one. The
    clearSelection() function stays; only the button is gone. */
 .sel-del {
@@ -1394,8 +1689,8 @@ th.cmp-num { color: #383838 !important; }
 
 /* ── PROCESSING MENU GROUPS ──────────────────────────────── */
 /* Five flat items in one dropdown is a list to read; three labelled groups is
-   a menu to scan. The grouping is by what the node does to a table — reshape
-   the rows, summarise them, or hold branches apart — which is also the order
+   a menu to scan. The grouping is by what the node does to a table (reshape
+   the rows, summarise them, or hold branches apart), which is also the order
    a query tends to be built in. */
 .proc-group {
   font-size: 9px;
@@ -1486,7 +1781,7 @@ th.cmp-num { color: #383838 !important; }
 .shape-combine:active { cursor: grabbing; }
 
 /* Two short bars converging on a dot, then one long bar: streams in, one out.
-   Compare's glyph is three bars held apart — the two read as opposites, which
+   Compare's glyph is three bars held apart. The two read as opposites, which
    is what they are. */
 .cmb-glyph { display: flex; align-items: center; gap: 3px; }
 .cmb-in { display: flex; flex-direction: column; gap: 3px; }
@@ -1522,7 +1817,7 @@ th.cmp-num { color: #383838 !important; }
 
 /* Geometry only. The colour comes from the PROCESSING CATEGORY COLOURS block at
    the foot of this file, where Unique is grouped with Sort and Take as a
-   row-shaping node — a hue set once for the category rather than per node.
+   row-shaping node. A hue set once for the category rather than per node.
 
    The glyph is defined there too, for the same reason: it is drawn in
    currentColor, so it cannot drift out of step with the shape around it. */
@@ -1539,7 +1834,7 @@ th.cmp-num { color: #383838 !important; }
 
 /* Geometry only; the violet comes from the category block at the foot of this
    file, where Select joins Sort, Take and Unique. It belongs with them because
-   it leaves the data alone — Unique in single-column mode already narrows a
+   it leaves the data alone. Unique in single-column mode already narrows a
    table to one column, so the group has held a projection all along. */
 .shape-select {
   width: 106px; height: 72px;
@@ -1588,7 +1883,7 @@ th.cmp-num { color: #383838 !important; }
 }
 .node-port.filled > i { background: #6a6a6a; border-color: #8a8a8a; }
 
-/* Label sits to the LEFT of the dot, out in the wrapper gutter — the shape is
+/* Label sits to the LEFT of the dot, out in the wrapper gutter. The shape is
    narrower than .node, and that margin is otherwise unused. Right-aligned so
    the text grows away from the shape instead of over it. */
 .node-port > em {
@@ -1603,7 +1898,7 @@ th.cmp-num { color: #383838 !important; }
 .node-port.filled > em { color: #8f8f8f; }
 
 /* Select lists one box per incoming column, and a student header is seven of
-   them — a single column of checkboxes would make the node twice the height of
+   them. A single column of checkboxes would make the node twice the height of
    everything around it. Two columns keeps it in proportion; the list stays in
    header order, read down the first column then the second. */
 .sel-cols {
@@ -1625,7 +1920,7 @@ th.cmp-num { color: #383838 !important; }
 /* Until now every processing node was one violet, and the glyph carried the
    whole burden of telling them apart. That worked while there were four; with
    seven it does not, and it also threw away information the toolbar already
-   knows — the menu has grouped these nodes for some time, and the canvas said
+   knows. The menu has grouped these nodes for some time, and the canvas said
    nothing about it.
 
    Colour now carries the category and the glyph carries the node:
@@ -1657,7 +1952,7 @@ th.cmp-num { color: #383838 !important; }
   color: #b48ce0;
 }
 
-/* Project shares the box, not the colour — see the Expand group below. */
+/* Project shares the box, not the colour. See the Expand group below. */
 .shape-project {
   width: 106px; height: 72px;
   border-radius: 3px;
@@ -1686,7 +1981,7 @@ th.cmp-num { color: #383838 !important; }
 
 /* Columns side by side, the middle one hollow. Drawn in currentColor so it
    cannot drift out of step with the shape around it, and laid out on the
-   horizontal axis while every other glyph runs vertically — the axis is the
+   horizontal axis while every other glyph runs vertically. The axis is the
    point, since this is the one node that changes the header and not the rows. */
 .sel-glyph { display: flex; gap: 3px; align-items: center; }
 .sel-glyph i {
@@ -1701,6 +1996,44 @@ th.cmp-num { color: #383838 !important; }
   opacity: 0.35;
 }
 
+/* ── DISTRIBUTION ── indigo ─────────────────────────────── */
+/* Its own hue because it is its own menu, and its own menu because "how is this
+   spread out" is a different question from anything in Reshape or Processing.
+   Indigo sits between the violet of Reshape and the blue of Output without
+   being either: this node is neither a reshuffle nor an endpoint. */
+.shape-histogram {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  /* Width and style here, colour in the family rule below, and never both in a
+     shorthand. A `border:` shorthand carrying a colour is what let SelectFor
+     ship violet among the rose nodes: the shorthand won on source order over
+     the family rule meant to colour it, with the suite green because the class
+     WAS named in a rule setting the right colour. */
+  border-width: 2.5px;
+  border-style: solid;
+  background: #090c18;
+  color: #8fa8f0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-histogram:active { cursor: grabbing; }
+
+/* Bars of unequal height sharing a baseline with no gaps between them. The
+   touching is the whole signal: Sort's bars are spaced because its axis is a
+   list of rows, and these are flush because the axis underneath them is a
+   number line. */
+.hist-glyph { display: flex; align-items: flex-end; gap: 1px; height: 14px; }
+.hist-glyph i {
+  display: block; width: 4px;
+  border-radius: 1px 1px 0 0;
+  background: currentColor; opacity: 0.75;
+}
+
+/* The family colour, stated the way every other family states it. */
+.shape-histogram { border-color: #3a4a8a; }
+
 /* ── SUMMARISE ── teal ──────────────────────────────────── */
 .shape-aggregate,
 .shape-aggcols,
@@ -1714,7 +2047,7 @@ th.cmp-num { color: #383838 !important; }
 /* Its own colour and its own group because it is its own kind of operation:
    every other processing node leaves a row meaning what it meant, and this one
    does not. The menu placement and the colour are load-bearing rather than
-   decorative — they are two of the four ways this node announces that it
+   decorative. They are two of the four ways this node announces that it
    changes row identity. Lime is already in the edge palette, so it is a colour
    this interface owns rather than a seventh hue invented here. */
 .shape-project {
@@ -1725,6 +2058,7 @@ th.cmp-num { color: #383838 !important; }
 
 /* ── BRANCHES ── rose ───────────────────────────────────── */
 .shape-combine,
+.shape-selectfor,
 .shape-compare {
   border-color: #7a2f52;
   background: #170a11;
@@ -1752,6 +2086,9 @@ th.cmp-num { color: #383838 !important; }
 .cmb-in i,
 .cmb-out i,
 .cmb-glyph b,
+.sf-row i,
+.sf-row b,
+.hist-glyph i,
 .cmp-glyph i {
   background: currentColor;
 }
@@ -1796,6 +2133,8 @@ th.cmp-num { color: #383838 !important; }
 .proc-item.cat-branches  .proc-name { color: #e089ae; }
 .proc-group.cat-expand,
 .proc-item.cat-expand    .proc-name { color: #a8d050; }
+.proc-group.cat-distribution,
+.proc-item.cat-distribution .proc-name { color: #8fa8f0; }
 
 .proc-group { opacity: 0.72; }
 
@@ -1803,10 +2142,11 @@ th.cmp-num { color: #383838 !important; }
 .proc-item.cat-expand:hover    { background: #141c08; }
 .proc-item.cat-summarise:hover { background: #0a1e20; }
 .proc-item.cat-branches:hover  { background: #21101a; }
+.proc-item.cat-distribution:hover { background: #10152b; }
 
 /* The Processing button stays neutral, and now for a sharper reason than
    before. The violet nodes have their own button beside it, so what is left
-   behind Processing is Expand, Summarise and Branches — lime, teal and rose.
+   behind Processing is Expand, Summarise and Branches: Lime, teal and rose.
    Painting the button any one of those would promise a menu of that colour.
    Grey claims none of the three, which is the honest description of a menu
    holding all three. */
@@ -1816,10 +2156,18 @@ th.cmp-num { color: #383838 !important; }
 }
 .add-btn.processing:hover { background: #1a1a1a; }
 
-/* A one-family menu needs no heading — the button already says Reshape, and a
+/* A one-family menu needs no heading. The button already says Reshape, and a
    heading repeating it would read as the first of several groups. The rule
-   below restores the padding the absent heading used to provide. */
-#reshapeMenu .proc-item:first-child { margin-top: 2px; }
+   below restores the padding the absent heading used to provide. Distribution
+   is the second such menu and wants the same treatment. */
+#reshapeMenu .proc-item:first-child,
+#distMenu .proc-item:first-child { margin-top: 2px; }
+
+/* One item, so the menu is only as wide as it needs to be. The 208px minimum
+   exists to stop Processing's three groups reflowing against each other, and a
+   single row does not have that problem: at that width the menu is mostly
+   empty space hanging under a button narrower than it. */
+#distMenu { min-width: 176px; }
 
 /* ═══════════════════════════════════════════════════════════
    SAVE DIALOG
@@ -1834,7 +2182,7 @@ th.cmp-num { color: #383838 !important; }
   inset: 0;
   /* Above everything, including the processing menu at 200. That menu is closed
      by the same click that opens this dialog, so they cannot overlap in
-     practice — but a modal that is only on top by coincidence is one refactor
+     practice, but a modal that is only on top by coincidence is one refactor
      away from not being. */
   z-index: 300;
   display: none;
@@ -1912,7 +2260,7 @@ th.cmp-num { color: #383838 !important; }
 }
 .save-field input[type=text]:focus { outline: none; border: none; }
 
-/* Shown, never editable — the format decides it, and the loader refuses
+/* Shown, never editable. The format decides it, and the loader refuses
    anything else, so a typed extension could only be a name the tool then
    declines to open. */
 .save-ext {
@@ -1956,7 +2304,7 @@ th.cmp-num { color: #383838 !important; }
 }
 .save-go:hover { background: #0a2e5a; }
 
-/* The dialog is reachable by keyboard, so its focus must be visible — the
+/* The dialog is reachable by keyboard, so its focus must be visible. The
    global `input:focus { outline: none }` is safe only where a border stands in
    for the ring, which is true of the field and not of the buttons. */
 .save-card button:focus-visible {
@@ -1975,15 +2323,16 @@ th.cmp-num { color: #383838 !important; }
   width: 24px; height: 24px;
   border-radius: 50%;
   background: transparent;
-  border: 1px solid #2a2a2a;
-  color: #8a8a8a;
+  border: 1px solid #7a6418;
+  color: #e8c84a;
   font-family: inherit;
   font-size: 12px;
   line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
+  transition: background 0.12s;
 }
-.help-btn:hover { border-color: #3d3d3d; color: #d0d0d0; background: #1a1a1a; }
+.help-btn:hover { background: #221c08; }
 
 /* Same backdrop treatment as the save dialog, one layer below it: help can be
    open when nothing else is, and should never sit over a dialog awaiting an
@@ -2051,8 +2400,8 @@ th.cmp-num { color: #383838 !important; }
 
 .help-main { display: flex; flex: 1; min-height: 0; }
 
-/* A reference is read out of order — someone arrives wanting one node, not the
-   whole document — so the section list is always visible rather than something
+/* A reference is read out of order (someone arrives wanting one node, not the
+   whole document), so the section list is always visible rather than something
    to scroll back to. */
 .help-nav {
   width: 172px;
@@ -2107,8 +2456,6 @@ th.cmp-num { color: #383838 !important; }
   margin-bottom: 10px;
 }
 .help-body b { color: #d4d4d4; font-weight: 600; }
-.help-body em { color: #c0c0c0; font-style: italic; }
-.help-body i { color: #b0b0b0; font-style: italic; }
 .help-body code {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 11px;
@@ -2162,6 +2509,7 @@ th.cmp-num { color: #383838 !important; }
 .help-cat-summarise { color: #5ac8c8; }
 .help-cat-expand    { color: #a8d050; }
 .help-cat-branches  { color: #e089ae; }
+.help-cat-distribution { color: #8fa8f0; }
 .help-cat-output    { color: #3db8ff; }
 
 .help-node-desc { margin-bottom: 4px; }
@@ -2232,4 +2580,72 @@ th.cmp-num { color: #383838 !important; }
   }
   .help-navitem { white-space: nowrap; flex-shrink: 0; }
   .help-body { padding: 14px 16px 30px; }
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SELECT FOR
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Taller than its Branches sibling because it is the only node carrying two
+   labelled port stubs. The numbers here and in SHAPE are checked against each
+   other by 17-shape-styling. The model measures this box for snap-to-connect
+   and zoomToFit, and a stylesheet that disagrees puts the arrowheads slightly
+   off a shape nobody notices is the wrong size. */
+.shape-selectfor {
+  width: 118px; height: 88px;
+  border-radius: 3px;
+  /* The family colour, written out rather than left to the Branches rule to
+     supply. That rule sets border-COLOR and this block is appended after it,
+     so a shorthand `border:` here would win on source order and quietly paint
+     this node violet among the rose ones, which is what it did, and what the
+     styling suite could not see, because the suite only asked whether the
+     class was named in a rule setting the colour and not whether that rule
+     won. It asks the stronger question now. */
+  border: 2.5px solid #7a2f52;
+  background: #170a11;
+  color: #e089ae;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-selectfor:active { cursor: grabbing; }
+
+/* Three rows, each a dot and a bar of its own length: named groups with a
+   measure each. Compare's glyph is the same three bars with no dots, which is
+   exactly the difference. Compare's branches are wired and anonymous, these
+   are named by a column. */
+.sf-glyph { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.sf-row { display: flex; align-items: center; gap: 3px; }
+.sf-row b { display: block; width: 3px; height: 3px; border-radius: 50%; opacity: 0.9; }
+.sf-row i { display: block; height: 3px; border-radius: 1px; opacity: 0.6; }
+
+/* ── SELECT FOR CONFIG PANEL ─────────────────────────────── */
+/* The same list shape as the sort keys, one column narrower: a measure is an
+   operation and a column, with no priority rank to show because measures are
+   independent of one another and their order is only the column order. */
+.stat-list { display: flex; flex-direction: column; gap: 4px; }
+.stat-row {
+  display: grid;
+  /* operation | column | delete */
+  grid-template-columns: 1fr 1fr 16px;
+  gap: 4px;
+  align-items: center;
+}
+.stat-op, .stat-col { font-size: 10px; min-width: 0; }
+/* Placeholders keeping row 1's two selects on the same vertical lines as every
+   other row's, whether or not the row can be deleted and whether or not its
+   measure takes a column. */
+.stat-nodel { display: block; }
+.stat-nocol { display: block; }
+
+/* The "n more groups not shown" line under a capped set of per-group cards.
+   Styled as the row-cap note inside a table is, because it says the same
+   thing about a different axis. */
+.cmp-more-cards {
+  font-size: 10px;
+  color: #5a5a5a;
+  padding: 6px 2px 2px;
+  text-align: center;
 }

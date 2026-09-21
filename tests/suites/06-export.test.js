@@ -1,6 +1,6 @@
 /* Export.
    Results leave this tool as text for Excel, so the delimiting and quoting have
-   to be exactly right — a single unescaped comma silently shifts a column. */
+   to be exactly right: A single unescaped comma silently shifts a column. */
 
 const { boot } = require('../lib/harness');
 const { assert } = require('../lib/assert');
@@ -85,8 +85,8 @@ module.exports = ({ describe, test }) => {
       assert.equal(r.app.serialiseTable(r.entry(r.o.id).table, ',', true).split('\n').length, 2);
     });
 
-    /* Three tests — the per-course breakdown export, and the separate
-       long-format enrolments export (saveEnrolments) — went with those features
+    /* Three tests (the per-course breakdown export, and the separate
+       long-format enrolments export (saveEnrolments)) went with those features
        in 52d5e6a. The shapes they checked, one row per group and one row per
        student-course pair, become reachable again through the unfold node
        app.js:238 specifies. Restore them with it. */
@@ -179,7 +179,7 @@ module.exports = ({ describe, test }) => {
          never actually decided the filename: two saves of "grades" produced
          two differently-named files, and a user who had just named the file
          could not predict what they would get. The name written is now the
-         name typed — which is what queryFileName() already did for saved
+         name typed, which is what queryFileName() already did for saved
          queries, so the two export paths finally agree. */
       const r = rig('count');
       r.w.runQuery();

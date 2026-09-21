@@ -116,7 +116,7 @@ module.exports = ({ describe, test }) => {
     test('a sibling branch off the same Source is unaffected', () => {
       /* The trap: reverse() is in place. One node's result object is read by
          every node wired downstream of it, so reversing t.rows directly would
-         silently reorder a sibling branch — and only on graphs that fork, which
+         silently reorder a sibling branch, and only on graphs that fork, which
          is why it would survive casual testing. Sort guards the same way. */
       const h = boot();
       const s = h.add('source'), rev = h.add('reverse'),

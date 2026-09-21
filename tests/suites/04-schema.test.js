@@ -10,8 +10,8 @@ module.exports = ({ describe, test }) => {
   /* 'source granularity' (2 tests) tested that the Source's two row modes
      declared different columns. There is one mode now: app.js:275 records the
      decision that a row is always a student, so a count is always a count of
-     students. What those tests protected — that downstream nodes follow the
-     header rather than assuming student records — is now covered by the Select
+     students. What those tests protected (that downstream nodes follow the
+     header rather than assuming student records) is now covered by the Select
      rewiring test below, which changes the header without changing the Source. */
 
   describe('propagation through the graph', () => {
@@ -59,7 +59,7 @@ module.exports = ({ describe, test }) => {
     test('a column can opt out of being filterable, and still carry data', () => {
       /* The opt-out is a property of a column, not a rule about years. Year
          used to declare it and no longer does (app.js:1149), so the mechanism
-         is exercised directly — otherwise it would sit untested until the next
+         is exercised directly. Otherwise it would sit untested until the next
          column that needs it, and discover then that it had rotted. */
       const { app } = boot();
       const T = app.COLTYPE;
@@ -129,8 +129,8 @@ module.exports = ({ describe, test }) => {
     });
   });
 
-  /* What this block used to cover — "the average column list comes from the
-     incoming numeric columns" — was about the Output node's own Average
+  /* What this block used to cover ("the average column list comes from the
+     incoming numeric columns") was about the Output node's own Average
      shortcut. That shortcut is gone; averaging is an Aggregate wired in front,
      where the step is visible on the canvas. The same claim is therefore made
      about Aggregate, which is where the column is now chosen. */

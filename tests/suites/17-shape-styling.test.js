@@ -1,6 +1,6 @@
 /* Shapes: the model's geometry against the stylesheet's.
 
-   SHAPE is what the graph measures — snap-to-connect compares shape edges,
+   SHAPE is what the graph measures. Snap-to-connect compares shape edges,
    nodeBox feeds zoomToFit, and shapeEntry/shapeExit place the arrowheads. The
    stylesheet is what is actually on screen. Nothing checks that the two agree,
    and nothing goes visibly wrong when they do not: arrows land slightly off a
@@ -10,7 +10,7 @@
 
    The colour check is here for the same reason. A processing node is read by
    its family colour, and a node left out of its family's rule silently keeps
-   whatever the base rule gave it — which is how AggregateRows came out violet
+   whatever the base rule gave it, which is how AggregateRows came out violet
    among the teal ones. */
 
 const fs = require('fs');
@@ -31,7 +31,8 @@ const CLASS = {
   sort: 'shape-sort', reverse: 'shape-reverse', take: 'shape-take',
   unique: 'shape-unique', select: 'shape-select', project: 'shape-project',
   aggregate: 'shape-aggregate', aggregateColumns: 'shape-aggcols',
-  aggregateRows: 'shape-aggrows', combine: 'shape-combine', output: 'shape-output'
+  aggregateRows: 'shape-aggrows', combine: 'shape-combine',
+  selectFor: 'shape-selectfor', histogram: 'shape-histogram', output: 'shape-output'
 };
 
 /* The family each node belongs to, and the colour that family is drawn in.
@@ -43,7 +44,18 @@ const FAMILY = {
      its colour and its own menu group are two of the ways it says so. */
   expand:    { colour: '#4a6a1e', types: ['project'] },
   summarise: { colour: '#1f6a6a', types: ['aggregate', 'aggregateColumns', 'aggregateRows'] },
-  branches:  { colour: '#7a2f52', types: ['combine', 'compare'] }
+  /* SelectFor joins Branches rather than Summarise, though it does summarise.
+     The family is read off the canvas as "this node takes more than one wire",
+     and it is the only node with two different ports. Putting it in teal
+     would say it behaves like Aggregate, which takes one table and cannot be
+     fed a label set at all. */
+  branches:  { colour: '#7a2f52', types: ['combine', 'compare', 'selectFor'] },
+  /* Histogram has a family and a menu to itself for the reason Project has a
+     family of its own: the question it answers is a different kind. It neither
+     keeps the rows as they are, nor multiplies them, nor collapses them to one,
+     nor joins branches. Indigo rather than a shade of an existing family,
+     because sharing a colour would promise behaviour it does not have. */
+  distribution: { colour: '#3a4a8a', types: ['histogram'] }
 };
 
 function declaredSize(cls) {
@@ -92,7 +104,7 @@ module.exports = ({ describe, test }) => {
     Object.keys(FAMILY).forEach(fam => {
       const { colour, types } = FAMILY[fam];
       test(fam + ' nodes are all ' + colour, () => {
-        /* Every rule that sets this colour, not the first one — the toolbar
+        /* Every rule that sets this colour, not the first one. The toolbar
            buttons use the family colours too, and matching the first hit found
            .add-btn.processing rather than the shapes. A member is styled if ANY
            such rule names its class; one left out of all of them keeps whatever
@@ -110,6 +122,39 @@ module.exports = ({ describe, test }) => {
         types.forEach(t =>
           assert.includes(named, '.' + CLASS[t],
             CLASS[t] + ' is in no rule setting ' + colour + ', so it keeps the base colour'));
+      });
+    });
+
+    test('the family colour is the one that actually wins', () => {
+      /* The check above asks whether a class is NAMED in a rule setting its
+         family colour. That is not the same question as what gets drawn, and
+         SelectFor shipped for an afternoon proving it: its own block, appended
+         to the end of the stylesheet, carried a `border:` shorthand in the
+         violet of the block it was copied from, and won on source order over
+         the Branches rule above it. The node rendered violet among the rose
+         ones with this suite green. The AggregateRows bug exactly, wearing
+         the one disguise the suite had no eye for.
+
+         So: walk every rule that sets a border colour on a shape class and
+         keep the LAST one for each. These selectors are all single classes of
+         equal specificity, so source order is the whole cascade here. */
+      const winner = {};
+      const re = /([^{}]*)\{([^}]*)\}/g;
+      let m;
+      while ((m = re.exec(CSS))) {
+        const decl = /border(?:-color)?:[^;]*?(#[0-9a-f]{3,8})/i.exec(m[2]);
+        if (!decl) continue;
+        m[1].split(',').forEach(sel => {
+          const cls = /\.(shape-[a-z]+)\s*$/i.exec(sel.trim());
+          if (cls) winner[cls[1]] = decl[1].toLowerCase();
+        });
+      }
+      Object.keys(FAMILY).forEach(fam => {
+        FAMILY[fam].types.forEach(t => {
+          assert.equal(winner[CLASS[t]], FAMILY[fam].colour,
+            CLASS[t] + ' is drawn ' + winner[CLASS[t]] + ', not the ' + fam +
+            ' colour ' + FAMILY[fam].colour + ' — a later rule is overriding it');
+        });
       });
     });
 
@@ -158,7 +203,8 @@ module.exports = ({ describe, test }) => {
 
     test('each menu entry carries its family class', () => {
       const CAT = { reshape: 'cat-reshape', expand: 'cat-expand',
-                    summarise: 'cat-summarise', branches: 'cat-branches' };
+                    summarise: 'cat-summarise', branches: 'cat-branches',
+                    distribution: 'cat-distribution' };
       const h = boot();
       h.qa('.proc-item').forEach(b => {
         const t = (b.getAttribute('onclick').match(/addProcNode\('([^']+)'\)/) || [])[1];
@@ -175,14 +221,21 @@ module.exports = ({ describe, test }) => {
      these check the promise rather than the markup: which types are in which
      menu is derived from FAMILY, so moving a node between families moves the
      expectation with it. */
-  describe('the two menus', () => {
+  describe('the three menus', () => {
     const menuOf = b => b.closest('.proc-menu').id;
     const typeOf = b => (b.getAttribute('onclick').match(/addProcNode\('([^']+)'\)/) || [])[1];
 
-    test('there are exactly two, and both are dropdowns of the same kind', () => {
+    test('there are exactly three, and all are dropdowns of the same kind', () => {
       const h = boot();
       const ids = h.qa('.proc-menu').map(m => m.id).sort();
-      assert.deepEqual(ids, ['procMenu', 'reshapeMenu']);
+      assert.deepEqual(ids, ['distMenu', 'procMenu', 'reshapeMenu']);
+    });
+
+    test('Distribution holds every indigo node and nothing else', () => {
+      const h = boot();
+      const inDist = h.qa('.proc-item').filter(b => menuOf(b) === 'distMenu').map(typeOf);
+      assert.deepEqual(inDist.slice().sort(), FAMILY.distribution.types.slice().sort(),
+        'the indigo button must open a menu of exactly the indigo nodes');
     });
 
     test('Reshape holds every violet node and nothing else', () => {
@@ -192,15 +245,15 @@ module.exports = ({ describe, test }) => {
         'the violet button must open a menu of exactly the violet nodes');
     });
 
-    test('Processing holds everything that is not violet', () => {
+    test('Processing holds everything with no button of its own', () => {
       const h = boot();
       const rest = [].concat(...Object.keys(FAMILY)
-        .filter(f => f !== 'reshape').map(f => FAMILY[f].types));
+        .filter(f => f !== 'reshape' && f !== 'distribution').map(f => FAMILY[f].types));
       const inProc = h.qa('.proc-item').filter(b => menuOf(b) === 'procMenu').map(typeOf);
       assert.deepEqual(inProc.slice().sort(), rest.slice().sort());
     });
 
-    test('the Reshape button wears the family colour, and Processing does not', () => {
+    test('the one-family buttons wear their colour, and Processing does not', () => {
       // Grey is the honest answer for a menu holding three families; claiming
       // one of their colours would promise a menu of that colour.
       const h = boot();
@@ -213,6 +266,22 @@ module.exports = ({ describe, test }) => {
       assert.includes(rule[1].toLowerCase(), FAMILY.reshape.colour,
         'the button must carry the same border colour as the nodes behind it');
 
+      const dist = h.qa('.add-btn').find(b => b.className.indexOf('distribution') !== -1);
+      assert.ok(dist, 'no Distribution button');
+      /* Every rule naming this button, not the first one matched. The toolbar's
+         scale block lists the three dropdown buttons together and ends with
+         this one, so a regex anchored on the class alone finds a rule about
+         `gap` and reports the colour missing from it. */
+      const distRules = [];
+      const anyRule = /([^{}]*)\{([^}]*)\}/g;
+      let r;
+      while ((r = anyRule.exec(CSS))) {
+        if (/\.add-btn\.distribution\s*(,|\{|$)/.test(r[1] + '{')) distRules.push(r[2]);
+      }
+      assert.ok(distRules.length, 'the Distribution button has no rule of its own');
+      assert.includes(distRules.join(' ').toLowerCase(), FAMILY.distribution.colour,
+        'the button must carry the same border colour as the node behind it');
+
       const procRule = /\.add-btn\.processing\s*\{([^}]*)\}\s*\n\.add-btn\.processing:hover/.exec(CSS);
       assert.ok(procRule, 'no Processing colour rule');
       Object.keys(FAMILY).forEach(f => assert.excludes(
@@ -220,12 +289,14 @@ module.exports = ({ describe, test }) => {
         'Processing must not claim the ' + f + ' colour'));
     });
 
-    test('the Reshape menu carries no group heading', () => {
+    test('the one-family menus carry no group heading', () => {
       // The button already says Reshape. A heading repeating it would read as
       // the first of several groups, which is the thing the split removed.
       const h = boot();
       const headings = h.qa('#reshapeMenu .proc-group');
       assert.equal(headings.length, 0);
+      assert.equal(h.qa('#distMenu .proc-group').length, 0,
+        'Distribution holds one family too, so a heading would repeat its button');
       assert.ok(h.qa('#procMenu .proc-group').length >= 3,
         'Processing still needs its headings — it holds three families');
     });
@@ -239,9 +310,15 @@ module.exports = ({ describe, test }) => {
       assert.includes(h.doc.getElementById('procMenu').className, 'open');
       assert.excludes(h.doc.getElementById('reshapeMenu').className, 'open',
         'two open dropdowns overlap, and the second reads as a submenu of the first');
+
+      // Three menus, so closing "the other" is no longer enough to state.
+      h.w.toggleProcMenu(null, 'distMenu');
+      assert.includes(h.doc.getElementById('distMenu').className, 'open');
+      h.qa('.proc-menu').filter(m => m.id !== 'distMenu')
+        .forEach(m => assert.excludes(m.className, 'open', m.id + ' stayed open'));
     });
 
-    test('adding from either menu closes both', () => {
+    test('adding from any menu closes them all', () => {
       const h = boot();
       h.w.toggleProcMenu(null, 'reshapeMenu');
       h.w.addProcNode('sort');

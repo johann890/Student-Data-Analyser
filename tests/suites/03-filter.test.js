@@ -21,7 +21,7 @@ module.exports = ({ describe, test }) => {
 
   /* Pick the subject to exercise from the catalogue rather than naming one.
      Hardcoding a code meant these tests broke the moment a subject was removed,
-     and — worse — a test naming a subject that no longer exists would filter
+     and (worse), a test naming a subject that no longer exists would filter
      nothing and quietly pass by matching zero against zero.
      A core subject is avoided because every student takes it, which would make
      "took a course in X" indistinguishable from no filter at all. */
@@ -102,7 +102,7 @@ module.exports = ({ describe, test }) => {
 
          app.js:1149 records why that reasoning was dropped: grouping by a
          column means filtering on it once per label, so a column that cannot be
-         filtered cannot be grouped on either — and Year is the column four of
+         filtered cannot be grouped on either, and Year is the column four of
          the supervisor's use cases group by. The contradiction worry is
          answered by precedence instead: the Source scopes, the Filter narrows,
          and a graph that says both yields nothing, visibly, in the log.

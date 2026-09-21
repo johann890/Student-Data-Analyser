@@ -6,8 +6,8 @@
      AggregateRows      N rows x M cols  ->  N rows x 1 col
 
    It replaces the whole row rather than adding to it. The settled position is
-   that row aggregation assumes a row of measures — totalling a row that still
-   carries a student id is not a meaningful operation — so narrowing to the
+   that row aggregation assumes a row of measures (totalling a row that still
+   carries a student id is not a meaningful operation), so narrowing to the
    measures first is a Select, and neither node grows a column picker for the
    other's benefit. */
 
@@ -87,7 +87,7 @@ module.exports = ({ describe, test }) => {
       assert.equal(byRow.rows.length, A.STUDENTS.length);
       assert.equal(byRow.columns.length, 1);
       assert.equal(byCol.rows.length, 1);
-      // One column per column that came in — asserted against the schema, so a
+      // One column per column that came in: Asserted against the schema, so a
       // column added to the Source does not look like a regression here.
       assert.equal(byCol.columns.length, A.STUDENT_COLUMNS.length);
     });
@@ -127,7 +127,7 @@ module.exports = ({ describe, test }) => {
     test('sum across a student row is their gpa alone', () => {
       /* Of the seven student columns only gpa is a measure: id is an
          identifier, gender/year/specialisation/letterGrade are not numbers, and
-         courses is nested. So the row total is that one figure — which is the
+         courses is nested. So the row total is that one figure, which is the
          warning the panel gives by naming how many columns contribute. */
       const r = rig('sum');
       r.w.runQuery();
@@ -152,8 +152,8 @@ module.exports = ({ describe, test }) => {
     });
 
     test('with two measures on the row, the arithmetic is real', () => {
-      /* A Compare summary carries two measures per row — a count and an
-         average — plus a branch label that must be left out of the sum. */
+      /* A Compare summary carries two measures per row (a count and an
+         average) plus a branch label that must be left out of the sum. */
       const h = boot();
       const s1 = h.add('source'), f1 = h.add('filter'),
             s2 = h.add('source'), f2 = h.add('filter'),

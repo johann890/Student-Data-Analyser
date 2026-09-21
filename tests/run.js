@@ -35,8 +35,8 @@ function collect(file) {
 
 /* Tests may be async, and one class of them has to be: the data loader goes
    through a real FileReader, and a FileReader is asynchronous by construction.
-   Stubbing it out would have left the very path this suite exists to check —
-   pick a file, read it, refuse or accept it — untested in favour of a
+   Stubbing it out would have left the very path this suite exists to check
+   (pick a file, read it, refuse or accept it) untested in favour of a
    synchronous imitation of it.
 
    Synchronous tests are unaffected: a function that returns undefined is

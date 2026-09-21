@@ -16,7 +16,7 @@ module.exports = ({ describe, test }) => {
       /* Compare was output-only. That was reversed: a comparison is the only
          labelled multi-row answer the tool can currently produce, and refusing
          to let it be aggregated made "count per year, then average those
-         counts" unbuildable through it — the exact case app.js:212 cites. */
+         counts" unbuildable through it: The exact case app.js:212 cites. */
       assert.includes(R.compare, 'output');
       assert.includes(R.compare, 'aggregate', 'a comparison must be aggregatable');
       assert.deepEqual(R.compare, R.filter,
@@ -76,7 +76,7 @@ module.exports = ({ describe, test }) => {
   /* This block used to test the IMPLICIT union: two wires into one node were
      quietly merged inside evaluateGraph. That merge was invisible on the canvas
      and could discard rows without saying so, and it is gone (app.js:615).
-     Merging is now something the user asks for, by wiring a Combine — so the
+     Merging is now something the user asks for, by wiring a Combine, so the
      tests ask about the refusal and about Combine instead. */
   describe('a single input takes one wire', () => {
     test('an ordinary node refuses a second wire rather than merging quietly', () => {

@@ -79,7 +79,7 @@ module.exports = ({ describe, test }) => {
      Their subject is not gone: app.js:238 records that unfolding nested
      enrolments should return as a NODE on the canvas, where the change in row
      identity is visible, rather than as a hidden Source mode. When that node is
-     built these are the assertions to restore — one row per student-course
+     built these are the assertions to restore. One row per student-course
      pair, student context carried onto every row, marks intact, an empty input
      giving an empty table rather than an error. `git show 52d5e6a` has both the
      implementation and the original tests. */

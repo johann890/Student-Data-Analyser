@@ -162,6 +162,7 @@ bridges them back to getters so tests can write `app.nodes`, in one place —
 | `19-data-files` | The boundary between an arbitrary file and the DOM: the two name rules, the size caps, the column file, every per-field check in a year file, the file-name/row-year agreement, and the real archive in `../data` read end to end |
 | `21-level-and-degree` | Course level (derived from the code) and degree (read from `deg1`): what they are against the archive, the `Took level` predicate and its operators, level as a measurable column after a Project — and guards for the two positional-array bugs adding them caused |
 | `22-archive-patterns` | The patterns `../data` claims to carry, read through the shipped parser: three linked years, the BEHONS CYBR → BSC COMP migration, a course improving every year, courses growing and shrinking every year, the reliably hard and reliably easy ones measured against the cohort, and the student-level claims — progression, own-subject advantage, who leaves and why |
+| `23-selectfor` | The SelectFor node: grouping as filtering once per label, the predicates that are not columns, the Labels port and the zero-count group only it can produce, share measured against the input rather than the sum of the groups, the registry invariant across five configurations, and the same claims once more against the real archive |
 | `20-source-loading` | The Source from the picker to the answer: the two ordered pickers driven through the real hidden inputs, year files accumulating across picks and coming back off one at a time, all-or-nothing within a pick, one Source per dataset, and that a saved query carries the graph and not one byte of the records |
 
 ### What was removed, and why
@@ -258,6 +259,28 @@ confirming the suite caught it:
   finished**, and in this archive the graduands outnumber the leavers two to
   one.
 
+- **`23-selectfor` › the guards for the new node.** Eight of them, each checked
+  by reintroducing the bug it names and confirming the suite went red:
+
+  | Break | What fails |
+  |---|---|
+  | ignore the Labels port — always group by the data | the five Labels tests |
+  | `share` divides by the sum of the groups | **only** the overlapping-groups test |
+  | drop the duplicate-key suffix loop | the two-identical-measures test |
+  | measure `t` instead of the group's rows | three of the measure tests |
+  | re-sort the labels branch's own order | the two order tests |
+  | drop the data-derived sort | the column-order test |
+  | drop `values`/`order` from the label column | the label-column and downstream-Filter tests |
+  | put SelectFor's measures back under Compare's `measures` key | ten tests |
+  | default a breakdown's Output to a table per group | the default-view test |
+  | uncap the per-group cards | the card-cap test |
+
+  The share row is the one worth keeping. A column split sums to 100 whichever
+  denominator is used, so the partition test passes with the bug in place and
+  only the overlapping case — where a student is in eight course groups at
+  once — can tell the two apart. Both tests exist because one of them cannot
+  fail.
+
 If any of these is ever rewritten, re-check it the same way.
 
 ## The leaver pattern reads backwards unless you exclude the graduands
@@ -304,6 +327,60 @@ announces itself and any one could be removed without the numbers changing:
 All four were checked by removing them one at a time. Dropping the rename fails
 eight tests, dropping the log line fails one, and making the warning a plain
 grey hint fails exactly the test that says so.
+
+## Two nodes, one word, different defaults
+
+An Output's `show` is stored as `rows` or `count` and translated when a node
+carrying branch metadata feeds it: `rows` means "show me the data", and behind
+a Compare that is the per-branch lists.
+
+SelectFor emits the same metadata and inherited the same translation, which was
+right for the two or three branches a Compare has and wrong for the
+seventy-eight a breakdown by course produces. A freshly wired Output rendered
+**912 KB** of markup in 1.7 seconds to draw seventy-eight tables nobody had
+asked for — with the grouping itself taking 11 ms. Every millisecond was in the
+view.
+
+So the translation is per producing node now (`BRANCH_NODES` maps a type to its
+default) and the number of cards is capped at ten, the way the rows inside each
+card have always been capped at fifty. Copy and Save are untouched and still
+write every group.
+
+Two tests hold it: the default view for each of the two nodes, and the cap
+together with the export that ignores it. Both were checked by putting the old
+behaviour back.
+
+**Worth remembering when the next node emits `meta.branches`**: the metadata is
+a contract about shape, not about how many. A node that can produce eighty of
+something inherits a renderer written for three.
+
+## A colour test that could not see the bug it was written for
+
+`17-shape-styling` exists because AggregateRows shipped violet among the teal
+ones. SelectFor then shipped violet among the rose ones, **with this suite
+green**, which is worth recording because the reason is not carelessness.
+
+The colour check asked whether a class is *named in* a rule that sets its
+family colour. SelectFor was — the Branches rule lists it. But its own block is
+appended to the end of the stylesheet, and it carried a `border:` shorthand in
+the violet of the block it had been copied from. Same specificity, later in the
+file, so the shorthand won and the Branches rule never applied. The suite was
+asking about the stylesheet's contents; the screen is decided by its cascade.
+
+`the family colour is the one that actually wins` now asks the second question:
+walk every rule setting a border colour on a `.shape-` class, keep the last one
+for each, and compare that against the family. These selectors are all single
+classes of equal specificity, so source order is the whole cascade and the last
+one is genuinely what is drawn.
+
+It was checked by putting the violet shorthand back, and it names the node, the
+colour it is drawn in and the colour it should be.
+
+**The general lesson, since this is twice now**: a node's appearance is checked
+by four separate things — `SHAPE`, the size rule, the family rule and the menu
+group — and each new node is an opportunity for one of them to disagree
+silently. If a fifth way to get it wrong turns up, it belongs in this suite
+rather than in a comment.
 
 ## Why `17-shape-styling` exists
 

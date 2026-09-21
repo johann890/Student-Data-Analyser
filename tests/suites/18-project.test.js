@@ -1,4 +1,4 @@
-/* The Project node — unfolding nested enrolments into rows of their own.
+/* The Project node: Unfolding nested enrolments into rows of their own.
 
    This is the node app.js:238 specified and nobody built:
 
@@ -6,7 +6,7 @@
      wanted later it should be a node on the canvas, where the change in row
      identity is visible, rather than a setting hidden on the Source.
 
-   So the tests come in two halves. The first is ordinary — does it produce the
+   So the tests come in two halves. The first is ordinary. Does it produce the
    right rows. The second is unusual, and is the point of the node: is the
    change in what a row MEANS actually visible? That used to be a dropdown on
    the Source, and it made "count students" wrong by a factor of eight with
