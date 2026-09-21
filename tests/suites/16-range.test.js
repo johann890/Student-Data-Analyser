@@ -129,14 +129,25 @@ module.exports = ({ describe, test }) => {
       const [s, f, o] = h.build('source', 'filter', 'output');
       const groups = h.qa('[data-node="' + f.id + '"][data-key="crit.0.op:gpa"] optgroup')
         .map(g => g.getAttribute('label'));
-      assert.deepEqual(groups, ['Compare', 'Range']);
+      // List joined Compare and Range when the `in` operator arrived. A number
+      // carries all three, and the headings are what keep the two that need a
+      // band below the row from reading as two more comparators.
+      assert.deepEqual(groups, ['Compare', 'Range', 'List']);
     });
 
-    test('a field with no range on offer gets a plain list, not an empty group', () => {
+    test('a field with no range on offer gets no Range group', () => {
       const h = boot();
       const [s, f, o] = h.build('source', 'filter', 'output');
       h.set(f.id, 'crit.0.field', 'specialisation');
-      assert.equal(h.qa('[data-node="' + f.id + '"][data-key="crit.0.op:specialisation"] optgroup').length, 0);
+      const groups = h.qa('[data-node="' + f.id + '"][data-key="crit.0.op:specialisation"] optgroup')
+        .map(g => g.getAttribute('label'));
+      /* The empty group this test was written to catch is still caught: an
+         unordered category has no range and gets no heading for one. It does
+         get a List, because "is one of these three specialisations" is a
+         question it can answer, so the assertion is that Range is absent
+         rather than that nothing is grouped. */
+      assert.excludes(groups, 'Range');
+      assert.deepEqual(groups, ['Compare', 'List']);
       assert.equal(h.optionsOf(f.id, 'crit.0.op:specialisation').length, A.ENUM_OPS.length);
     });
 

@@ -496,6 +496,115 @@ select option {
 .crit-range input:focus,
 .crit-range select:focus { border-color: #c9a227; }
 
+/* ── LIST BAND ───────────────────────────────────────────── */
+/* The range band's sibling: same placement, same left banding, same tag-and-
+   note structure, so the two read as one idea with two settings. Violet rather
+   than amber because a panel may carry both and a glance should tell them
+   apart; the violet is the accent-color the measure tick boxes already use,
+   which is also where this band borrows its controls from. */
+.crit-list {
+  margin-top: 4px;
+  padding: 5px 7px;
+  border-left: 2px solid #7a5aa8;
+  border-radius: 0 4px 4px 0;
+  background: #140f1c;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
+.crit-list-tag {
+  font-size: 8px;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: #a98ad0;
+  opacity: 0.85;
+}
+/* The count rides on the tag rather than in the note, so "how many have I
+   picked" is answerable without reading a sentence. */
+.crit-list-tag b {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: #3a2a55;
+  color: #d0bcf0;
+  font-size: 8px;
+  font-weight: 600;
+}
+.crit-list-clear {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  padding: 1px 5px;
+  border: 1px solid #3a2a55;
+  border-radius: 3px;
+  background: #1c1428;
+  color: #a98ad0;
+  font-size: 9px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.crit-list-clear:hover { border-color: #7a5aa8; color: #d0bcf0; }
+/* A wrapping row of short chips. Course codes are seven characters and
+   specialisation names are twenty, so the boxes size to their content rather
+   than to a column grid that would have to suit both. */
+.crit-list-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  /* Eighty-two courses under thirteen headings is taller than any panel, so the
+     grid scrolls inside the band and the note under it stays reachable. */
+  max-height: 210px;
+  overflow-y: auto;
+}
+.crit-list-group {
+  font-size: 8px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: #6a5a85;
+  margin-top: 3px;
+}
+.crit-list-group:first-child { margin-top: 0; }
+.crit-pick {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 10px;
+  color: #8a8a9a;
+  cursor: pointer;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.crit-pick input[type=checkbox] {
+  width: 11px;
+  height: 11px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: #7a5aa8;
+  cursor: pointer;
+}
+.crit-pick:hover { color: #c0c0d0; }
+/* A ticked value is legible at a glance without reading its box, which is what
+   makes a grid of eighty scannable. */
+.crit-pick.on { color: #d0bcf0; }
+.crit-list-text {
+  width: 100%;
+  border-color: #3a2a55;
+  background: #0f0b16;
+}
+.crit-list-text:focus { border-color: #7a5aa8; }
+.crit-list-note {
+  font-size: 9px;
+  line-height: 1.35;
+  color: #8578a0;
+}
+/* The operator select wears the band's colour once the list is chosen, the same
+   way .op-wide wears the range's. */
+.op-list {
+  border-color: #3a2a55 !important;
+  color: #a98ad0;
+}
+
 
 /* ── THE DATA FILES ON A SOURCE PANEL ─────────────────────────────────────────
    Two numbered rows, in the order the two steps have to happen in, each showing

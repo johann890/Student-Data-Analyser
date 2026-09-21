@@ -606,6 +606,83 @@ function critOp(c, field, fallback) {
    rather than resetting to a default the user has to retype. */
 function rangeKey(field) { return field + ':max'; }
 
+/* THE CHOSEN LIST
+   Stored under a derived key in the same per-field map the second bound uses
+   ("courses.code" holds the single value and "courses.code:list" the chosen
+   set), for the same three reasons: no change to the criterion shape, none to
+   the save format, and none to the guard in mergeCfg, which only requires that
+   `values` be an object and passes whatever is under it through untouched.
+
+   Keeping the single value under the plain key is what makes switching
+   operators continuous, exactly as it is for a range. Picking three courses,
+   going back to "is", then returning to "is one of" finds the three still
+   ticked rather than a cleared band.
+
+   Two shapes are accepted on the way in. An ARRAY is what the tick boxes write.
+   A STRING is what the free-text control writes, stored as typed and split on
+   read, the same arrangement Histogram uses for its bin width and Take for its
+   N: a half-typed "COMP103, SW" has to survive in the model or the field
+   re-renders under the user mid-word. It also makes a hand-edited query file
+   forgiving, which matters because this is the one setting somebody might
+   plausibly want to paste a list into. */
+function listKey(field) { return field + ':list'; }
+
+function critList(c, field, col) {
+  var raw = c && c.values ? c.values[listKey(field)] : undefined;
+  var parts = Array.isArray(raw) ? raw
+            : (typeof raw === 'string' ? raw.split(',') : []);
+  var out = [], seen = {};
+  parts.forEach(function(v) {
+    var s = String(v == null ? '' : v).trim();
+    // Blanks come from a trailing comma mid-typing, and a repeat changes no
+    // answer (a set contains a value once), so both go quietly.
+    if (!s || seen[s]) return;
+    seen[s] = true;
+    out.push(s);
+  });
+  return orderList(out, col);
+}
+
+/* Put a picked list into the column's own declared order, where it has one.
+   The same reasoning cfg.cols follows when it stores kept columns in header
+   order rather than tick order: unticking a box and ticking it again should put
+   the value back where it was, not on the end. A free-typed list has no
+   declared order to sort into, so it keeps the order it was written in. */
+function orderList(values, col) {
+  var declared = (col && (col.values || col.order)) || null;
+  if (!declared || !declared.length) return values;
+  var rank = {};
+  declared.forEach(function(v, i){ rank[String(v)] = i; });
+  var known = values.filter(function(v){ return rank[v] !== undefined; });
+  var rest  = values.filter(function(v){ return rank[v] === undefined; });
+  known.sort(function(a, b){ return rank[a] - rank[b]; });
+  return known.concat(rest);
+}
+
+/* Whether this field's list is picked from a set or typed. The two course
+   fields reach inside the nested column, so their value sets are the
+   catalogue's rather than any column's, and `col` is null for them. */
+function listChoices(kind, col) {
+  if (kind === 'courseSubject') return SUBJECTS.slice();
+  if (kind === 'courseCode')    return COURSES.map(function(c){ return c.code; });
+  if (kind === 'courseLevel')   return (LEVELS.length ? LEVELS : [1, 2, 3, 4]).map(String);
+  var vals = (col && (col.values || col.order)) || [];
+  return vals.map(String);
+}
+
+/* What orderList should sort a freshly ticked value into, resolved against the
+   header actually arriving at this node. The two course fields have no column
+   of their own, so they are handed a stand-in carrying the catalogue's order:
+   without it a ticked course would land on the end of the list rather than back
+   where it was, which is the one thing orderList exists to prevent. */
+function fieldColumnFor(node, fieldKey) {
+  var f = fieldByKey(inputSchema(node, computeSchemas()), fieldKey);
+  if (!f) return null;
+  if (f.column) return f.column;
+  var choices = listChoices(f.kind, null);
+  return choices.length ? { values: choices } : null;
+}
+
 /* The high bound defaults to the top of a declared order, and to the low bound
    where there is no top to reach for. Both are shown in the panel and stated in
    the hint, so neither default is a surprise the user discovers from an empty
@@ -648,6 +725,24 @@ function setCfg(nodeId, key, value) {
     var sub = m[2];
     if (sub === 'field')       c.field = value;
     else if (sub === 'course') c.course = value;
+    /* One tick box in a chosen list. It carries the field and the value it
+       stands for ("pick:courses.code:COMP103") because a checkbox reports only
+       whether it is on, not what it is about. The field key is split off at the
+       FIRST colon: no field key contains one (`value:gpa:max` relies on the
+       same fact from the other side), while a value might. */
+    else if (sub.indexOf('pick:') === 0) {
+      var rest = sub.slice(5);
+      var at = rest.indexOf(':');
+      if (at === -1) return;
+      var fk = rest.slice(0, at), pv = rest.slice(at + 1);
+      var fcol = fieldColumnFor(n, fk);
+      var cur = critList(c, fk, fcol);
+      var was = cur.indexOf(pv);
+      if (value && was === -1) cur.push(pv);
+      if (!value && was !== -1) cur.splice(was, 1);
+      c.values = c.values || {};
+      c.values[listKey(fk)] = orderList(cur, fcol);
+    }
     else if (sub.indexOf('value:') === 0) { c.values = c.values || {}; c.values[sub.slice(6)] = value; }
     else if (sub.indexOf('op:') === 0)    { c.ops = c.ops || {};       c.ops[sub.slice(3)] = value; }
     return;
@@ -982,20 +1077,26 @@ function courseSelect(nodeId, key, cur) {
 
 function opSelect(nodeId, key, ops, cur) {
   var groups = opGroups(ops);
-  // Only worth grouping when there is something to separate. A field with no
-  // range on offer gets a plain list, as before.
-  var body = groups.length < 2
+  /* Only worth grouping when there is something to separate. A field with no
+     range on offer gets a plain list, as before, and so does one with only two
+     operators: two headings over one option each is decoration, not structure,
+     which is what the two-item "Took course" selector would otherwise get. */
+  var body = (groups.length < 2 || ops.length < 3)
     ? ops.map(function(o){ return opt(o, cur, opLabel(o)); }).join('')
     : groups.map(function(g) {
         return '<optgroup label="' + esc(g.label) + '">' +
           g.ops.map(function(o){ return opt(o, cur, opLabel(o)); }).join('') +
         '</optgroup>';
       }).join('');
-  /* Marked when the range is chosen so the row can give the control room for
-     its longer label. "in range" will not fit the 38px column the comparator
-     symbols live in, and the value box it would have shared that row with has
-     moved into the band below anyway. */
-  var wide = cur === 'between' ? ' class="op-wide"' : '';
+  /* Marked when a band is open so the row can give the control room for its
+     longer label. "in range" and "is one of" will not fit the 38px column the
+     comparator symbols live in, and the value box either would have shared that
+     row with has moved into the band below anyway. The two marks differ only in
+     colour, each matching the band it opens, so the operator and its band read
+     as one control rather than two. */
+  var wide = cur === 'between' ? ' class="op-wide"'
+           : cur === 'in'      ? ' class="op-list"'
+           : '';
   return '<select' + wide + ctl(nodeId, key) + '>' + body + '</select>';
 }
 
@@ -1044,6 +1145,132 @@ function rangeBandHTML(nid, ci, cur, c, renderBound) {
   '</div>';
 }
 
+/* THE LIST BAND
+   The range band's sibling, and deliberately built to the same pattern: it
+   appears only while its operator is chosen, it is banded down the left so it
+   reads as part of the criterion rather than as a criterion of its own, and it
+   carries a one-line note saying what the current setting actually keeps.
+
+   It is a different colour from the range band. Both are bands under a
+   criterion and a reader glancing at a panel should be able to tell which one
+   they are looking at without reading the tag, so the range keeps the amber it
+   had and the list takes the violet this interface already uses for the
+   measure tick boxes it borrows its controls from.
+
+   TICK BOXES RATHER THAN A MULTI-SELECT.
+   A native <select multiple> is the obvious control and the wrong one: it
+   needs ctrl-click to choose a second value, which is undiscoverable, and it
+   silently discards the whole selection when a plain click lands in it. Tick
+   boxes cost more pixels and cannot be got wrong. They are also the control
+   this panel already uses for "choose several of these" in the Select and
+   Compare panels, so it is not a new idea, only a new place.
+
+   A column with no declared values (a name, a free number) has nothing to tick,
+   so it gets a text box and the list is split on commas. */
+function listBandHTML(nid, ci, cur, c) {
+  var choices = listChoices(cur.kind, cur.column);
+  var chosen = critList(c, cur.key, cur.column);
+  var n = chosen.length;
+  var picked = {};
+  chosen.forEach(function(v){ picked[v] = true; });
+
+  var body;
+  if (choices.length) {
+    var box = function(v, label, title) {
+      return '<label class="crit-pick' + (picked[v] ? ' on' : '') + '"' +
+          (title ? ' title="' + esc(title) + '"' : '') + '>' +
+        '<input type="checkbox"' + (picked[v] ? ' checked' : '') +
+          ctl(nid, 'crit.' + ci + '.pick:' + cur.key + ':' + v) + '>' +
+        '<span>' + esc(label) + '</span></label>';
+    };
+    /* The course catalogue is grouped by subject for the reason courseSelect
+       groups its own options: eighty-odd codes in one flat run is a wall, and
+       the same list under thirteen headings is a thing you can find COMP103 in.
+       Every other field here has few enough values to stay flat. */
+    if (cur.kind === 'courseCode') {
+      body = SUBJECTS.map(function(subj) {
+        var inSubj = COURSES.filter(function(x){ return x.subject === subj; });
+        if (!inSubj.length) return '';
+        return '<div class="crit-list-group">' + esc(subj) + '</div>' +
+          '<div class="crit-list-picks">' +
+            inSubj.map(function(x){ return box(x.code, x.code, courseLabel(x)); }).join('') +
+          '</div>';
+      }).join('');
+    } else {
+      body = '<div class="crit-list-picks">' +
+        choices.map(function(v) {
+          return box(v, cur.kind === 'courseLevel' ? v + '00-level' : v, '');
+        }).join('') + '</div>';
+    }
+  } else {
+    /* Stored as typed, split on read. The raw string is what goes back into the
+       box so a half-written entry survives the re-render that every keystroke
+       causes; critList does the tidying when the query runs. */
+    var raw = c.values && c.values[listKey(cur.key)];
+    var shown = Array.isArray(raw) ? raw.join(', ') : (raw === undefined ? '' : String(raw));
+    body = '<input type="text" class="crit-list-text" placeholder="value, value, value" ' +
+      'value="' + esc(shown) + '"' + ctl(nid, 'crit.' + ci + '.value:' + listKey(cur.key)) + '>';
+  }
+
+  /* WHY THERE MIGHT BE NOTHING TO TICK.
+     Two different states produce an empty choice list and they want different
+     sentences. A course field or a category has values, but they come from the
+     loaded archive: SPECS, YEARS and the course catalogue are all filled by the
+     loader and are empty on a Source nobody has given files to yet. A name or a
+     free number never has a set to offer at all.
+
+     The band falls back to a text box either way, which is the useful behaviour
+     (a typed list still works, and it turns into ticked boxes the moment the
+     files arrive). But telling somebody to type a course code when the reason
+     they cannot pick one is that they have not loaded their data would be the
+     panel answering a question they did not ask. */
+  var awaitingData = !choices.length &&
+    (cur.kind === 'courseCode' || cur.kind === 'courseSubject' ||
+     (cur.column && cur.column.type === COLTYPE.ENUM));
+
+  var note = !n
+    ? 'Nothing chosen, so this query will not run. ' +
+      (choices.length ? 'Tick at least one.'
+        : awaitingData
+        ? 'Load the data files on the Source and these become tick boxes; ' +
+          'until then, type the values separated by commas.'
+        : 'Type at least one value, separated by commas.')
+    : n === 1
+    /* Said for the same reason the range band says it when both ends match: a
+       list of one behaves exactly like the operator the user just moved away
+       from, and leaving them to work that out from an unchanged row count is
+       the kind of silence this panel avoids. */
+    ? 'One value chosen, so this keeps the same rows "is" would. Choose another to widen it.'
+    : 'Keeps rows matching any of the ' + n + ' chosen' +
+      (cur.kind === 'courseCode' || cur.kind === 'courseSubject'
+        ? ', so a student counts once however many of them they took.' : '.');
+
+  return '<div class="crit-list">' +
+    '<span class="crit-list-tag">list' +
+      (n ? '<b>' + n + '</b>' : '') + '</span>' +
+    (n && choices.length
+      ? '<button class="crit-list-clear" onclick="clearCritList(' + nid + ',' + ci + ')">clear</button>'
+      : '') +
+    body +
+    '<div class="crit-list-note">' + note + '</div>' +
+  '</div>';
+}
+
+/* Untick everything in one click. Eighty-two courses is a plausible list to
+   have opened by accident, and clearing it one box at a time is not a thing to
+   ask of anybody. */
+function clearCritList(nodeId, ci) {
+  var n = findNode(nodeId);
+  var c = n && n.cfg && n.cfg.criteria && n.cfg.criteria[ci];
+  if (!c) return;
+  var f = fieldByKey(inputSchema(n, computeSchemas()), c.field);
+  if (!f) return;
+  c.values = c.values || {};
+  c.values[listKey(f.key)] = [];
+  markStale();
+  render();
+}
+
 function criterionHTML(node, ci, c, schema) {
   var fields = filterFields(schema);
   if (!fields.length) {
@@ -1066,15 +1293,33 @@ function criterionHTML(node, ci, c, schema) {
   var oKey = 'crit.' + ci + '.op:' + cur.key;
   var body;
 
+  /* The two nested-column fields gained an operator select when the list
+     arrived. They had none before, because "took this" was the only thing
+     either of them could say. */
   if (cur.kind === 'courseSubject') {
-    body = '<div class="criterion-controls two-col">' + fieldSel +
-      '<select' + ctl(nid, vKey) + '>' +
-        SUBJECTS.map(function(s){ return opt(s, critValue(c, cur.key, null) || defaultSubject()); }).join('') +
-      '</select></div>';
+    var sOp = critOp(c, cur.key, 'eq');
+    if (CODE_OPS.indexOf(sOp) === -1) sOp = CODE_OPS[0];
+    body = (sOp === 'in'
+      ? '<div class="criterion-controls two-col">' + fieldSel +
+          opSelect(nid, oKey, CODE_OPS, sOp) + '</div>' +
+        listBandHTML(nid, ci, cur, c)
+      : '<div class="criterion-controls">' + fieldSel +
+          opSelect(nid, oKey, CODE_OPS, sOp) +
+          '<select' + ctl(nid, vKey) + '>' +
+            SUBJECTS.map(function(s){ return opt(s, critValue(c, cur.key, null) || defaultSubject()); }).join('') +
+          '</select></div>');
 
   } else if (cur.kind === 'courseCode') {
-    body = '<div class="criterion-controls stack">' + fieldSel +
-      courseSelect(nid, vKey, critValue(c, cur.key, null) || defaultCourse()) + '</div>';
+    var cOp = critOp(c, cur.key, 'eq');
+    if (CODE_OPS.indexOf(cOp) === -1) cOp = CODE_OPS[0];
+    body = (cOp === 'in'
+      ? '<div class="criterion-controls two-col">' + fieldSel +
+          opSelect(nid, oKey, CODE_OPS, cOp) + '</div>' +
+        listBandHTML(nid, ci, cur, c)
+      : '<div class="criterion-controls stack">' + fieldSel +
+          '<div class="cc-pair">' + opSelect(nid, oKey, CODE_OPS, cOp) +
+            courseSelect(nid, vKey, critValue(c, cur.key, null) || defaultCourse()) +
+          '</div></div>');
 
   } else if (cur.kind === 'courseLevel') {
     /* A select rather than a number box: the levels are the handful the loaded
@@ -1088,25 +1333,30 @@ function criterionHTML(node, ci, c, schema) {
           return opt(String(v), String(val), v + '00-level');
         }).join('') + '</select>';
     };
-    body = (lOp === 'between'
+    body = (lOp === 'between' || lOp === 'in'
       ? '<div class="criterion-controls two-col">' + fieldSel +
           opSelect(nid, oKey, NUM_OPS, lOp) + '</div>' +
-        rangeBandHTML(nid, ci, { key: cur.key, column: lvlDef }, c, lvlBox)
+        (lOp === 'in'
+          ? listBandHTML(nid, ci, cur, c)
+          : rangeBandHTML(nid, ci, { key: cur.key, column: lvlDef }, c, lvlBox))
       : '<div class="criterion-controls">' + fieldSel +
           opSelect(nid, oKey, NUM_OPS, lOp) +
           lvlBox(vKey, critValue(c, cur.key, lvlDef)) +
         '</div>');
 
   } else if (cur.kind === 'courseGrade') {
+    // MARK_OPS rather than NUM_OPS: a mark in one named course is a threshold,
+    // and the list operator has no meaning here. See the comment on MARK_OPS.
     var mOp = critOp(c, cur.key, 'gte');
+    if (MARK_OPS.indexOf(mOp) === -1) mOp = 'gte';
     var markBox = function(key, val) {
       return '<input type="number" min="0" max="9" value="' + esc(val) + '"' + ctl(nid, key) + '>';
     };
     body = '<div class="criterion-controls stack">' + fieldSel +
       courseSelect(nid, 'crit.' + ci + '.course', c.course) +
       (mOp === 'between'
-        ? opSelect(nid, oKey, NUM_OPS, mOp)
-        : '<div class="cc-pair">' + opSelect(nid, oKey, NUM_OPS, mOp) +
+        ? opSelect(nid, oKey, MARK_OPS, mOp)
+        : '<div class="cc-pair">' + opSelect(nid, oKey, MARK_OPS, mOp) +
             markBox(vKey, critValue(c, cur.key, { def:'5' })) + '</div>') +
       '</div>' +
       (mOp === 'between'
@@ -1121,10 +1371,12 @@ function criterionHTML(node, ci, c, schema) {
     // The single box gives way to the band rather than sitting beside it: Two
     // places to type a lower bound would be one too many, so with the range on
     // the row has only two cells and the operator can have the spare width.
-    body = (nOp === 'between'
+    body = (nOp === 'between' || nOp === 'in'
       ? '<div class="criterion-controls two-col">' + fieldSel +
           opSelect(nid, oKey, NUM_OPS, nOp) + '</div>' +
-        rangeBandHTML(nid, ci, cur, c, numBox)
+        (nOp === 'in'
+          ? listBandHTML(nid, ci, cur, c)
+          : rangeBandHTML(nid, ci, cur, c, numBox))
       : '<div class="criterion-controls">' + fieldSel +
           opSelect(nid, oKey, NUM_OPS, nOp) +
           numBox(vKey, critValue(c, cur.key, cur.column)) +
@@ -1147,21 +1399,33 @@ function criterionHTML(node, ci, c, schema) {
     // Long option text (specialisations, course names) will not survive the
     // 80px field column, so those wrap onto their own row.
     var wide = vals.some(function(v){ return String(v).length > 8; });
-    body = (eOp === 'between'
-      // Both bounds live in the band, so the row is field and operator only,
-      // and the operator gets the width its label needs, wide values or not.
+    body = (eOp === 'between' || eOp === 'in'
+      // Both bounds, or the whole list, live in the band, so the row is field
+      // and operator only, and the operator gets the width its label needs,
+      // wide values or not.
       ? '<div class="criterion-controls two-col">' + fieldSel + enumOp + '</div>' +
-        rangeBandHTML(nid, ci, cur, c, pick)
+        (eOp === 'in'
+          ? listBandHTML(nid, ci, cur, c)
+          : rangeBandHTML(nid, ci, cur, c, pick))
       : wide
       ? '<div class="criterion-controls stack">' + fieldSel +
           '<div class="cc-pair">' + enumOp + valSel + '</div></div>'
       : '<div class="criterion-controls">' + fieldSel + enumOp + valSel + '</div>');
 
   } else {
-    body = '<div class="criterion-controls">' + fieldSel +
-      opSelect(nid, oKey, ENUM_OPS, critOp(c, cur.key, 'eq')) +
-      '<input type="text" value="' + esc(critValue(c, cur.key, cur.column)) + '"' + ctl(nid, vKey) + '>' +
-    '</div>';
+    /* A column with no declared values: a name, or a number the schema does not
+       type as one. There is nothing to tick, so the list is typed, and the band
+       renders a text box instead of a grid. */
+    var tOp = critOp(c, cur.key, 'eq');
+    if (ENUM_OPS.indexOf(tOp) === -1) tOp = 'eq';
+    body = (tOp === 'in'
+      ? '<div class="criterion-controls two-col">' + fieldSel +
+          opSelect(nid, oKey, ENUM_OPS, tOp) + '</div>' +
+        listBandHTML(nid, ci, cur, c)
+      : '<div class="criterion-controls">' + fieldSel +
+          opSelect(nid, oKey, ENUM_OPS, tOp) +
+          '<input type="text" value="' + esc(critValue(c, cur.key, cur.column)) + '"' + ctl(nid, vKey) + '>' +
+        '</div>');
   }
 
   return '<div class="criterion-row">' + body + remove + '</div>';
@@ -4490,6 +4754,7 @@ window.removeSortKey = removeSortKey;
 window.addStat = addStat;
 window.removeStat = removeStat;
 window.removeCriterion = removeCriterion;
+window.clearCritList = clearCritList;
 window.clearAll = clearAll;
 window.runQuery = runQuery;
 window.copyOutput = copyOutput;
@@ -4607,9 +4872,12 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     fieldByKey: fieldByKey, applyFilter: applyFilter, applyCriterion: applyCriterion,
     opsFor: opsFor, defaultOpFor: defaultOpFor, OP_FNS: OP_FNS, OP_SYM: OP_SYM,
     NUM_OPS: NUM_OPS, ENUM_OPS: ENUM_OPS, ORDERED_OPS: ORDERED_OPS,
+    MARK_OPS: MARK_OPS, CODE_OPS: CODE_OPS, opGroups: opGroups,
     isRangeable: isRangeable, numericValues: numericValues, rankerFor: rankerFor,
     critValue: critValue, critOp: critOp, critHigh: critHigh, critRange: critRange,
     rangeKey: rangeKey, isBlank: isBlank,
+    critList: critList, listKey: listKey, orderList: orderList,
+    listChoices: listChoices, listMatcher: listMatcher,
     newCriterion: newCriterion, defaultCfg: defaultCfg,
     normaliseShow: normaliseShow, outputTable: outputTable, defaultAvgCol: defaultAvgCol,
     branchesFeedOutput: branchesFeedOutput, BRANCH_NODES: BRANCH_NODES,

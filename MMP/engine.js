@@ -37,33 +37,73 @@ var OP_FNS = {
    the way that is hardest to notice. The count is nearly right. */
 OP_FNS.between = function(a, lo, hi) { return a >= lo && a <= hi; };
 
-var OP_SYM = { gt:'>', gte:'>=', lt:'<', lte:'<=', eq:'=', ne:'!=', between:'in' };
+var OP_SYM = { gt:'>', gte:'>=', lt:'<', lte:'<=', eq:'=', ne:'!=',
+               between:'in', in:'one of' };
 
 /* What the operator dropdown says, where that differs from what the log says.
    A log line wants the terse form: "gpa in [5 .. 7]" reads well, but a
    control has to be findable, and "in" sitting last among six comparator
    symbols was not: it looks like a seventh comparator, and gives no hint that
-   it is the one operator needing two values. The dropdown says so in words. */
-var OP_LABEL = { between: 'in range' };
+   it is the one operator needing two values. The dropdown says so in words.
+
+   `in` gets the same treatment for the same reason, and its log symbol is "one
+   of" rather than "in" so the two set operators stay apart in a log line: a
+   range prints `gpa in [5 .. 7]` and a list prints `code one of ["COMP103",
+   "SWEN221"]`. Both are membership tests, and the bracket content says which
+   kind, but a reader should not have to notice the brackets. */
+var OP_LABEL = { between: 'in range', in: 'is one of' };
 function opLabel(o) { return OP_LABEL[o] || OP_SYM[o] || o; }
 
-/* The comparators are one idea and the range is another, so the dropdown says
-   that too. A group heading is the cheapest way to make an option findable by
-   someone who does not already know it is there, and the field selector above
-   already groups its own options the same way, so the pattern is not new. */
+/* The comparators are one idea, the range is another and the list is a third,
+   so the dropdown says that too. A group heading is the cheapest way to make an
+   option findable by someone who does not already know it is there, and the
+   field selector above already groups its own options the same way, so the
+   pattern is not new.
+
+   Below three options there is nothing worth separating, and two headings over
+   one option each read as clutter rather than as structure, so a short list
+   stays flat. */
 function opGroups(ops) {
-  var cmp = ops.filter(function(o){ return o !== 'between'; });
+  var cmp = ops.filter(function(o){ return o !== 'between' && o !== 'in'; });
   var rng = ops.filter(function(o){ return o === 'between'; });
-  return [{ label:'Compare', ops:cmp }, { label:'Range', ops:rng }]
+  var lst = ops.filter(function(o){ return o === 'in'; });
+  return [{ label:'Compare', ops:cmp }, { label:'Range', ops:rng },
+          { label:'List', ops:lst }]
     .filter(function(g){ return g.ops.length; });
 }
-var NUM_OPS  = ['gt','gte','lt','lte','eq','ne','between'];
-var ENUM_OPS = ['eq','ne'];
+
+/* THE LIST OPERATOR
+   `in` is the disjunction this tool had no way to express. Criteria are ANDed
+   and there is no OR between them, so "took COMP103 or SWEN221" could only be
+   built as one filtered branch per course merged back together: nine nodes to
+   ask one question. Within a single field that OR is exactly set membership,
+   and set membership is one operator rather than a second way of wiring.
+
+   It is deliberately not a general OR. Criteria stay ANDed, so a filter reads
+   as a conjunction of conditions and each condition may name several values.
+   "Took one of these three courses AND is in their second year" is the shape
+   people actually ask for; arbitrary boolean nesting in a side panel is not. */
+var NUM_OPS  = ['gt','gte','lt','lte','eq','ne','between','in'];
+var ENUM_OPS = ['eq','ne','in'];
 /* An ordered category (a year, a letter grade) compares the same way a number
    does once its values are ranked, so it gets the range operator too. It does
    not get < and >, which would read as arithmetic on something that is not a
    number. */
-var ORDERED_OPS = ['eq','ne','between'];
+var ORDERED_OPS = ['eq','ne','between','in'];
+/* A mark in one named course is a threshold on a number, and a list of grade
+   points is not a question anyone asks of it ("scored exactly 5, 7 or 8"), so
+   this one field keeps the comparator set it had. Without a set of its own it
+   would inherit `in` from NUM_OPS and offer an operator the engine does not
+   implement for it, which is the worst kind of dead control: it looks like an
+   answer. */
+var MARK_OPS = ['gt','gte','lt','lte','eq','ne','between'];
+/* "Took subject" and "Took course" had no operator control at all, because
+   there was only ever one thing to say. There are now two, and the list is the
+   reason this whole operator exists, so these two fields gain the select.
+   Negation is not offered: "did not take COMP103" is a defensible question but
+   a different one from the two here, and it can be added the day it is asked
+   for rather than guessed at now. */
+var CODE_OPS = ['eq','in'];
 
 /* WHICH COLUMNS CAN CARRY A RANGE
    A range needs a meaningful order, and "has a declared list of values" is not
@@ -318,7 +358,11 @@ function fieldByKey(schema, key) {
 }
 
 function opsFor(kind, col) {
-  if (kind === COLTYPE.NUMBER || kind === 'courseGrade' || kind === 'courseLevel') return NUM_OPS;
+  // The two fields that reach inside the nested column by name. One operator
+  // until the list arrived, two now, and neither of the numeric sets fits.
+  if (kind === 'courseSubject' || kind === 'courseCode') return CODE_OPS;
+  if (kind === 'courseGrade') return MARK_OPS;
+  if (kind === COLTYPE.NUMBER || kind === 'courseLevel') return NUM_OPS;
   // Passed the column where there is one, because whether a category can carry
   // a range is a property of that column rather than of its type.
   if (isRangeable(col)) return ORDERED_OPS;
@@ -356,14 +400,89 @@ function applyFilter(node, t, log) {
   return { table: t };
 }
 
+/* A chosen list into something a row can be tested against.
+
+   Membership is decided on the STRING form of a value, for the reason OP_FNS.eq
+   is a deliberate `==`: '2022' arriving from a control has to match 2022 in a
+   cell. Numbers are put through Number() first so that 7.50 typed by hand
+   matches a stored 7.5, which string comparison alone would miss; a number
+   column is the only place that coercion is safe, and the only place it is
+   needed.
+
+   An entry that is not a number on a number column cannot match anything, so it
+   is dropped and counted rather than silently kept. The count is returned, not
+   discarded: a list quietly matching on four of its five values is exactly the
+   failure that produces a plausible wrong answer. */
+function listMatcher(values, numeric) {
+  var set = {}, kept = 0, dropped = 0;
+  values.forEach(function(v) {
+    if (numeric) {
+      var n = Number(v);
+      if (v === '' || v === null || !isFinite(n)) { dropped++; return; }
+      set['k' + String(n)] = true;
+    } else {
+      set['k' + String(v)] = true;
+    }
+    kept++;
+  });
+  return {
+    kept: kept,
+    dropped: dropped,
+    has: function(cell) {
+      if (cell === null || cell === undefined) return false;
+      if (!numeric) return set['k' + String(cell)] === true;
+      var n = Number(cell);
+      return isFinite(n) && set['k' + String(n)] === true;
+    }
+  };
+}
+
+// The list as the log should print it: quoted, comma separated, and truncated
+// once it is long enough that printing it in full would bury the line it is on.
+function listLog(values) {
+  var head = values.slice(0, 6).map(function(v){ return '"' + v + '"'; }).join(', ');
+  return '[' + head + (values.length > 6 ? ', +' + (values.length - 6) + ' more' : '') + ']';
+}
+
 function applyCriterion(t, c, f, log) {
   var coursesIdx = coursesColIndex(t);
 
   if (f.kind === 'courseSubject' || f.kind === 'courseCode') {
     if (coursesIdx === -1) return { table: t };
+    var prop = f.kind === 'courseSubject' ? 'subject' : 'code';
+    var cop = critOp(c, f.key, 'eq');
+
+    /* THE DISJUNCTION THIS NODE EXISTS FOR.
+       At student granularity "took one of these" is "took this OR took that",
+       because a student holds every enrolment they made and any one of them can
+       satisfy the test. That is the same `some()` the single-value case uses,
+       asked of a set instead of a value, which is why the OR needs no new
+       machinery: it was already inside the nested column.
+
+       After a Project the same question is asked of `code` as an ordinary
+       column, and there it means "this enrolment is one of these". Both
+       readings are right for their granularity, and the field names say which
+       one is in play: "Took course" keeps students, `Course` keeps enrolments. */
+    if (cop === 'in') {
+      var wanted = critList(c, f.key, null);
+      if (!wanted.length) {
+        return { error: (f.kind === 'courseSubject' ? 'Took subject' : 'Took course') +
+          ' is set to "is one of" with nothing chosen. Tick at least one.' };
+      }
+      var m = listMatcher(wanted, false);
+      var mrows2 = t.rows.filter(function(r) {
+        return (r[coursesIdx] || []).some(function(e){ return m.has(e[prop]); });
+      });
+      log.push(logEntry('FILTER', [
+        {s:'student'}, {c:'op', s:'took one of'},
+        {s: prop === 'subject' ? 'subjects' : 'courses'},
+        {c:'val', s: listLog(wanted)}
+      ]));
+      return { table: makeTable(t.columns, mrows2) };
+    }
+
     var want = critValue(c, f.key, null) ||
                (f.kind === 'courseSubject' ? defaultSubject() : defaultCourse());
-    var prop = f.kind === 'courseSubject' ? 'subject' : 'code';
     var rows = t.rows.filter(function(r) {
       var list = r[coursesIdx] || [];
       return list.some(function(e){ return e[prop] === want; });
@@ -384,6 +503,33 @@ function applyCriterion(t, c, f, log) {
     if (coursesIdx === -1) return { table: t };
     var lvlCol = { def: String(defaultLevel() || 4) };
     var lop = critOp(c, f.key, 'eq');
+
+    /* Levels are a handful of small integers, so "100 or 200 level" is a list
+       rather than a range far more often than it is either. Same reading as the
+       equality case: a student who took a 100-level and a 400-level course
+       satisfies a list containing either, because they genuinely did both. */
+    if (lop === 'in') {
+      var lwanted = critList(c, f.key, lvlCol);
+      if (!lwanted.length) {
+        return { error: 'Took level is set to "is one of" with nothing chosen. Tick at least one.' };
+      }
+      var lm = listMatcher(lwanted, true);
+      if (!lm.kept) return { error: 'Course level must be a number.' };
+      var inrows = t.rows.filter(function(r) {
+        return (r[coursesIdx] || []).some(function(e) {
+          return e.level !== null && e.level !== undefined && lm.has(e.level);
+        });
+      });
+      log.push(logEntry('FILTER', [
+        {s:'student'}, {c:'op', s:'took one of levels'}, {c:'val', s: listLog(lwanted)}
+      ]));
+      if (lm.dropped) {
+        log.push(logEntry('SKIP', [{c:'val', s:lm.dropped},
+          {s:(lm.dropped === 1 ? 'level is' : 'levels are') + ' not a number and match nothing'}]));
+      }
+      return { table: makeTable(t.columns, inrows) };
+    }
+
     var lrange = critRange(c, f.key, lvlCol);
     var lfn = OP_FNS[lop] || OP_FNS.eq;
 
@@ -458,6 +604,30 @@ function applyCriterion(t, c, f, log) {
   var opk = critOp(c, f.key, defaultOpFor(f.kind));
   var fnc = OP_FNS[opk] || OP_FNS.eq;
   var raw = critValue(c, f.key, col);
+
+  /* The list, on an ordinary column. Placed before every comparison branch
+     because it is not a comparison: there is no single operand to compare
+     against, so nothing below this point would know what to do with it, and the
+     `OP_FNS[opk] || OP_FNS.eq` fallback above would quietly turn "is one of"
+     into "equals the first thing in the list". */
+  if (opk === 'in') {
+    var chosen = critList(c, f.key, col);
+    if (!chosen.length) {
+      return { error: col.label + ' is set to "is one of" with nothing chosen. ' +
+        (col.values || col.order ? 'Tick at least one value.' : 'Type at least one value.') };
+    }
+    var lm2 = listMatcher(chosen, col.type === COLTYPE.NUMBER);
+    if (!lm2.kept) return { error: col.label + ' list needs at least one number.' };
+    var irows = t.rows.filter(function(r){ return lm2.has(r[idx]); });
+    log.push(logEntry('FILTER', [
+      {s:col.key}, {c:'op', s:'one of'}, {c:'val', s: listLog(chosen)}
+    ]));
+    if (lm2.dropped) {
+      log.push(logEntry('SKIP', [{c:'val', s:lm2.dropped},
+        {s:(lm2.dropped === 1 ? 'entry is' : 'entries are') + ' not a number and match nothing'}]));
+    }
+    return { table: makeTable(t.columns, irows) };
+  }
 
   /* One branch for both kinds of range. rankerFor() turns a cell into a
      position (itself for a number, its index for a declared order), so
