@@ -598,6 +598,17 @@ select option {
   line-height: 1.35;
   color: #8578a0;
 }
+
+/* The wildcard legend, sized and coloured as the list band's note is: both are
+   a line of guidance under the control they belong to. No band around it,
+   because a pattern is one box rather than the several a list needs. */
+.crit-pattern-note {
+  font-size: 9px;
+  line-height: 1.35;
+  color: #8578a0;
+  padding-left: 8px;
+}
+.crit-pattern-note b { color: #c2b3e0; font-weight: 600; }
 /* The operator select wears the band's colour once the list is chosen, the same
    way .op-wide wears the range's. */
 .op-list {

@@ -641,6 +641,17 @@
              band under the condition with a bound at each end. Both ends count as inside, so a mark
              range of 70 to 80 keeps a mark of exactly 80. Entering the bounds the other way round
              means the same band, and the query log prints the one that was actually applied.</p>
+          <p class="help-node-desc"><b>Took course</b> and <b>Took subject</b> also offer
+             <b>matches</b>, which takes a pattern rather than a value. <b>*</b> stands for any run
+             of characters and <b>?</b> for exactly one, so <b>SWEN*</b> is every SWEN course,
+             <b>*4??</b> is every 400-level course whatever the subject, and <b>SWEN3??</b> is
+             300-level SWEN. The pattern is the whole code rather than part of it, so <b>COMP</b>
+             matches nothing, and capitals do not matter.</p>
+          <p class="help-node-desc">One pattern over <b>Took course</b> reaches what <b>Took
+             subject</b> and <b>Took level</b> reach, which is the point of it: fewer conditions for
+             the same question. The two fields stay, because picking a subject from a list is easier
+             than remembering a pattern. Everything other than <b>*</b> and <b>?</b> is matched
+             literally, so there is no pattern that can be written wrongly.</p>
           <p class="help-node-desc">Ranges are offered wherever the ordering is a real one: on any
              number, on <b>Year</b>, and on <b>Grade</b>, whose letters carry a declared ranking from
              A+ down to D. That makes &ldquo;grade between A+ and B&rdquo; a band of grades rather

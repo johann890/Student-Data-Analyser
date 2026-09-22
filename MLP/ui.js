@@ -1326,6 +1326,19 @@ function listBandHTML(nid, ci, cur, c) {
   '</div>';
 }
 
+/* What the two wildcards mean, beside the box they are typed into. A pattern
+   language is not guessable from an empty field, and the alternative to saying
+   it here is a user typing a course code and wondering what the operator was
+   for. One line, no justification: the reasoning lives in Help. */
+function patternNoteHTML(kind) {
+  return '<div class="crit-pattern-note"><b>*</b> is any run of characters, ' +
+    '<b>?</b> is one. ' +
+    (kind === 'courseSubject'
+      ? 'So <b>SW*</b> is every subject starting SW.'
+      : 'So <b>SWEN*</b> is every SWEN course and <b>*4??</b> every 400 level.') +
+    '</div>';
+}
+
 /* Untick everything in one click. Eighty-two courses is a plausible list to
    have opened by accident, and clearing it one box at a time is not a thing to
    ask of anybody. */
@@ -1373,6 +1386,12 @@ function criterionHTML(node, ci, c, schema) {
       ? '<div class="criterion-controls two-col">' + fieldSel +
           opSelect(nid, oKey, CODE_OPS, sOp) + '</div>' +
         listBandHTML(nid, ci, cur, c)
+      : sOp === 'matches'
+      ? '<div class="criterion-controls">' + fieldSel +
+          opSelect(nid, oKey, CODE_OPS, sOp) +
+          '<input type="text" placeholder="SW*" spellcheck="false" ' +
+            'value="' + esc(critValue(c, cur.key, null) || '') + '"' + ctl(nid, vKey) + '>' +
+        '</div>' + patternNoteHTML(cur.kind)
       : '<div class="criterion-controls">' + fieldSel +
           opSelect(nid, oKey, CODE_OPS, sOp) +
           '<select' + ctl(nid, vKey) + '>' +
@@ -1386,6 +1405,12 @@ function criterionHTML(node, ci, c, schema) {
       ? '<div class="criterion-controls two-col">' + fieldSel +
           opSelect(nid, oKey, CODE_OPS, cOp) + '</div>' +
         listBandHTML(nid, ci, cur, c)
+      : cOp === 'matches'
+      ? '<div class="criterion-controls stack">' + fieldSel +
+          '<div class="cc-pair">' + opSelect(nid, oKey, CODE_OPS, cOp) +
+            '<input type="text" placeholder="SWEN*" spellcheck="false" ' +
+              'value="' + esc(critValue(c, cur.key, null) || '') + '"' + ctl(nid, vKey) + '>' +
+          '</div></div>' + patternNoteHTML(cur.kind)
       : '<div class="criterion-controls stack">' + fieldSel +
           '<div class="cc-pair">' + opSelect(nid, oKey, CODE_OPS, cOp) +
             courseSelect(nid, vKey, critValue(c, cur.key, null) || defaultCourse()) +
@@ -5015,6 +5040,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     binsFor: binsFor, binLabel: binLabel, fmtEdge: fmtEdge,
     binColumn: binColumn, histogramColumns: histogramColumns,
     applyHistogram: applyHistogram,
+    globToRegExp: globToRegExp,
     labelCols: labelCols, labelsFromTable: labelsFromTable,
     labelsFromData: labelsFromData, rowsForLabel: rowsForLabel,
     addStat: addStat, removeStat: removeStat,

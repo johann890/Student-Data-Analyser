@@ -38,7 +38,7 @@ var OP_FNS = {
 OP_FNS.between = function(a, lo, hi) { return a >= lo && a <= hi; };
 
 var OP_SYM = { gt:'>', gte:'>=', lt:'<', lte:'<=', eq:'=', ne:'!=',
-               between:'in', in:'one of' };
+               between:'in', in:'one of', matches:'~' };
 
 /* What the operator dropdown says, where that differs from what the log says.
    A log line wants the terse form: "gpa in [5 .. 7]" reads well, but a
@@ -51,7 +51,7 @@ var OP_SYM = { gt:'>', gte:'>=', lt:'<', lte:'<=', eq:'=', ne:'!=',
    range prints `gpa in [5 .. 7]` and a list prints `code one of ["COMP103",
    "SWEN221"]`. Both are membership tests, and the bracket content says which
    kind, but a reader should not have to notice the brackets. */
-var OP_LABEL = { between: 'in range', in: 'is one of' };
+var OP_LABEL = { between: 'in range', in: 'is one of', matches: 'matches' };
 function opLabel(o) { return OP_LABEL[o] || OP_SYM[o] || o; }
 
 /* The comparators are one idea, the range is another and the list is a third,
@@ -103,7 +103,45 @@ var MARK_OPS = ['gt','gte','lt','lte','eq','ne','between'];
    Negation is not offered: "did not take COMP103" is a defensible question but
    a different one from the two here, and it can be added the day it is asked
    for rather than guessed at now. */
-var CODE_OPS = ['eq','in'];
+var CODE_OPS = ['eq','matches','in'];
+
+/* THE PATTERN OPERATOR
+   ---------------------------------------------------------------------------
+   The supervisor's last note: "using 'SWEN*' for 'course' would select the
+   subject 'SWEN' and using '*4..' would select 400-level courses", and the
+   point behind it, that patterns "would result in fewer filter nodes being
+   required". They do more than that. Took subject and Took level exist because
+   a course code has a subject and a level buried in it and no other way to ask
+   about either; one pattern over the code reaches both, so the two convenience
+   fields become a convenience rather than the only route.
+
+   WILDCARDS RATHER THAN REGULAR EXPRESSIONS, which is a smaller thing than he
+   asked for and deliberate. His own first example is already a wildcard, and he
+   observed that academics reach for that form first. The other two translate by
+   one character: '*4..' is '*4??' and 'SWEN3..' is 'SWEN3??'.
+
+   What that buys is that there is no such thing as an invalid pattern here. A
+   user typing a bracket or a backslash gets a search for a bracket or a
+   backslash, not a syntax error in a language nobody said they were writing,
+   and the compiled pattern contains no construct that can backtrack. Full
+   regular expressions are this function with the escaping removed, on the day
+   somebody wants them.
+
+   Anchored, because "SWEN" as a pattern means the code SWEN and not every code
+   containing it. Case-insensitive, because a course code is written in capitals
+   and typing it in lower case is not a different question. */
+function globToRegExp(pattern) {
+  var p = String(pattern), out = '';
+  for (var i = 0; i < p.length; i++) {
+    var ch = p.charAt(i);
+    // The two wildcards are read BEFORE escaping, so everything reaching the
+    // escape is a literal. Nothing a user types can become syntax.
+    if (ch === '*') out += '.*';
+    else if (ch === '?') out += '.';
+    else out += ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  }
+  return new RegExp('^' + out + '$', 'i');
+}
 
 /* WHICH COLUMNS CAN CARRY A RANGE
    A range needs a meaningful order, and "has a declared list of values" is not
@@ -479,6 +517,28 @@ function applyCriterion(t, c, f, log) {
         {c:'val', s: listLog(wanted)}
       ]));
       return { table: makeTable(t.columns, mrows2) };
+    }
+
+    /* One pattern, asked of every enrolment the student holds. The same
+       some() the single-value case uses and the list case uses: at student
+       granularity "took a course matching this" is a disjunction over their
+       enrolments, and that was already inside the nested column. */
+    if (cop === 'matches') {
+      var pat = String(critValue(c, f.key, null) || '').trim();
+      if (!pat) {
+        return { error: (f.kind === 'courseSubject' ? 'Took subject' : 'Took course') +
+          ' is set to "matches" with no pattern. Type one, such as SWEN* or *4??.' };
+      }
+      var re = globToRegExp(pat);
+      var prows = t.rows.filter(function(r) {
+        return (r[coursesIdx] || []).some(function(e){ return re.test(String(e[prop])); });
+      });
+      log.push(logEntry('FILTER', [
+        {s:'student'}, {c:'op', s:'took'},
+        {s: (prop === 'subject' ? 'subject' : 'course') + ' matching'},
+        {c:'val', s:'"' + pat + '"'}
+      ]));
+      return { table: makeTable(t.columns, prows) };
     }
 
     var want = critValue(c, f.key, null) ||
