@@ -1454,6 +1454,24 @@ function canProject(t) { return coursesColIndex(t) !== -1; }
    name should mean. The log names what was replaced, so nothing vanishes
    quietly. Derived by key rather than from a fixed list, so a column added to
    the Source schema tomorrow is carried without this function changing. */
+/* The student columns that survive the unfold: everything that is not the
+   nested column itself and does not collide with a column the enrolment is
+   about to supply.
+
+   ONE COLLISION EXISTS, and it is worth naming rather than leaving to be
+   rediscovered. `letterGrade` is a key on both sides: the student's overall
+   grade for the year, and the letter awarded for one course. The enrolment's
+   wins, which is right, because after this step a row IS an enrolment and the
+   grade that belongs to it is the course's.
+
+   What made that a trap was the display name. Both were called "Grade", so the
+   column appeared to continue across the step while quietly changing meaning.
+   The student's is now called "Overall grade" and the enrolment's is still
+   "Grade", so the substitution is visible in the header rather than implied.
+
+   GPA does NOT collide and so rides along, which is the reason the two are not
+   treated alike: after a Project a row carries the student's GPA and the
+   course's Grade, and those really are facts about different things. */
 function projectCarried(t) {
   var taken = {};
   enrolmentColumns().forEach(function(c){ taken[c.key] = true; });
