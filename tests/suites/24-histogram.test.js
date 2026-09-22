@@ -399,12 +399,27 @@ module.exports = ({ describe, test }) => {
         'binning student IDs is a histogram of nothing');
     });
 
-    test('it says which way a boundary goes', () => {
+    /* The rule itself is unchanged and so is the requirement to state it. What
+       moved is WHERE: it is true on every render and needed once, which makes
+       it reference material rather than a panel hint, so it is explained in
+       Help instead of asserted on the node. The panel is checked for what it
+       now owns, which is the setting that is still undecided. */
+    test('it says which way a boundary goes, in Help', () => {
       const h = plain();
       cfg(h, 'by', 'gpa');
-      const text = h.qa('.node-config').map(e => e.textContent).join(' ');
-      assert.includes(text, 'band above',
-        'the one rule a reader cannot check by looking must be stated');
+      const help = h.doc.querySelector('.help-body').textContent;
+      assert.includes(help, 'band above',
+        'the one rule a reader cannot check by looking must be stated somewhere');
+    });
+
+    test('the panel names the width while it is still undecided', () => {
+      const h = plain();
+      cfg(h, 'by', 'gpa');
+      const text = () => h.qa('.node-config').map(e => e.textContent).join(' ');
+      assert.includes(text(), 'chosen from the data', 'auto width has to say it is auto');
+      cfg(h, 'width', '1');
+      assert.excludes(text(), 'chosen from the data',
+        'a typed width states itself; the hint is noise from then on');
     });
 
     test('a saved column that is gone falls back rather than binning nothing', () => {

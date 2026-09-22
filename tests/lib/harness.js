@@ -30,16 +30,24 @@ try {
   process.exit(1);
 }
 
-/* Locate the application. Defaults to a sibling MMP folder, which is the layout
-   this suite was written against, but any folder can be passed explicitly:
-       APP_DIR=../some/other/path node run.js                                  */
+/* Locate the application. Defaults to the newest milestone folder present, and
+   falls back through the older ones, so the suite follows the work rather than
+   being pinned to the folder it was first written against. Any folder can be
+   named explicitly:
+       APP_DIR=../MMP node run.js
+
+   The order matters and is not alphabetical. Later milestones are supersets:
+   a suite written for MLP (the help-text placement rules, say) does not pass
+   against MMP, because the behaviour it describes is not there yet. Testing
+   the current milestone by default is the useful reading of "npm test", and an
+   older folder is then a deliberate request rather than an accident.          */
 /* Load order is the page's load order, and it is load-bearing: ui.js ends with
    event wiring and the first paint, both of which need the other two parsed. */
 const APP_SCRIPTS = ['data.js', 'engine.js', 'ui.js'];
 
 function findAppDir() {
   if (process.env.APP_DIR) return path.resolve(process.env.APP_DIR);
-  const candidates = ['../MMP', '../mmp', '../MVP', '../mvp', '..', '.'];
+  const candidates = ['../MLP', '../mlp', '../MMP', '../mmp', '../MVP', '../mvp', '..', '.'];
   for (const c of candidates) {
     const dir = path.resolve(__dirname, '..', c);
     if (APP_SCRIPTS.every(f => fs.existsSync(path.join(dir, f))) && findHtml(dir)) return dir;

@@ -70,10 +70,6 @@
         <span class="proc-desc">One value per row, one column out</span>
       </button>
       <div class="proc-group cat-branches">Branches</div>
-      <button class="proc-item cat-branches" onclick="addProcNode('selectFor')">
-        <span class="proc-name">Select For</span>
-        <span class="proc-desc">One row per group: Name the column to split on</span>
-      </button>
       <button class="proc-item cat-branches" onclick="addProcNode('combine')">
         <span class="proc-name">Combine</span>
         <span class="proc-desc">Stack rows, or join columns side by side</span>
@@ -84,15 +80,25 @@
       </button>
     </div>
   </div>
-  <!-- The third menu. Histogram is not Reshape (it does not keep the rows) and
-       it is not one of Processing's three families either: it neither multiplies
-       rows, nor collapses them to one, nor joins branches. It answers a
-       different kind of question, "how are these spread out", and a menu of its
-       own is how the toolbar says so. One item today; percentiles and
-       cumulative counts are the same kind of question if they are ever wanted. -->
+  <!-- The third menu. Neither node here is Reshape (they do not keep the rows)
+       and neither is one of Processing's three families: they do not multiply
+       rows, collapse them to one, or join branches. They answer a different kind
+       of question, "how are these spread out", and a menu of its own is how the
+       toolbar says so.
+
+       Select For sits here rather than under Branches, which is where it was
+       first put because it shares a second input with Compare. Having two ports
+       is not what the node is FOR: it produces one row per group with a measure
+       beside it, which is the same answer Histogram gives over ranges instead of
+       values. The supervisor asked the question directly and it is the right
+       one. Percentiles and cumulative counts belong here too if wanted. -->
   <div class="proc-wrap">
     <button class="add-btn distribution" onclick="toggleProcMenu(event, 'distMenu')">Distribution <span class="caret">&#9662;</span></button>
     <div class="proc-menu" id="distMenu" onclick="event.stopPropagation()">
+      <button class="proc-item cat-distribution" onclick="addProcNode('selectFor')">
+        <span class="proc-name">Select For</span>
+        <span class="proc-desc">One row per group: Name the column to split on</span>
+      </button>
       <button class="proc-item cat-distribution" onclick="addProcNode('histogram')">
         <span class="proc-name">Histogram</span>
         <span class="proc-desc">Count rows into bands of a number</span>
@@ -569,7 +575,7 @@
              all leave the meaning of the table intact: a row is still whatever it was before.
              <b>Processing</b> holds the three groups that change that. Expand makes a row mean
              something new, Summarise replaces many rows with one, and Branches pulls several tables
-             into one. <b>Distribution</b> holds the one node that answers a different kind of
+             into one. <b>Distribution</b> holds the two nodes that answer a different kind of
              question altogether: not what the rows are, but how they are spread out.</p>
 
           <figure class="help-fig help-fig-narrow">
@@ -591,7 +597,7 @@
 
               <rect x="8" y="244" width="104" height="22" rx="5" fill="none" stroke="#3d3d3d"/>
               <text x="60" y="259" fill="#9a9a9a" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Processing &#9662;</text>
-              <rect x="8" y="274" width="324" height="326" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <rect x="8" y="274" width="324" height="292" rx="6" fill="#141414" stroke="#2a2a2a"/>
               <text x="22" y="296" fill="#a8d050" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">EXPAND</text>
               <text x="24" y="316" fill="#a8d050" font-size="11" font-family="system-ui, sans-serif">Project</text>
               <text x="24" y="329" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row per course</text>
@@ -603,16 +609,16 @@
               <text x="24" y="444" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Rows</text>
               <text x="24" y="457" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One value per row, one column out</text>
               <text x="22" y="484" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
-              <text x="24" y="504" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Select For</text>
-              <text x="24" y="517" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row per group, named by a column</text>
-              <text x="24" y="538" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
-              <text x="24" y="551" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
-              <text x="24" y="572" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
-              <text x="24" y="585" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
+              <text x="24" y="504" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
+              <text x="24" y="517" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
+              <text x="24" y="538" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
+              <text x="24" y="551" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
 
-              <rect x="8" y="620" width="106" height="22" rx="5" fill="none" stroke="#3a4a8a"/>
-              <text x="61" y="635" fill="#8fa8f0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Distribution &#9662;</text>
-              <rect x="8" y="650" width="324" height="52" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <rect x="8" y="586" width="106" height="22" rx="5" fill="none" stroke="#3a4a8a"/>
+              <text x="61" y="601" fill="#8fa8f0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Distribution &#9662;</text>
+              <rect x="8" y="616" width="324" height="86" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <text x="24" y="638" fill="#8fa8f0" font-size="11" font-family="system-ui, sans-serif">Select For</text>
+              <text x="24" y="651" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row per group, named by a column</text>
               <text x="24" y="672" fill="#8fa8f0" font-size="11" font-family="system-ui, sans-serif">Histogram</text>
               <text x="24" y="685" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Count rows into bands of a number</text>
             </svg>
@@ -646,28 +652,73 @@
           <dl class="help-defs">
             <dt>Sort</dt>
             <dd>Orders rows by a column, ascending or descending. Add further keys to break ties:
-                the first key decides, the second settles what the first left equal.</dd>
+                the first key decides, the second settles what the first left equal.
+                <div class="help-eg">
+                  <div class="help-eg-t">Example</div>
+                  <div class="help-eg-io">
+                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Student</th><th>GPA</th></tr><tr><td>Ana</td><td>6.2</td></tr><tr><td>Jo</td><td>7.8</td></tr><tr><td>Kim</td><td>5.1</td></tr></table></div>
+                    <div class="help-eg-arrow">&rarr;</div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Student</th><th>GPA</th></tr><tr><td>Jo</td><td>7.8</td></tr><tr><td>Ana</td><td>6.2</td></tr><tr><td>Kim</td><td>5.1</td></tr></table></div>
+                  </div>
+                  <p class="help-eg-note">Settings: <b>Sort by</b> GPA, <b>high &rarr; low</b>. Same rows, same count, new order.</p>
+                </div></dd>
             <dt>Reverse</dt>
             <dd>Turns the row order upside down. Same rows, same columns, same count, with the last
                 row becoming the first. Its real use is in front of <b>Take</b>. Take keeps the first
                 N rows, so Sort, Reverse, Take is how you ask for the <b>last</b> N. It needs no
                 column, which is what lets it work on a table whose order did not come from a Sort at
                 all: the order rows arrived in from a Combine, or the order branches were wired into
-                a Compare.</dd>
+                a Compare.
+                <div class="help-eg">
+                  <div class="help-eg-t">Example</div>
+                  <div class="help-eg-io">
+                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Student</th><th>GPA</th></tr><tr><td>Jo</td><td>7.8</td></tr><tr><td>Ana</td><td>6.2</td></tr><tr><td>Kim</td><td>5.1</td></tr></table></div>
+                    <div class="help-eg-arrow">&rarr;</div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Student</th><th>GPA</th></tr><tr><td>Kim</td><td>5.1</td></tr><tr><td>Ana</td><td>6.2</td></tr><tr><td>Jo</td><td>7.8</td></tr></table></div>
+                  </div>
+                  <p class="help-eg-note">No settings. After a Sort high&nbsp;&rarr;&nbsp;low, this puts the lowest first, so a <b>Take</b> of 1 after it is the bottom one.</p>
+                </div></dd>
             <dt>Take</dt>
             <dd>Keeps the first N rows and drops the rest. On its own that is arbitrary, so it is
                 nearly always used straight after a Sort. Together they mean <b>top N</b>, or
-                <b>bottom N</b> with a Reverse between them.</dd>
+                <b>bottom N</b> with a Reverse between them.
+                <div class="help-eg">
+                  <div class="help-eg-t">Example</div>
+                  <div class="help-eg-io">
+                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Student</th><th>GPA</th></tr><tr><td>Jo</td><td>7.8</td></tr><tr><td>Ana</td><td>6.2</td></tr><tr><td>Kim</td><td>5.1</td></tr></table></div>
+                    <div class="help-eg-arrow">&rarr;</div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Student</th><th>GPA</th></tr><tr><td>Jo</td><td>7.8</td></tr><tr><td>Ana</td><td>6.2</td></tr></table></div>
+                  </div>
+                  <p class="help-eg-note">Settings: <b>Keep first</b> 2. It does not rank, so the Sort in front is what makes this the top two rather than any two.</p>
+                </div></dd>
             <dt>Unique</dt>
             <dd>Two modes. With no column named it removes duplicate rows by comparing whole rows.
                 Name a column and it gives you that column's distinct values instead, one per row,
-                which is how you get a list of the courses or the years present in a table.</dd>
+                which is how you get a list of the courses or the years present in a table.
+                <div class="help-eg">
+                  <div class="help-eg-t">Example</div>
+                  <div class="help-eg-io">
+                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Student</th><th>Year</th></tr><tr><td>Jo</td><td>2022</td></tr><tr><td>Ana</td><td>2022</td></tr><tr><td>Kim</td><td>2023</td></tr></table></div>
+                    <div class="help-eg-arrow">&rarr;</div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Year</th></tr><tr><td>2022</td></tr><tr><td>2023</td></tr></table></div>
+                  </div>
+                  <p class="help-eg-note">Settings: <b>Distinct</b> Values of Year. Naming a column reduces the table to that one column. Left on Whole rows it keeps every column and drops only repeated rows.</p>
+                </div></dd>
             <dt>Select</dt>
             <dd>Keeps the columns you tick and drops the rest. The rows are untouched, so you get the
                 same rows in the same order with the same count. This narrows a table without
                 summarising it. Put one in front of an Output to show three columns instead of seven,
                 or in front of an Aggregate to make it plain which column is being measured. Columns
-                stay in the order they arrive, and you have to keep at least one.</dd>
+                stay in the order they arrive, and you have to keep at least one.
+                <div class="help-eg">
+                  <div class="help-eg-t">Example</div>
+                  <div class="help-eg-io">
+                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Student</th><th>Year</th><th>GPA</th></tr><tr><td>Jo</td><td>2022</td><td>7.8</td></tr><tr><td>Ana</td><td>2022</td><td>6.2</td></tr></table></div>
+                    <div class="help-eg-arrow">&rarr;</div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Student</th><th>GPA</th></tr><tr><td>Jo</td><td>7.8</td></tr><tr><td>Ana</td><td>6.2</td></tr></table></div>
+                  </div>
+                  <p class="help-eg-note">Settings: <b>Keep</b> Student and GPA. Two rows in, two rows out: only the columns change.</p>
+                </div></dd>
           </dl>
 
           <h4 class="help-cat help-cat-expand">Expand (lime)</h4>
@@ -689,7 +740,16 @@
                 <b>Course</b>, and from that point <b>Mark</b> and <b>Grade</b> are ordinary
                 columns.
                 <br><br>
-                To get back to one row per student afterwards, use <b>Unique</b> on Student.</dd>
+                To get back to one row per student afterwards, use <b>Unique</b> on Student.
+                <div class="help-eg">
+                  <div class="help-eg-t">Example</div>
+                  <div class="help-eg-io">
+                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Student</th><th>Courses</th></tr><tr><td>Jo</td><td>COMP103, SWEN221</td></tr><tr><td>Ana</td><td>COMP103</td></tr></table></div>
+                    <div class="help-eg-arrow">&rarr;</div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Student</th><th>Course</th><th>Grade</th></tr><tr><td>Jo</td><td>COMP103</td><td>A</td></tr><tr><td>Jo</td><td>SWEN221</td><td>B+</td></tr><tr><td>Ana</td><td>COMP103</td><td>B</td></tr></table></div>
+                  </div>
+                  <p class="help-eg-note">No settings. Two students become three enrolments, and <b>Grade</b> is now an ordinary column. A Count after this would say 3, not 2.</p>
+                </div></dd>
           </dl>
 
           <h4 class="help-cat help-cat-summarise">Summarise (teal)</h4>
@@ -697,21 +757,95 @@
           <dl class="help-defs">
             <dt>Aggregate</dt>
             <dd>Reduces the whole table to a single value: a count, sum, average, median,
-                minimum or maximum of one column.</dd>
+                minimum or maximum of one column.
+                <div class="help-eg">
+                  <div class="help-eg-t">Example</div>
+                  <div class="help-eg-io">
+                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Student</th><th>GPA</th></tr><tr><td>Jo</td><td>7.8</td></tr><tr><td>Ana</td><td>6.2</td></tr><tr><td>Kim</td><td>5.1</td></tr></table></div>
+                    <div class="help-eg-arrow">&rarr;</div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Average of GPA</th></tr><tr><td>6.37</td></tr></table></div>
+                  </div>
+                  <p class="help-eg-note">Settings: <b>Measure</b> Average, <b>Of column</b> GPA. The whole table becomes one value.</p>
+                </div></dd>
             <dt>Aggregate Columns</dt>
             <dd>One row out, with the chosen calculation applied to every numeric column at once.
-                Use it for a profile of a group rather than a single figure.</dd>
+                Use it for a profile of a group rather than a single figure.
+                <div class="help-eg">
+                  <div class="help-eg-t">Example</div>
+                  <div class="help-eg-io">
+                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Points</th><th>GPA</th></tr><tr><td>15</td><td>7.8</td></tr><tr><td>15</td><td>6.2</td></tr><tr><td>30</td><td>5.1</td></tr></table></div>
+                    <div class="help-eg-arrow">&rarr;</div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Points</th><th>GPA</th></tr><tr><td>20</td><td>6.37</td></tr></table></div>
+                  </div>
+                  <p class="help-eg-note">Settings: <b>Measure</b> Average. One row out, the same headers, each column averaged down its own length.</p>
+                </div></dd>
             <dt>Aggregate Rows</dt>
             <dd>The mirror of Aggregate Columns, and the one that runs across the page instead of
                 down it: one value for every row, and a single column out. The row count does not
                 change. It replaces the whole row rather than adding to it, because totalling a row
                 that still carries an ID is not a meaningful thing to have done. Put a <b>Select</b>
-                in front to narrow the row down to the figures you actually mean to combine.</dd>
+                in front to narrow the row down to the figures you actually mean to combine.
+                <div class="help-eg">
+                  <div class="help-eg-t">Example</div>
+                  <div class="help-eg-io">
+                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Student</th><th>2022</th><th>2023</th></tr><tr><td>Jo</td><td>4</td><td>3</td></tr><tr><td>Ana</td><td>5</td><td>5</td></tr></table></div>
+                    <div class="help-eg-arrow">&rarr;</div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Sum</th></tr><tr><td>7</td></tr><tr><td>10</td></tr></table></div>
+                  </div>
+                  <p class="help-eg-note">Settings: <b>Measure</b> Sum. One value per row and a single column out, so the row count is unchanged. Student is not a measure and is left out of the total.</p>
+                </div></dd>
           </dl>
 
           <h4 class="help-cat help-cat-branches">Branches (rose)</h4>
-          <p class="help-note">Several tables in, one out. These are the only nodes that take more
-             than one wire.</p>
+          <p class="help-note">Several tables in, one out. These are the nodes that take many
+             wires on a single port.</p>
+          <dl class="help-defs">
+            <dt>Combine</dt>
+            <dd>Four modes, in two kinds. <b>Merge</b> adds vertically, stacking branches into one
+                longer table, so their columns have to match. Duplicates are kept unless you ask for
+                them to be dropped. <b>Intersect</b> and <b>Difference</b> narrow that stack to the
+                rows present in every branch, or present in the base alone, which is how you ask who
+                left between two years.
+                <br><b>Join</b> adds horizontally instead. It matches rows on a column you name and
+                puts the other branches' columns onto the end of each base row, so one student's 2022
+                and 2023 figures sit side by side on a single row. The result has the base's rows and
+                never more. A base row with no match is dropped unless you tick <b>Keep base rows
+                with no match</b>, which leaves the missing cells blank instead. Where two branches
+                carry the same column name, the incoming one is renamed after the node it came from
+                rather than overwriting what is already there.
+                <div class="help-eg">
+                  <div class="help-eg-t">Example</div>
+                  <div class="help-eg-io">
+                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Student</th><th>GPA&nbsp;2022</th></tr><tr><td>Jo</td><td>7.8</td></tr><tr><td>Ana</td><td>6.2</td></tr></table></div>
+                    <div class="help-eg-arrow">&rarr;</div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Student</th><th>GPA&nbsp;2022</th><th>GPA&nbsp;2023</th></tr><tr><td>Jo</td><td>7.8</td><td>7.1</td></tr><tr><td>Ana</td><td>6.2</td><td>6.9</td></tr></table></div>
+                  </div>
+                  <p class="help-eg-note">Settings: <b>Mode</b> Join, <b>Base</b> the 2022 branch, <b>Match rows on</b> Student. Merge would have stacked these into four rows instead.</p>
+                </div></dd>
+            <dt>Compare</dt>
+            <dd>Puts branches beside each other instead: one row per branch, with a column per
+                measure. Use it to hold two populations up against one another rather than to pool
+                them. It suits branches that are not a split of anything, which is the one case
+                <b>Select For</b> cannot cover.
+                <br>Where the branches <b>are</b> a split of one column, such as a branch per year or
+                a branch per degree, <b>Select For</b> says the same thing in a single node instead
+                of one wire per group, and it can say it for values that are not in the data yet.
+                Compare is kept for the other case, and for queries already built on it.
+                <div class="help-eg">
+                  <div class="help-eg-t">Example</div>
+                  <div class="help-eg-io">
+                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Branch</th><th>&nbsp;</th></tr><tr><td>Filter: Year 2022</td><td>&hellip;</td></tr><tr><td>Filter: Year 2023</td><td>&hellip;</td></tr></table></div>
+                    <div class="help-eg-arrow">&rarr;</div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Branch</th><th>Students</th><th>Avg grade</th></tr><tr><td>Year 2022</td><td>2</td><td>7.00</td></tr><tr><td>Year 2023</td><td>1</td><td>5.10</td></tr></table></div>
+                  </div>
+                  <p class="help-eg-note">Two branches wired in, <b>Columns</b> Students and Avg grade ticked. One row per branch, and the ticked boxes are the columns: untick Avg grade and that column goes.</p>
+                </div></dd>
+          </dl>
+
+          <h4 class="help-cat help-cat-distribution">Distribution (indigo)</h4>
+          <p class="help-note">How the rows are spread, rather than what they are. One row per
+             group, with the measures you ask for beside it: <b>Select For</b> splits on the values
+             of a column, <b>Histogram</b> on ranges of a number.</p>
           <dl class="help-defs">
             <dt>Select For</dt>
             <dd>A breakdown: one row per group, with the measures you pick alongside. Name the
@@ -730,36 +864,23 @@
                 row you are looking for. Second, the groups can come from a different branch
                 entirely, such as the courses that ran in 2022 measured against the enrolments of
                 2024.
+                <br>The one-column table comes from <b>Unique</b>, which is what that node's named
+                column mode is for: a Source, then <b>Unique</b> on Course, gives you every course
+                present in that branch, one per row. Narrow or extend it with the ordinary nodes
+                before it reaches the port, and a <b>Sort</b> and a <b>Take</b> in front of Labels
+                are how you say "the ten biggest". A <b>Source</b> cannot supply one: it reads the
+                archive files and always produces the archive's columns.
                 <br>It does not reorder anything. Put a <b>Sort</b> after it, and then a <b>Take</b>
-                after that, if you want the largest few.</dd>
-            <dt>Combine</dt>
-            <dd>Four modes, in two kinds. <b>Merge</b> adds vertically, stacking branches into one
-                longer table, so their columns have to match. Duplicates are kept unless you ask for
-                them to be dropped. <b>Intersect</b> and <b>Difference</b> narrow that stack to the
-                rows present in every branch, or present in the base alone, which is how you ask who
-                left between two years.
-                <br><b>Join</b> adds horizontally instead. It matches rows on a column you name and
-                puts the other branches' columns onto the end of each base row, so one student's 2022
-                and 2023 figures sit side by side on a single row. The result has the base's rows and
-                never more. A base row with no match is dropped unless you tick <b>Keep base rows
-                with no match</b>, which leaves the missing cells blank instead. Where two branches
-                carry the same column name, the incoming one is renamed after the node it came from
-                rather than overwriting what is already there.</dd>
-            <dt>Compare</dt>
-            <dd>Puts branches beside each other instead: one row per branch, with a column per
-                measure. Use it to hold two populations up against one another rather than to pool
-                them. It suits branches that are not a split of anything, which is the one case
-                <b>Select For</b> cannot cover.
-                <br>Where the branches <b>are</b> a split of one column, such as a branch per year or
-                a branch per degree, <b>Select For</b> says the same thing in a single node instead
-                of one wire per group, and it can say it for values that are not in the data yet.
-                Compare is kept for the other case, and for queries already built on it.</dd>
-          </dl>
-
-          <h4 class="help-cat help-cat-distribution">Distribution (indigo)</h4>
-          <p class="help-note">How the rows are spread across a number, rather than what they
-             are.</p>
-          <dl class="help-defs">
+                after that, if you want the largest few.
+                <div class="help-eg">
+                  <div class="help-eg-t">Example</div>
+                  <div class="help-eg-io">
+                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Student</th><th>Year</th><th>GPA</th></tr><tr><td>Jo</td><td>2022</td><td>7.8</td></tr><tr><td>Ana</td><td>2022</td><td>6.2</td></tr><tr><td>Kim</td><td>2023</td><td>5.1</td></tr></table></div>
+                    <div class="help-eg-arrow">&rarr;</div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Year</th><th>Students</th><th>Avg of GPA</th></tr><tr><td>2022</td><td>2</td><td>7.00</td></tr><tr><td>2023</td><td>1</td><td>5.10</td></tr></table></div>
+                  </div>
+                  <p class="help-eg-note">Settings: <b>For each</b> Year, <b>Measure</b> Count and Average of GPA. <b>Labels</b> is empty, so the groups are the years found in the data.</p>
+                </div></dd>
             <dt>Histogram</dt>
             <dd>Counts the rows into bands of a number you choose: how many students in each GPA
                 band, how many enrolments at each mark. Pick the column and the width of a band, and
@@ -781,7 +902,16 @@
                 at all, like a withdrawn enrolment with no mark, are in no band and are reported
                 separately in the query log: a missing mark is not a mark of zero.
                 <br>It does not reorder. The bands come out in order, and the column knows that
-                order, so a <b>Sort</b> after it sorts by band properly rather than alphabetically.</dd>
+                order, so a <b>Sort</b> after it sorts by band properly rather than alphabetically.
+                <div class="help-eg">
+                  <div class="help-eg-t">Example</div>
+                  <div class="help-eg-io">
+                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Student</th><th>GPA</th></tr><tr><td>Jo</td><td>7.8</td></tr><tr><td>Ana</td><td>6.2</td></tr><tr><td>Kim</td><td>5.1</td></tr></table></div>
+                    <div class="help-eg-arrow">&rarr;</div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>GPA</th><th>Students</th></tr><tr><td>5 to 6</td><td>1</td></tr><tr><td>6 to 7</td><td>1</td></tr><tr><td>7 to 8</td><td>1</td></tr></table></div>
+                  </div>
+                  <p class="help-eg-note">Settings: <b>Distribution of</b> GPA, <b>In bands of</b> 1. A band nothing falls in still gets a row, with a count of zero.</p>
+                </div></dd>
           </dl>
 
           <h4 class="help-cat help-cat-output">Output</h4>

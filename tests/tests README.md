@@ -79,12 +79,18 @@ shipped code.
 ## Where it looks for the application
 
 By default the harness searches sibling folders for one containing `data.js`,
-`engine.js`, `ui.js` and an `.html` file — `../MMP`, `../mmp`, `../MVP`, `../mvp`, then `..`. To point it
+`engine.js`, `ui.js` and an `.html` file — `../MLP`, `../mlp`, `../MMP`, `../mmp`, `../MVP`,
+`../mvp`, then `..`. The order is newest milestone first, so the suite tests the
+work in progress rather than the folder it was first written against. To point it
 somewhere else:
 
 ```bash
-APP_DIR=../some/other/folder npm test
+APP_DIR=../MMP npm test
 ```
+
+Note that the milestones are supersets rather than variants: a suite describing
+behaviour added in MLP will fail against MMP, because that behaviour is not
+there yet. Running an earlier folder is a deliberate act, not a fallback.
 
 If nothing is found it fails with a message rather than testing nothing.
 
