@@ -44,18 +44,20 @@ const FAMILY = {
      its colour and its own menu group are two of the ways it says so. */
   expand:    { colour: '#4a6a1e', types: ['project'] },
   summarise: { colour: '#1f6a6a', types: ['aggregate', 'aggregateColumns', 'aggregateRows'] },
-  /* SelectFor joins Branches rather than Summarise, though it does summarise.
-     The family is read off the canvas as "this node takes more than one wire",
-     and it is the only node with two different ports. Putting it in teal
-     would say it behaves like Aggregate, which takes one table and cannot be
-     fed a label set at all. */
-  branches:  { colour: '#7a2f52', types: ['combine', 'compare', 'selectFor'] },
-  /* Histogram has a family and a menu to itself for the reason Project has a
-     family of its own: the question it answers is a different kind. It neither
-     keeps the rows as they are, nor multiplies them, nor collapses them to one,
-     nor joins branches. Indigo rather than a shade of an existing family,
-     because sharing a colour would promise behaviour it does not have. */
-  distribution: { colour: '#3a4a8a', types: ['histogram'] }
+  /* Branches is now what its name says: the nodes that take many wires on one
+     port. SelectFor was here, on the reading that having two ports made it a
+     branching node. That was a fact about its wiring rather than about what it
+     produces, and the supervisor put the question plainly: given that it turns
+     "how many in each year" into one node, should it not be a Distribution?
+     It should. */
+  branches:  { colour: '#7a2f52', types: ['combine', 'compare'] },
+  /* Distribution is the family for "how are these spread out", which is one
+     row per group with a measure beside it. SelectFor splits on the values of
+     a column and Histogram on ranges of a number, and that is the only
+     difference between them: the rest, down to the meta.branches they both
+     emit, is already shared. Indigo rather than a shade of an existing family,
+     because sharing a colour would promise behaviour they do not have. */
+  distribution: { colour: '#3a4a8a', types: ['selectFor', 'histogram'] }
 };
 
 function declaredSize(cls) {

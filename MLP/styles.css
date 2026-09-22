@@ -2031,7 +2031,9 @@ th.cmp-num { color: #383838 !important; }
   background: currentColor; opacity: 0.75;
 }
 
-/* The family colour, stated the way every other family states it. */
+/* The family colour, stated the way every other family states it. Two nodes
+   now, and they are the two the Distribution menu holds. */
+.shape-selectfor,
 .shape-histogram { border-color: #3a4a8a; }
 
 /* ── SUMMARISE ── teal ──────────────────────────────────── */
@@ -2057,8 +2059,11 @@ th.cmp-num { color: #383838 !important; }
 }
 
 /* ── BRANCHES ── rose ───────────────────────────────────── */
+/* Select For used to be here. It moved to Distribution, where the question it
+   answers actually lives: one row per group with a measure beside it. Taking
+   more than one wire is what it has in common with these two, not what it is
+   for. */
 .shape-combine,
-.shape-selectfor,
 .shape-compare {
   border-color: #7a2f52;
   background: #170a11;
@@ -2651,16 +2656,17 @@ th.cmp-num { color: #383838 !important; }
 .shape-selectfor {
   width: 118px; height: 88px;
   border-radius: 3px;
-  /* The family colour, written out rather than left to the Branches rule to
-     supply. That rule sets border-COLOR and this block is appended after it,
-     so a shorthand `border:` here would win on source order and quietly paint
-     this node violet among the rose ones, which is what it did, and what the
-     styling suite could not see, because the suite only asked whether the
-     class was named in a rule setting the colour and not whether that rule
-     won. It asks the stronger question now. */
-  border: 2.5px solid #7a2f52;
-  background: #170a11;
-  color: #e089ae;
+  /* Width and style here, colour in the family rule below, never both in one
+     shorthand. A `border:` shorthand carrying a colour is what shipped this
+     node violet among the rose ones: it won on source order over the family
+     rule meant to colour it, with the suite green because the class WAS named
+     in a rule setting the right colour. Written the long way, the family rule
+     is the only thing that decides the hue, which is what made recolouring
+     this node for Distribution a one-line change. */
+  border-width: 2.5px;
+  border-style: solid;
+  background: #090c18;
+  color: #8fa8f0;
   display: flex; align-items: center; justify-content: center;
   font-size: 9px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
   cursor: grab; position: relative; flex-shrink: 0;

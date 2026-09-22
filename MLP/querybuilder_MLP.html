@@ -70,10 +70,6 @@
         <span class="proc-desc">One value per row, one column out</span>
       </button>
       <div class="proc-group cat-branches">Branches</div>
-      <button class="proc-item cat-branches" onclick="addProcNode('selectFor')">
-        <span class="proc-name">Select For</span>
-        <span class="proc-desc">One row per group: Name the column to split on</span>
-      </button>
       <button class="proc-item cat-branches" onclick="addProcNode('combine')">
         <span class="proc-name">Combine</span>
         <span class="proc-desc">Stack rows, or join columns side by side</span>
@@ -84,15 +80,25 @@
       </button>
     </div>
   </div>
-  <!-- The third menu. Histogram is not Reshape (it does not keep the rows) and
-       it is not one of Processing's three families either: it neither multiplies
-       rows, nor collapses them to one, nor joins branches. It answers a
-       different kind of question, "how are these spread out", and a menu of its
-       own is how the toolbar says so. One item today; percentiles and
-       cumulative counts are the same kind of question if they are ever wanted. -->
+  <!-- The third menu. Neither node here is Reshape (they do not keep the rows)
+       and neither is one of Processing's three families: they do not multiply
+       rows, collapse them to one, or join branches. They answer a different kind
+       of question, "how are these spread out", and a menu of its own is how the
+       toolbar says so.
+
+       Select For sits here rather than under Branches, which is where it was
+       first put because it shares a second input with Compare. Having two ports
+       is not what the node is FOR: it produces one row per group with a measure
+       beside it, which is the same answer Histogram gives over ranges instead of
+       values. The supervisor asked the question directly and it is the right
+       one. Percentiles and cumulative counts belong here too if wanted. -->
   <div class="proc-wrap">
     <button class="add-btn distribution" onclick="toggleProcMenu(event, 'distMenu')">Distribution <span class="caret">&#9662;</span></button>
     <div class="proc-menu" id="distMenu" onclick="event.stopPropagation()">
+      <button class="proc-item cat-distribution" onclick="addProcNode('selectFor')">
+        <span class="proc-name">Select For</span>
+        <span class="proc-desc">One row per group: Name the column to split on</span>
+      </button>
       <button class="proc-item cat-distribution" onclick="addProcNode('histogram')">
         <span class="proc-name">Histogram</span>
         <span class="proc-desc">Count rows into bands of a number</span>
@@ -569,7 +575,7 @@
              all leave the meaning of the table intact: a row is still whatever it was before.
              <b>Processing</b> holds the three groups that change that. Expand makes a row mean
              something new, Summarise replaces many rows with one, and Branches pulls several tables
-             into one. <b>Distribution</b> holds the one node that answers a different kind of
+             into one. <b>Distribution</b> holds the two nodes that answer a different kind of
              question altogether: not what the rows are, but how they are spread out.</p>
 
           <figure class="help-fig help-fig-narrow">
@@ -591,7 +597,7 @@
 
               <rect x="8" y="244" width="104" height="22" rx="5" fill="none" stroke="#3d3d3d"/>
               <text x="60" y="259" fill="#9a9a9a" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Processing &#9662;</text>
-              <rect x="8" y="274" width="324" height="326" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <rect x="8" y="274" width="324" height="292" rx="6" fill="#141414" stroke="#2a2a2a"/>
               <text x="22" y="296" fill="#a8d050" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">EXPAND</text>
               <text x="24" y="316" fill="#a8d050" font-size="11" font-family="system-ui, sans-serif">Project</text>
               <text x="24" y="329" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row per course</text>
@@ -603,16 +609,16 @@
               <text x="24" y="444" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Rows</text>
               <text x="24" y="457" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One value per row, one column out</text>
               <text x="22" y="484" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
-              <text x="24" y="504" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Select For</text>
-              <text x="24" y="517" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row per group, named by a column</text>
-              <text x="24" y="538" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
-              <text x="24" y="551" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
-              <text x="24" y="572" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
-              <text x="24" y="585" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
+              <text x="24" y="504" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
+              <text x="24" y="517" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
+              <text x="24" y="538" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Compare</text>
+              <text x="24" y="551" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Put branches side by side</text>
 
-              <rect x="8" y="620" width="106" height="22" rx="5" fill="none" stroke="#3a4a8a"/>
-              <text x="61" y="635" fill="#8fa8f0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Distribution &#9662;</text>
-              <rect x="8" y="650" width="324" height="52" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <rect x="8" y="586" width="106" height="22" rx="5" fill="none" stroke="#3a4a8a"/>
+              <text x="61" y="601" fill="#8fa8f0" font-size="11" font-family="system-ui, sans-serif" text-anchor="middle">Distribution &#9662;</text>
+              <rect x="8" y="616" width="324" height="86" rx="6" fill="#141414" stroke="#2a2a2a"/>
+              <text x="24" y="638" fill="#8fa8f0" font-size="11" font-family="system-ui, sans-serif">Select For</text>
+              <text x="24" y="651" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row per group, named by a column</text>
               <text x="24" y="672" fill="#8fa8f0" font-size="11" font-family="system-ui, sans-serif">Histogram</text>
               <text x="24" y="685" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Count rows into bands of a number</text>
             </svg>
@@ -791,43 +797,9 @@
           </dl>
 
           <h4 class="help-cat help-cat-branches">Branches (rose)</h4>
-          <p class="help-note">Several tables in, one out. These are the only nodes that take more
-             than one wire.</p>
+          <p class="help-note">Several tables in, one out. These are the nodes that take many
+             wires on a single port.</p>
           <dl class="help-defs">
-            <dt>Select For</dt>
-            <dd>A breakdown: one row per group, with the measures you pick alongside. Name the
-                column to split on, such as <b>For each Year</b> or <b>For each Degree</b>, and it
-                runs that split once per value. That turns &ldquo;how many in each year, and their
-                average mark&rdquo; into one node instead of one branch per year.
-                <br>It groups by the same things a <b>Filter</b> can test, including the ones that
-                are not really columns. <b>Took course</b> and <b>Took subject</b> reach inside a
-                student's course list, so you can break a cohort down by course without a
-                <b>Project</b> first. A row stays a student, and a count stays a count of students.
-                <br>It has a second input called <b>Labels</b>, and leaving it empty is the common
-                case: the groups are then whatever values happen to be in the data. Wire a
-                one-column table in and those values become the groups instead, which buys you two
-                things the data alone cannot give. First, a group that nothing matches still gets a
-                row, with a count of zero, and a course nobody took this year is usually exactly the
-                row you are looking for. Second, the groups can come from a different branch
-                entirely, such as the courses that ran in 2022 measured against the enrolments of
-                2024.
-                <br>The one-column table comes from <b>Unique</b>, which is what that node's named
-                column mode is for: a Source, then <b>Unique</b> on Course, gives you every course
-                present in that branch, one per row. Narrow or extend it with the ordinary nodes
-                before it reaches the port, and a <b>Sort</b> and a <b>Take</b> in front of Labels
-                are how you say "the ten biggest". A <b>Source</b> cannot supply one: it reads the
-                archive files and always produces the archive's columns.
-                <br>It does not reorder anything. Put a <b>Sort</b> after it, and then a <b>Take</b>
-                after that, if you want the largest few.
-                <div class="help-eg">
-                  <div class="help-eg-t">Example</div>
-                  <div class="help-eg-io">
-                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Student</th><th>Year</th><th>GPA</th></tr><tr><td>Jo</td><td>2022</td><td>7.8</td></tr><tr><td>Ana</td><td>2022</td><td>6.2</td></tr><tr><td>Kim</td><td>2023</td><td>5.1</td></tr></table></div>
-                    <div class="help-eg-arrow">&rarr;</div>
-                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Year</th><th>Students</th><th>Avg of GPA</th></tr><tr><td>2022</td><td>2</td><td>7.00</td></tr><tr><td>2023</td><td>1</td><td>5.10</td></tr></table></div>
-                  </div>
-                  <p class="help-eg-note">Settings: <b>For each</b> Year, <b>Measure</b> Count and Average of GPA. <b>Labels</b> is empty, so the groups are the years found in the data.</p>
-                </div></dd>
             <dt>Combine</dt>
             <dd>Four modes, in two kinds. <b>Merge</b> adds vertically, stacking branches into one
                 longer table, so their columns have to match. Duplicates are kept unless you ask for
@@ -871,9 +843,44 @@
           </dl>
 
           <h4 class="help-cat help-cat-distribution">Distribution (indigo)</h4>
-          <p class="help-note">How the rows are spread across a number, rather than what they
-             are.</p>
+          <p class="help-note">How the rows are spread, rather than what they are. One row per
+             group, with the measures you ask for beside it: <b>Select For</b> splits on the values
+             of a column, <b>Histogram</b> on ranges of a number.</p>
           <dl class="help-defs">
+            <dt>Select For</dt>
+            <dd>A breakdown: one row per group, with the measures you pick alongside. Name the
+                column to split on, such as <b>For each Year</b> or <b>For each Degree</b>, and it
+                runs that split once per value. That turns &ldquo;how many in each year, and their
+                average mark&rdquo; into one node instead of one branch per year.
+                <br>It groups by the same things a <b>Filter</b> can test, including the ones that
+                are not really columns. <b>Took course</b> and <b>Took subject</b> reach inside a
+                student's course list, so you can break a cohort down by course without a
+                <b>Project</b> first. A row stays a student, and a count stays a count of students.
+                <br>It has a second input called <b>Labels</b>, and leaving it empty is the common
+                case: the groups are then whatever values happen to be in the data. Wire a
+                one-column table in and those values become the groups instead, which buys you two
+                things the data alone cannot give. First, a group that nothing matches still gets a
+                row, with a count of zero, and a course nobody took this year is usually exactly the
+                row you are looking for. Second, the groups can come from a different branch
+                entirely, such as the courses that ran in 2022 measured against the enrolments of
+                2024.
+                <br>The one-column table comes from <b>Unique</b>, which is what that node's named
+                column mode is for: a Source, then <b>Unique</b> on Course, gives you every course
+                present in that branch, one per row. Narrow or extend it with the ordinary nodes
+                before it reaches the port, and a <b>Sort</b> and a <b>Take</b> in front of Labels
+                are how you say "the ten biggest". A <b>Source</b> cannot supply one: it reads the
+                archive files and always produces the archive's columns.
+                <br>It does not reorder anything. Put a <b>Sort</b> after it, and then a <b>Take</b>
+                after that, if you want the largest few.
+                <div class="help-eg">
+                  <div class="help-eg-t">Example</div>
+                  <div class="help-eg-io">
+                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Student</th><th>Year</th><th>GPA</th></tr><tr><td>Jo</td><td>2022</td><td>7.8</td></tr><tr><td>Ana</td><td>2022</td><td>6.2</td></tr><tr><td>Kim</td><td>2023</td><td>5.1</td></tr></table></div>
+                    <div class="help-eg-arrow">&rarr;</div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Year</th><th>Students</th><th>Avg of GPA</th></tr><tr><td>2022</td><td>2</td><td>7.00</td></tr><tr><td>2023</td><td>1</td><td>5.10</td></tr></table></div>
+                  </div>
+                  <p class="help-eg-note">Settings: <b>For each</b> Year, <b>Measure</b> Count and Average of GPA. <b>Labels</b> is empty, so the groups are the years found in the data.</p>
+                </div></dd>
             <dt>Histogram</dt>
             <dd>Counts the rows into bands of a number you choose: how many students in each GPA
                 band, how many enrolments at each mark. Pick the column and the width of a band, and
