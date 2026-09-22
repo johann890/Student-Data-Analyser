@@ -2533,6 +2533,62 @@ th.cmp-num { color: #383838 !important; }
   margin: 2px 0 0 14px;
 }
 
+/* WORKED EXAMPLES IN THE NODE REFERENCE
+   The node panels now state roles and shapes only, so the explaining happens
+   here, in the form the supervisor asked for: what goes in, what comes out.
+
+   The pair wraps rather than being fixed either way. The help body is an
+   11.5px column inside a dialog whose width the user controls, so at a narrow
+   width two tables abreast would wrap every cell, and at a wide one stacking
+   them would waste the room. flex-basis decides: side by side while both fit,
+   stacked below that. The arrow carries the direction either way, which is
+   why the layout is free to change. */
+.help-eg {
+  margin: 9px 0 2px;
+  border: 1px solid #1c1c1c;
+  border-radius: 6px;
+  background: #0e0e0e;
+  padding: 8px 10px;
+}
+.help-eg-t {
+  font-size: 9.5px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #5f5f5f;
+  margin-bottom: 6px;
+}
+.help-eg-io { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.help-eg-side { flex: 1 1 140px; min-width: 0; }
+.help-eg-lbl {
+  display: block;
+  font-size: 9.5px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #5f5f5f;
+  margin-bottom: 3px;
+}
+.help-eg-arrow { color: #4a4a4a; font-size: 14px; flex: 0 0 auto; }
+.help-eg table { border-collapse: collapse; width: 100%; }
+.help-eg th, .help-eg td {
+  font-size: 10.5px;
+  text-align: left;
+  padding: 2px 8px 2px 0;
+  color: #9c9c9c;
+  white-space: nowrap;
+}
+.help-eg th {
+  color: #c4c4c4;
+  font-weight: 600;
+  border-bottom: 1px solid #242424;
+}
+.help-eg-note {
+  font-size: 10.5px !important;
+  line-height: 1.55 !important;
+  color: #6f6f6f !important;
+  margin: 7px 0 0 !important;
+}
+.help-eg-note b { color: #a4a4a4 !important; }
+
 .help-tip {
   background: #0d1620;
   border: 1px solid #1c2c3d;

@@ -1683,8 +1683,16 @@ function configHTML(node, schemas) {
       opt('desc',  cfg.sort, 'Highest first') +
       opt('asc',   cfg.sort, 'Lowest first') +
       opt('label', cfg.sort, 'Label A–Z') +
-    '</select>' +
-    '<div class="cmp-hint">Highest and lowest use the first ticked column.</div>';
+    '</select>';
+    // Named only when an order that actually ranks is chosen.
+    if (cfg.sort === 'desc' || cfg.sort === 'asc') {
+      html += '<div class="cmp-hint">Ranked by the first ticked column.</div>';
+    }
+    /* The columns named here follow the tick boxes immediately, which is what
+       makes the boxes legible: a run is not needed to see what they do. */
+    html += '<div class="cmp-hint">Out: one row per branch \u2014 ' +
+      compareColumns(measuresOf(node)).map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(', ') +
+      '.</div>';
   }
 
   if (node.type === 'selectFor') {
@@ -1710,11 +1718,12 @@ function configHTML(node, schemas) {
         '</select>';
     }
 
-    /* Where the groups come from is the one thing about this node that is not
-       obvious from its settings, because it is decided by a wire rather than
-       by a control. The panel says which of the two it is in, in a sentence,
-       rather than leaving the user to infer it from the presence of an arrow
-       on the canvas. */
+    /* Where the groups come from is decided by a wire rather than by a
+       control, so it is the one thing the settings cannot show. Said in one
+       line while the port is empty, and dropped once it is wired, because a
+       connected port describes itself: the picker below it names the column
+       the labels are read from. What the port BUYS (zero-count groups, labels
+       from another branch) is reference material and lives in Help. */
     if (labelWires.length) {
       var lschema = inputSchema(node, schemas, 'labels');
       var lcols = labelCols(lschema);
@@ -1726,20 +1735,12 @@ function configHTML(node, schemas) {
         (lcols.length
           ? '<select' + ctl(id, 'labelCol') + '>' +
               lcols.map(function(c){ return opt(c.key, lchosen, c.label); }).join('') +
-            '</select>' +
-            '<div class="cmp-hint">One group per distinct value in that column, ' +
-              'in the order that branch produces them. A value no row matches ' +
-              'still gets a row here, with a count of zero. That is the ' +
-              'reason to wire labels in rather than let the data name its own ' +
-              'groups.</div>'
-          : '<div class="cmp-hint">That branch has no column that can supply ' +
-              'labels. A nested course list is not a label, so put a ' +
-              '<b>Project</b> in front of it.</div>');
+            '</select>'
+          : '<div class="cmp-hint">No column on that branch can supply labels. ' +
+              'Put a <b>Project</b> in front of it.</div>');
     } else {
-      html += '<div class="cmp-hint">Groups are the values found in the data. ' +
-        'Wire a one-column table into <b>Labels</b> to name them yourself ' +
-        'instead. That is how a group with no matching rows still ' +
-        'appears, as a zero.</div>';
+      html += '<div class="cmp-hint"><b>Labels</b> (optional). Unconnected: the ' +
+        'groups are the values found in the column above.</div>';
     }
 
     var stats = statsOf(node);
@@ -1776,9 +1777,9 @@ function configHTML(node, schemas) {
 
     // Say what comes out, in the words the header will use, for the same
     // reason the Aggregate panels do: the shape is the part people get wrong.
-    html += '<div class="cmp-hint">One row per group: ' +
+    html += '<div class="cmp-hint">Out: one row per group \u2014 ' +
       selectForColumns(node, schema).map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(', ') +
-      '. Sort or Take it downstream: This node does not reorder.</div>';
+      '. Not ordered; put a <b>Sort</b> after it.</div>';
   }
 
   if (node.type === 'histogram') {
@@ -1787,7 +1788,7 @@ function configHTML(node, schemas) {
 
     if (!bcols.length) {
       html += '<div class="cmp-hint">Nothing to bin. This node needs a number ' +
-        'column, and there are none arriving.</div>';
+        'column.</div>';
     } else {
       html += '<div class="cfg-label">Distribution of</div>' +
         '<select' + ctl(id, 'by') + '>' +
@@ -1799,14 +1800,15 @@ function configHTML(node, schemas) {
         '<input type="number" min="0" step="any" placeholder="auto" ' +
           'value="' + esc(cfg.width === undefined ? '' : cfg.width) + '"' + ctl(id, 'width') + '>';
 
-      /* The boundary rule, said once, where the bins are chosen. It is the one
-         thing about a histogram a reader cannot check by looking at it: two
-         adjacent bins print a shared number and only one of them owns it. */
-      html += '<div class="cmp-hint">Left empty, the width is chosen from the data ' +
-        'to give about ten bands. Bands start at a multiple of the width, so two ' +
-        'years binned the same way line up. A value on a boundary belongs to the ' +
-        'band above it, except at the very top, so every row is counted exactly ' +
-        'once.</div>';
+      /* Shown only while the width is the one thing still undecided. Once a
+         number is typed the control states itself. The boundary rule (which
+         side of a shared edge a value falls on) is the one thing about a
+         histogram a reader cannot check by looking at it, and it is true on
+         every render, which is what makes it reference material rather than a
+         panel hint: it is explained in Help instead of asserted here. */
+      if (binWidth(node) === null) {
+        html += '<div class="cmp-hint">Empty: the width is chosen from the data.</div>';
+      }
     }
 
     var hstats = statsOf(node);
@@ -1833,10 +1835,9 @@ function configHTML(node, schemas) {
     '</div>' +
     '<button class="add-criterion-btn sort-add" onclick="addStat(' + id + ')">+ add measure</button>';
 
-    html += '<div class="cmp-hint">One row per band: ' +
+    html += '<div class="cmp-hint">Out: one row per band \u2014 ' +
       histogramColumns(node, schema).map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(', ') +
-      '. A band nothing falls in is still a row, with a count of zero, which is ' +
-      'the gap in a distribution you came to see.</div>';
+      '. Empty bands are kept, as zero.</div>';
   }
 
   if (node.type === 'sort') {
@@ -1881,14 +1882,17 @@ function configHTML(node, schemas) {
   }
 
   if (node.type === 'reverse') {
-    /* No controls. The panel still earns its place by saying what the node is
-       for: on its own Reverse looks like a node that does nothing useful, and
-       the pairing with Take is the whole point of it. */
+    /* The exception to the rule the other panels follow. Everywhere else a hint
+       is dropped once a control describes the same thing; here there is no
+       control to drop it in favour of, because there is nothing to choose. The
+       hint IS the panel, so the pairing with Take stays in both states: on its
+       own Reverse looks like a node that does nothing useful, and that pairing
+       is the whole point of it. Shortened rather than removed. */
     var rn = inputsOf(id).length
-      ? 'Last row first, first row last. Columns and row count are unchanged.'
-      : 'Wire a table in. This flips the order its rows arrive in.';
-    html += '<div class="cmp-hint">' + rn + ' Put it before a <b>Take</b> to keep ' +
-      'the last few rows instead of the first.</div>';
+      ? 'Out: the same rows and columns, last one first.'
+      : 'Wire a table in.';
+    html += '<div class="cmp-hint">' + rn +
+      ' Before a <b>Take</b>, that is the last few rows.</div>';
   }
 
   if (node.type === 'take') {
@@ -1897,9 +1901,8 @@ function configHTML(node, schemas) {
     html += '<div class="cfg-label">Keep first</div>' +
       '<input type="number" min="' + TAKE_MIN + '" step="1" ' +
         'value="' + esc(cfg.n === undefined ? '' : cfg.n) + '"' + ctl(id, 'n') + '>' +
-      '<div class="cmp-hint">Rows are kept in the order they arrive. ' +
-        'This node does not rank, so put the ordering upstream if you want a top ' +
-        takeCount(node) + '.</div>';
+      '<div class="cmp-hint">Out: the first ' + takeCount(node) +
+        ' rows as they arrive. Put a <b>Sort</b> in front to rank them.</div>';
   }
 
   if (node.type === 'unique') {
@@ -1917,9 +1920,8 @@ function configHTML(node, schemas) {
         }).join('') +
       '</select>';
     html += '<div class="cmp-hint">' + (ucur
-      ? 'Reduces the table to one column of distinct ' + esc(ucur.label) +
-        ' values, in the order they first appear.'
-      : 'Removes rows identical to one already seen. Columns are unchanged.') +
+      ? 'Out: one column of distinct <b>' + esc(ucur.label) + '</b> values.'
+      : 'Out: the same columns, with repeated rows removed.') +
       '</div>';
   }
 
@@ -1959,24 +1961,24 @@ function configHTML(node, schemas) {
       var rTotal = schema.columns.length;
       var rSkip = rTotal - rIdx.length;
       html += '<div class="cmp-hint">' +
-        'One column out, one row per row in: ' + esc(op.label.toLowerCase()) +
+        'Out: one column, one row per row in \u2014 ' + esc(op.label.toLowerCase()) +
         ' across ' + (rTotal
           ? rIdx.length + ' of ' + rTotal + ' column' + (rTotal === 1 ? '' : 's')
           : 'each row') + '.' +
         (rSkip > 0
-          ? ' ' + rSkip + ' non-measure column' + (rSkip === 1 ? ' is' : 's are') + ' ignored.'
+          ? ' ' + rSkip + ' non-measure column' + (rSkip === 1 ? ' is' : 's are') +
+            ' ignored. Put a <b>Select</b> in front.'
           : '') +
-        ' The rest of the row is replaced, so put a <b>Select</b> in front if the ' +
-        'row still carries anything that is not a measure.</div>';
+        '</div>';
     } else if (isCols) {
       var ncols = schema.columns.length;
-      html += '<div class="cmp-hint">One row out, ' +
+      html += '<div class="cmp-hint">Out: one row, ' +
         (ncols ? ncols + ' column' + (ncols === 1 ? '' : 's') : 'one column per column in') +
         ', same headers, ' + esc(op.label.toLowerCase()) + ' down each.' +
         (op.key === 'count' ? '' : ' Non-numeric columns come out blank.') +
         '</div>';
     } else {
-      html += '<div class="cmp-hint">One row, one column: ' +
+      html += '<div class="cmp-hint">Out: one row, one column \u2014 ' +
         esc(aggregateColumn(node, schema).label) + '.</div>';
     }
   }
@@ -2001,11 +2003,9 @@ function configHTML(node, schemas) {
             '<span>' + esc(c.label) + '</span></label>';
         }).join('') +
       '</div>';
-      html += '<div class="cmp-hint">' +
-        (kept.length === availCols.length
-          ? 'Every column is kept. Untick to narrow. Rows are never touched.'
-          : kept.length + ' of ' + availCols.length + ' columns kept, in the order they arrive.') +
-        '</div>';
+      html += '<div class="cmp-hint">Out: ' + kept.length + ' of ' +
+        availCols.length + ' columns, in the order they arrive. Rows are never ' +
+        'touched.</div>';
     }
   }
 
@@ -2015,9 +2015,8 @@ function configHTML(node, schemas) {
        visible, and a panel that said nothing would put it back where it was
        when it lived hidden on the Source. */
     if (!canProject(schema)) {
-      html += '<div class="cmp-hint">No course data on this table, so there is ' +
-        'nothing to expand, so the rows pass through unchanged. Wire this ' +
-        'straight after a Source or a Filter.</div>';
+      html += '<div class="cmp-hint">No course data here, so rows pass through ' +
+        'unchanged. Wire this after a <b>Source</b> or a <b>Filter</b>.</div>';
     } else {
       var pCols = projectColumns(schema);
       var pGained = enrolmentColumns().map(function(c){ return c.label; }).join(', ');
@@ -2025,9 +2024,8 @@ function configHTML(node, schemas) {
         '<div class="cmp-hint proj-warn">Every row becomes one row per course ' +
         'taken, so a row is an enrolment from here on, not a student. ' +
         '<b>A count after this counts enrolments.</b></div>' +
-        '<div class="cmp-hint">Adds ' + esc(pGained) + '. ' +
-        'ID becomes Student, because it no longer names a row on its own. ' +
-        pCols.length + ' columns out.</div>';
+        '<div class="cmp-hint">Out: ' + pCols.length + ' columns. Adds ' +
+        esc(pGained) + '. ID becomes Student.</div>';
     }
   }
 
@@ -2051,8 +2049,7 @@ function configHTML(node, schemas) {
       html += '<label class="cmb-check"><input type="checkbox"' +
           (cfg.dedupe ? ' checked' : '') + ctl(id, 'dedupe') + '>' +
         '<span>Drop duplicate rows</span></label>' +
-        '<div class="cmp-hint">Off: every row from every input is kept, so two ' +
-        'identical result rows stay two rows. On: this is a set union.</div>';
+        '<div class="cmp-hint">Off: duplicates are kept. On: a set union.</div>';
     } else {
       // Difference is not symmetric, so the base has to be named rather than
       // inferred from the order the wires happened to be drawn.
@@ -2090,9 +2087,8 @@ function configHTML(node, schemas) {
           ? 'Keeps base rows whose value also appears in every other input.'
           : cmode.key === 'difference'
           ? 'Keeps base rows whose value appears in none of the other inputs.'
-          : 'Adds the other inputs\u2019 columns onto each base row, matched on this ' +
-            'column. The result has the base\u2019s rows, not more: where an input ' +
-            'repeats a key, its first matching row is used.') +
+          : 'Out: the base\u2019s rows, never more, with the other inputs\u2019 ' +
+            'columns added on. A repeated key uses its first matching row.') +
         '</div>';
     }
   }
@@ -2136,13 +2132,9 @@ function configHTML(node, schemas) {
               '<span>' + esc(c.label) + '</span></label>';
           }).join('') +
         '</div>';
-        html += '<div class="cmp-hint">' +
-          (oKept.length === oCols.length
-            ? 'Every column is shown. Untick to narrow the view: No rows are lost, ' +
-              'and Copy and Save follow what is shown.'
-            : oKept.length + ' of ' + oCols.length + ' columns shown. Copy and Save ' +
-              'write these columns, every row.') +
-          '</div>';
+        html += '<div class="cmp-hint">Showing ' + oKept.length + ' of ' +
+          oCols.length + ' columns. No rows are lost, and Copy and Save follow ' +
+          'this.</div>';
       }
     }
 
@@ -3116,7 +3108,7 @@ function markStale() {
   if (!pb.querySelector('.stale-note')) {
     var note = document.createElement('div');
     note.className = 'stale-note';
-    note.textContent = 'Graph changed since this run. Re-run the query to export.';
+    note.textContent = 'These results are from an earlier version of the graph. Re-run the query.';
     pb.insertBefore(note, pb.firstChild);
   }
 }

@@ -828,12 +828,14 @@ module.exports = ({ describe, test }) => {
     test('the panel says where the groups are coming from, because a wire decides it', () => {
       const h = plain();
       const text = () => h.qa('.node-config').map(e => e.textContent).join(' ');
-      assert.includes(text(), 'values found in the data');
+      assert.includes(text(), 'Unconnected',
+        'an empty Labels port is the one thing the settings cannot show');
       const lsrc = h.add('source');
       h.app.connect(lsrc.id, h.sf.id, null, 'labels');
       h.w.render();
       assert.includes(text(), 'Groups from the Labels branch');
-      assert.excludes(text(), 'values found in the data');
+      assert.excludes(text(), 'Unconnected',
+        'a wired port describes itself: the picker names the column');
     });
 
     test('it states the header that will come out', () => {

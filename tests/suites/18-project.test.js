@@ -288,7 +288,7 @@ module.exports = ({ describe, test }) => {
     test('the panel says so too, before the run', () => {
       const h = boot();
       const [s, a, p, o] = h.build('source', 'aggregate', 'project', 'output');
-      assert.includes(h.qa('.node')[2].textContent, 'nothing to expand');
+      assert.includes(h.qa('.node')[2].textContent, 'No course data');
     });
 
     test('canProject is what decides, and both walks ask it', () => {
