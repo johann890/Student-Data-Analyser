@@ -2404,19 +2404,38 @@ th.cmp-num { color: #383838 !important; }
    reading as a label rather than as the name of the thing you opened. The
    library's heading is raised to match, in the query library block below. */
 .help-title { font-size: 20px; font-weight: 600; color: #e8e8e8; }
-.help-close {
-  width: 26px; height: 26px;
+/* THE CLOSE BUTTON ON A FULL PANEL.
+
+   Shared by Help and the query library, because they are the same control in
+   the same corner doing the same job, and two rules for that is two things to
+   keep in step. Help used to carry a grey 26px multiplication sign instead:
+   the same dismissal offered as an icon on one panel and as a word on the
+   other, which asks the reader to learn the corner twice.
+
+   Red is the one the toolbar's Clear button uses. It is the only red in the
+   application that means "this control ends what you are doing".
+
+   flex-shrink is kept from the rule this replaces. Both headers are flex rows
+   whose other child can grow (Help's title, the library's search box), and
+   without it the button is the thing that gives way.
+
+   Written long rather than as a `border:` shorthand, for the reason recorded
+   against .shape-histogram. */
+.panel-close {
   background: transparent;
-  border: 1px solid #2a2a2a;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #7a2828;
   border-radius: 5px;
-  color: #8a8a8a;
+  color: #e35d5d;
   font-family: inherit;
-  font-size: 15px;
-  line-height: 1;
+  font-size: 11px;
+  padding: 5px 13px;
   cursor: pointer;
   flex-shrink: 0;
+  transition: background 0.12s;
 }
-.help-close:hover { border-color: #3d3d3d; color: #d0d0d0; background: #1a1a1a; }
+.panel-close:hover { background: #240d0d; }
 
 .help-main { display: flex; flex: 1; min-height: 0; }
 
@@ -2847,11 +2866,11 @@ th.cmp-num { color: #383838 !important; }
 .lib-search-wrap.show { display: block; }
 /* Close is pushed to the far edge by whichever of the two carries the auto
    margin: the search box when it is there, Close itself when it is not.
-   Keyed on .lib-close rather than on .file-btn, because Close no longer wears
+   Keyed on .panel-close rather than on .file-btn, because Close no longer wears
    that class and a selector naming the old one silently stops applying, which
    drops the button back beside the title. */
-.lib-search-wrap + .lib-close { margin-left: auto; }
-.lib-search-wrap.show + .lib-close { margin-left: 0; }
+.lib-search-wrap + .panel-close { margin-left: auto; }
+.lib-search-wrap.show + .panel-close { margin-left: 0; }
 
 #libSearch {
   width: 220px;
@@ -2866,24 +2885,6 @@ th.cmp-num { color: #383838 !important; }
 }
 #libSearch:focus { border-color: #4a7fb5; }
 
-/* The red the toolbar's Clear button uses, rather than a new one. It is the
-   only red in the application that means "this control ends what you are
-   doing", and a second shade of it would read as a different kind of action.
-   Written long, like every border in this block. */
-.lib-close {
-  background: transparent;
-  border-width: 1px;
-  border-style: solid;
-  border-color: #7a2828;
-  border-radius: 5px;
-  color: #e35d5d;
-  font-family: inherit;
-  font-size: 11px;
-  padding: 5px 13px;
-  cursor: pointer;
-  transition: background 0.12s;
-}
-.lib-close:hover { background: #240d0d; }
 
 .lib-sub-note {
   flex-shrink: 0;
