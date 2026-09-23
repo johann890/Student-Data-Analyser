@@ -2837,8 +2837,13 @@ th.cmp-num { color: #383838 !important; }
    render that crosses the threshold. */
 .lib-search-wrap { display: none; margin-left: auto; }
 .lib-search-wrap.show { display: block; }
-.lib-search-wrap + .file-btn { margin-left: auto; }
-.lib-search-wrap.show + .file-btn { margin-left: 0; }
+/* Close is pushed to the far edge by whichever of the two carries the auto
+   margin: the search box when it is there, Close itself when it is not.
+   Keyed on .lib-close rather than on .file-btn, because Close no longer wears
+   that class and a selector naming the old one silently stops applying, which
+   drops the button back beside the title. */
+.lib-search-wrap + .lib-close { margin-left: auto; }
+.lib-search-wrap.show + .lib-close { margin-left: 0; }
 
 #libSearch {
   width: 220px;
@@ -2852,6 +2857,25 @@ th.cmp-num { color: #383838 !important; }
   outline: none;
 }
 #libSearch:focus { border-color: #4a7fb5; }
+
+/* The red the toolbar's Clear button uses, rather than a new one. It is the
+   only red in the application that means "this control ends what you are
+   doing", and a second shade of it would read as a different kind of action.
+   Written long, like every border in this block. */
+.lib-close {
+  background: transparent;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #7a2828;
+  border-radius: 5px;
+  color: #e35d5d;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 5px 13px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.lib-close:hover { background: #240d0d; }
 
 .lib-sub-note {
   flex-shrink: 0;
