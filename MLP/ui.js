@@ -3408,7 +3408,12 @@ function serialiseGraph() {
    "query.json.json" would be a poor way of telling them so. */
 var QUERY_EXT = '.json';
 
-function defaultQueryName() { return 'query-' + timeStamp(true); }
+/* "untitled" rather than "query", because this name is only ever reached by
+   someone who did not give one. Every file this tool writes is a query, so
+   naming one of them "query" says nothing about it; "untitled" says the one
+   thing that is actually true, which is that it still needs a name. Used for
+   both destinations: the file on disk and the card in the library. */
+function defaultQueryName() { return 'untitled-' + timeStamp(true); }
 
 /* Typed text to written filename. Two things happen on the way: the extension
    is stripped if present so it can be re-added exactly once, and the rest goes
