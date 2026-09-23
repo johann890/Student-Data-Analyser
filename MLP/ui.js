@@ -3139,11 +3139,19 @@ function markStale() {
 }
 
 function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+/* Today, as the one date format this tool writes. Its own function because two
+   things want it and only one of them wants the time with it: a suggested name
+   is read by a person, and the minute it was suggested is noise to them. */
+function dateStamp() {
+  var d = new Date();
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+
 function timeStamp(fileSafe) {
   var d = new Date();
-  var date = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
   var time = pad2(d.getHours()) + (fileSafe ? '' : ':') + pad2(d.getMinutes());
-  return date + (fileSafe ? '-' : ' ') + time;
+  return dateStamp() + (fileSafe ? '-' : ' ') + time;
 }
 
 function csvCell(v) {
@@ -3413,7 +3421,7 @@ var QUERY_EXT = '.json';
    naming one of them "query" says nothing about it; "untitled" says the one
    thing that is actually true, which is that it still needs a name. Used for
    both destinations: the file on disk and the card in the library. */
-function defaultQueryName() { return 'untitled-' + timeStamp(true); }
+function defaultQueryName() { return 'untitled-' + dateStamp(); }
 
 /* Typed text to written filename. Two things happen on the way: the extension
    is stripped if present so it can be re-added exactly once, and the rest goes
@@ -6348,7 +6356,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     // export + persistence
     serialiseTable: serialiseTable, exportTableFor: exportTableFor, safeName: safeName,
     exportNameOf: exportNameOf, defaultExportName: defaultExportName, markStale: markStale,
-    timeStamp: timeStamp, resultHTML: resultHTML, scalarHTML: scalarHTML, tableHTML: tableHTML,
+    timeStamp: timeStamp, dateStamp: dateStamp, resultHTML: resultHTML, scalarHTML: scalarHTML, tableHTML: tableHTML,
     courseLabel: courseLabel, courseTitle: courseTitle, courseSelect: courseSelect,
     serialiseGraph: serialiseGraph, deserialiseGraph: deserialiseGraph,
     applyGraph: applyGraph, loadGraphFromText: loadGraphFromText,
