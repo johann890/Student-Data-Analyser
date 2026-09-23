@@ -120,6 +120,11 @@
   <span class="tlabel">Query</span>
   <button class="file-btn" onclick="saveGraph(this)" title="Save this query as a file you can re-open and re-run">Save</button>
   <button class="file-btn" onclick="openGraphFile(this)" title="Open a saved query">Load</button>
+  <!-- Save and Load write and read a file; Library keeps the same queries in
+       the browser instead. Third in the group rather than first because it is
+       the newer habit: a user who already knows where their .json files live
+       should not have to step past a button that does something else. -->
+  <button class="file-btn" onclick="openLibrary(this)" title="Saved queries kept in this browser">Library</button>
   <input type="file" id="loadFile" accept="application/json,.json" hidden>
 
   <!-- The two data pickers, shared by every Source on the canvas: which node
@@ -242,6 +247,7 @@
         <button class="help-navitem" data-goto="help-nodes">Node reference</button>
         <button class="help-navitem" data-goto="help-results">Reading results</button>
         <button class="help-navitem" data-goto="help-files">Saving a query</button>
+        <button class="help-navitem" data-goto="help-library">The query library</button>
         <button class="help-navitem" data-goto="help-keys">Keyboard and mouse</button>
       </nav>
 
@@ -1077,6 +1083,56 @@
              is the same question asked of new data, which is the whole point of keeping one.</p>
         </section>
 
+        <!-- ── LIBRARY ─────────────────────────────────────── -->
+        <section id="help-library">
+          <h3>The query library</h3>
+          <p>Save and Load write and read a file. <b>Library</b> keeps the same queries
+             <b>in this browser</b> instead, so a query built once is one click away next term
+             rather than something to go and find in a folder.</p>
+
+          <p>It opens as a grid of cards. Each card shows a small picture of the query &mdash; the
+             nodes and the wires between them &mdash; because the shape is what you built and what
+             you will recognise. Type in the search box to narrow the grid by name.</p>
+
+          <table class="help-keys">
+            <tr><td><b>Open</b></td><td>Puts that query on the canvas. If there is already
+                something there it asks once, on the button, because there is no undo.</td></tr>
+            <tr><td><b>Rename</b></td><td>Edits the name in place. <kbd>Enter</kbd> keeps it,
+                <kbd>Esc</kbd> abandons it.</td></tr>
+            <tr><td><b>Export</b></td><td>Writes that one query out as a <code>.json</code> file
+                &mdash; the same file <b>Save</b> writes and <b>Load</b> reads. This is how you
+                send a query to a colleague, and how you keep a copy that survives the
+                browser.</td></tr>
+            <tr><td><b>Delete</b></td><td>Removes it. Asks once, on the button, and there is no
+                way back.</td></tr>
+          </table>
+
+          <p>The box at the bottom names the query on the canvas and <b>Save to library</b> puts it
+             in. If a query of that name is already there, the button asks whether to replace it
+             rather than quietly adding a second card with the same name.</p>
+
+          <div class="help-tip">
+            <b>A card holds the question, not the answer</b> &mdash; exactly like a saved file.
+            No student, no grade and no course code is ever kept in the library. Opening a card
+            gives you the graph back with every Source empty, and each Source then names the files
+            it was built against.
+          </div>
+
+          <h4>What the library is not</h4>
+          <p><b>It is not a backup.</b> It lives in this browser on this machine. Clearing site
+             data removes it, a private window never sees it, and it does not follow you to another
+             computer or another browser. Anything you would be sorry to lose should be
+             <b>exported</b> to a file as well.</p>
+          <p><b>It is not private on a shared computer.</b> The library belongs to the browser
+             profile, not to the person sitting at it, so whoever uses this machine next sees the
+             same cards. That is safe as far as the data goes, because no records are in there,
+             but a query&rsquo;s own settings can name a specific student if you typed one into a
+             Filter &mdash; and that would sit on a card until somebody deletes it.</p>
+          <p>There is a limit on how much a browser will store, and on how many queries the
+             library will hold. If either is reached the tool says so and refuses the save rather
+             than dropping it quietly; export a few and delete them to make room.</p>
+        </section>
+
         <!-- ── KEYS ────────────────────────────────────────── -->
         <section id="help-keys">
           <h3>Keyboard and mouse</h3>
@@ -1156,6 +1212,51 @@
       <button class="file-btn" id="clearCancel" onclick="closeClearDialog()">Cancel</button>
       <button class="confirm-go" onclick="confirmClearAll()">Clear canvas</button>
     </div>
+  </div>
+</div>
+
+<!-- QUERY LIBRARY
+     The save dialog's backdrop with a card of its own, wide enough for a grid.
+     Static markup for the same reason the others are: one fixed shape, visible
+     to anyone reading the page rather than assembled out of sight in a script.
+
+     The pictures on the cards are drawn into #libBody by renderLibrary(), from
+     the graphs themselves. There is no <img> anywhere in here and no thumbnail
+     is stored: see libThumb() in ui.js for why a screenshot would have been
+     the wrong answer. -->
+<div class="save-dialog lib-dialog" id="libDialog">
+  <div class="lib-card-frame" role="dialog" aria-modal="true" aria-labelledby="libTitle">
+
+    <div class="lib-head">
+      <h2 class="save-title" id="libTitle">Query library</h2>
+      <div class="lib-search-wrap" id="libSearchWrap">
+        <input type="search" id="libSearch" placeholder="Search by name"
+               spellcheck="false" autocomplete="off" aria-label="Search saved queries"
+               oninput="libSearchInput(this)">
+      </div>
+      <button class="file-btn" onclick="closeLibrary()">Close</button>
+    </div>
+
+    <p class="save-sub lib-sub-note">Kept in this browser on this machine, not in a file.
+       A card records the query and never the data, so opening one asks for the files again.
+       Clearing site data removes the library, and it is not private on a shared
+       computer &mdash; use <b>Export</b> for anything you need to keep or send.</p>
+
+    <!-- One line, for what just happened or what went wrong. Above the grid so
+         a message about a card is not scrolled away from underneath itself. -->
+    <div class="lib-notice" id="libNotice" role="status" aria-live="polite"></div>
+
+    <div class="lib-body" id="libBody"></div>
+
+    <div class="lib-foot">
+      <label class="lib-save-field">
+        <input type="text" id="libSaveName" spellcheck="false" autocomplete="off"
+               aria-label="Name for the query on the canvas">
+      </label>
+      <button class="save-go" id="libSaveBtn" onclick="libSaveCurrent(this)">Save to library</button>
+      <span class="lib-usage" id="libUsage"></span>
+    </div>
+
   </div>
 </div>
 

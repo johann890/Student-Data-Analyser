@@ -2793,3 +2793,231 @@ th.cmp-num { color: #383838 !important; }
   cursor: pointer;
 }
 .confirm-go:hover { background: #2e0d0d; }
+
+/* ═══════════════════════════════════════════════════════════
+   QUERY LIBRARY
+   Appended block. Nothing above this line is modified.
+
+   The backdrop is .save-dialog's, reused rather than restated: it already
+   centres a card over the canvas at the right z-index and is dismissed by the
+   same rules. Only the card is new, because this one holds a grid.
+
+   Border colours are written long rather than as a `border:` shorthand, for
+   the reason recorded against .shape-histogram: a shorthand carrying a colour
+   wins on source order over a rule meant to set it, and that is how a node
+   once shipped in the wrong family's colour with the suite green.
+   ═══════════════════════════════════════════════════════════ */
+
+.lib-card-frame {
+  width: 940px;
+  max-width: calc(100vw - 48px);
+  height: 100%;
+  max-height: 680px;
+  display: flex;
+  flex-direction: column;
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 18px 20px 14px;
+  box-shadow: 0 18px 60px rgba(0,0,0,0.6);
+}
+.lib-dialog { padding: 24px; }
+
+/* ── HEAD ─────────────────────────────────────────────────── */
+.lib-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+.lib-head .save-title { margin: 0; flex-shrink: 0; }
+
+/* Hidden until there are enough cards for searching to beat looking. Held by
+   a class rather than by removing the input, so focus and value survive a
+   render that crosses the threshold. */
+.lib-search-wrap { display: none; margin-left: auto; }
+.lib-search-wrap.show { display: block; }
+.lib-search-wrap + .file-btn { margin-left: auto; }
+.lib-search-wrap.show + .file-btn { margin-left: 0; }
+
+#libSearch {
+  width: 220px;
+  background: #0b0b0b;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ddd;
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 9px;
+  outline: none;
+}
+#libSearch:focus { border-color: #4a7fb5; }
+
+.lib-sub-note {
+  flex-shrink: 0;
+  margin: 8px 0 0;
+  max-width: 76ch;
+}
+
+/* ── NOTICE ───────────────────────────────────────────────── */
+/* Collapsed to nothing when empty, so the grid does not shift down by a blank
+   line the moment the dialog opens. */
+.lib-notice {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.12s, opacity 0.12s, margin 0.12s;
+}
+.lib-notice.show { max-height: 4em; opacity: 1; margin: 10px 0 0; }
+.lib-notice.ok  { color: #6ec87a; }
+.lib-notice.bad { color: #e0864a; }
+
+/* ── BODY ─────────────────────────────────────────────────── */
+/* The frame is bounded by the viewport and this scrolls inside it, so the
+   heading, the search box and the save row stay put while the grid moves.
+   Same arrangement as .help-card. */
+.lib-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 12px;
+  outline: none;
+}
+
+.lib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(212px, 1fr));
+  gap: 14px;
+  padding-bottom: 4px;
+}
+
+/* ── CARD ─────────────────────────────────────────────────── */
+.lib-card {
+  display: flex;
+  flex-direction: column;
+  background: #0d0d0d;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #2a2a2a;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.lib-card:hover { border-color: #3a3a3a; }
+/* Half-pressed Delete. The card says so as well as the button, because the
+   button is small and the thing about to happen is not. */
+.lib-card.danger { border-color: #8a3030; background: #150a0a; }
+
+.lib-thumb {
+  background: #070707;
+  border-bottom: 1px solid #1e1e1e;
+  line-height: 0;
+}
+.lib-thumb-svg { display: block; width: 100%; height: auto; }
+
+.lib-meta { padding: 8px 10px 6px; }
+.lib-name {
+  font-size: 12px;
+  color: #ddd;
+  font-weight: 600;
+  /* One line. A two-line name would make its card taller than its neighbours
+     and break the row, and the full text is on the title attribute. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lib-sub { font-size: 10px; color: #777; margin-top: 2px; }
+
+.lib-rename {
+  width: 100%;
+  background: #0b0b0b;
+  border: 1px solid #4a7fb5;
+  border-radius: 3px;
+  color: #ddd;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 5px;
+  outline: none;
+}
+
+.lib-actions {
+  display: flex;
+  gap: 4px;
+  padding: 0 8px 8px;
+  flex-wrap: wrap;
+}
+.lib-actions .file-btn,
+.lib-actions .lib-go,
+.lib-actions .lib-del {
+  font-size: 10px;
+  padding: 3px 7px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  border-width: 1px;
+  border-style: solid;
+}
+.lib-go {
+  background: #0f2a44;
+  border-color: #1e5f9a;
+  color: #7ec4ff;
+  font-weight: 600;
+  margin-right: auto;
+}
+.lib-go:hover { background: #14395c; }
+.lib-del {
+  background: #180b0b;
+  border-color: #4a2020;
+  color: #c87070;
+}
+.lib-del:hover { background: #2a1010; border-color: #8a3030; color: #e08080; }
+.lib-card.danger .lib-del {
+  background: #8a2020;
+  border-color: #c04040;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ── EMPTY AND BROKEN ─────────────────────────────────────── */
+.lib-empty,
+.lib-problem {
+  color: #777;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 28px 4px;
+  max-width: 62ch;
+}
+.lib-problem-text { color: #e0864a; margin-bottom: 12px; }
+.lib-problem-warn { color: #777; margin-top: 10px; font-size: 11px; }
+
+/* ── FOOT ─────────────────────────────────────────────────── */
+.lib-foot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #242424;
+}
+.lib-save-field { flex: 1; max-width: 340px; }
+#libSaveName {
+  width: 100%;
+  background: #0b0b0b;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ddd;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 9px;
+  outline: none;
+}
+#libSaveName:focus { border-color: #4a7fb5; }
+#libSaveBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.lib-usage { margin-left: auto; font-size: 11px; color: #666; }
