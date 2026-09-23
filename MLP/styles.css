@@ -2399,7 +2399,11 @@ th.cmp-num { color: #383838 !important; }
   border-bottom: 1px solid #232323;
   flex-shrink: 0;
 }
-.help-title { font-size: 13px; font-weight: 600; color: #e8e8e8; }
+/* 20px rather than the 13px it shared with the save dialog's heading. That
+   size was set for a 330px card; this panel is 860px wide and its heading was
+   reading as a label rather than as the name of the thing you opened. The
+   library's heading is raised to match, in the query library block below. */
+.help-title { font-size: 20px; font-weight: 600; color: #e8e8e8; }
 .help-close {
   width: 26px; height: 26px;
   background: transparent;
@@ -2830,7 +2834,11 @@ th.cmp-num { color: #383838 !important; }
   gap: 12px;
   flex-shrink: 0;
 }
-.lib-head .save-title { margin: 0; flex-shrink: 0; }
+/* Scoped, not a change to .save-title itself: that rule also heads the save
+   dialog and the clear confirmation, both of which are small cards where 13px
+   is the right size. Only the two full panels are raised. Matches
+   .help-title. */
+.lib-head .save-title { margin: 0; flex-shrink: 0; font-size: 20px; }
 
 /* Hidden until there are enough cards for searching to beat looking. Held by
    a class rather than by removing the input, so focus and value survive a
