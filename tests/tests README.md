@@ -131,6 +131,51 @@ anything they were meant to be testing.
 The flag cannot rot that way. If a symbol goes, the suite that uses it fails on
 its own line and names it.
 
+### Storage, which jsdom does not supply
+
+`boot()` installs a `localStorage` on the window before the application loads,
+beside the download and clipboard shims and for the same reason: it stands in
+for a browser facility jsdom lacks, at the seam a browser would provide it.
+
+jsdom only exposes `localStorage` for an origin it can key one to. The harness
+builds the page from a string with no `url`, so the document sits at
+`about:blank` and the property is **undefined**. Giving the boot a `file://`
+url does not help either — that origin is opaque and jsdom leaves it undefined
+too. Only an `http(s)` url produces a real one, and changing the origin of
+every suite to serve one of them is the wrong trade.
+
+This matters more than it looks, and it is the reason the shim is here rather
+than in whichever suite noticed first:
+
+```js
+try { window.localStorage.setItem(K, v); } catch (e) { /* ... */ }
+```
+
+is how every access in `ui.js` is written, correctly — storage genuinely
+throws on a `file://` origin with site data blocked, and in a private window.
+With no storage object at all those catches swallow a `TypeError`, and the code
+*appears* to work. A suite written over that would pass because nothing was
+ever stored **or** read. `25-toolbar-size` used to carry its own shim for
+exactly this reason; the query library needed the same thing, so it moved.
+
+The shim has the two behaviours an object literal does not:
+
+- it **stores strings**, so `setItem(k, {})` records `"[object Object]"` and a
+  caller who forgets to stringify is caught by the defensive parse rather than
+  by luck;
+- it has a **ceiling**, settable per test, and exceeding it throws the way a
+  browser does — name, code and all. Quota is a real limit for a library of
+  saved queries rather than a theoretical one.
+
+```js
+const h = boot();
+h.storage.quota = 400;      // bytes, counted as the spec counts them
+h.storage.raw();            // what is actually stored, for assertions
+```
+
+`withoutStorage(h)` is the other half: it deletes the property, so a test about
+having nowhere to save says so instead of inheriting jsdom's silence.
+
 ### Adding to the hook
 
 If a test needs something `__qb` does not expose, add it to the export block at
@@ -170,6 +215,7 @@ bridges them back to getters so tests can write `app.nodes`, in one place —
 | `22-archive-patterns` | The patterns `../data` claims to carry, read through the shipped parser: three linked years, the BEHONS CYBR → BSC COMP migration, a course improving every year, courses growing and shrinking every year, the reliably hard and reliably easy ones measured against the cohort, and the student-level claims — progression, own-subject advantage, who leaves and why |
 | `23-selectfor` | The SelectFor node: grouping as filtering once per label, the predicates that are not columns, the Labels port and the zero-count group only it can produce, share measured against the input rather than the sum of the groups, the registry invariant across five configurations, and the same claims once more against the real archive |
 | `20-source-loading` | The Source from the picker to the answer: the two ordered pickers driven through the real hidden inputs, year files accumulating across picks and coming back off one at a time, all-or-nothing within a pick, one Source per dataset, and that a saved query carries the graph and not one byte of the records |
+| `31-library` | The query library: the round trip through browser storage, that an entry is the file format unchanged and loads through the same door a file does, the no-student-records guarantee asserted a second time, every shape hostile storage can take, the refusals that protect a library from being clobbered, quota, two windows sharing one store — and the dialog: that a card's picture is drawn from the graph and carries nothing out of the entry, that names and ids cannot become markup, the two-step questions in front of Open and Delete, the save dialog's two destinations, and export/import — that a merge never replaces, that every imported entry is given a fresh id, and that a merge which will not fit leaves the library exactly as it was |
 
 ### What was removed, and why
 
@@ -286,6 +332,60 @@ confirming the suite caught it:
   only the overlapping case — where a student is in eight course groups at
   once — can tell the two apart. Both tests exist because one of them cannot
   fail.
+
+- **`31-library` › the store's guards.** Five, each checked by writing the bug
+  back into `ui.js` and confirming the named test went red:
+
+  | Break | What fails |
+  |---|---|
+  | drop `libAdd`'s refusal to write over a store it could not read | the unreadable-store test |
+  | give the library its own serialiser that keeps `exportData` | "no student data reaches storage" |
+  | swallow a failed `setItem` the way the panel-width guard does | both quota tests |
+  | cache `libRead()`'s result in a module variable | the two-windows test |
+  | let a name clash replace silently instead of returning a conflict | the clash tests |
+  | accept any string as an entry id | the hostile-id test |
+  | open or delete on the first click instead of asking | the two-step tests |
+  | make import replace the library instead of merging into it | the merge test |
+  | trust the id that arrives in an imported file | three import tests |
+  | point the save field's Enter key at the library | the Enter test |
+  | let a clash replace silently from the save dialog | the save-dialog clash test |
+
+  The two-windows row is the one worth keeping, and it is here because the
+  first version of that test **could not fail**. A cache written on every
+  return path breaks it; a cache written only on the full-parse path does not,
+  because a save into an *empty* library never reaches that path, so the cache
+  is still null on the second save and the stale write never happens. The test
+  now reads the store once before the collision — which is what opening the
+  grid does anyway — and catches both shapes. Written the obvious way, it was
+  testing a bug it had arranged not to meet.
+
+  The import rows are worth their space because import is the only path here
+  that takes a file from outside the machine. Two of them exist because the
+  same bug has two shapes: a merge that replaces destroys the user's own work,
+  and an id taken from a file reaches a card's inline `onclick`. Minting a
+  fresh id for every imported entry closes the second one outright rather than
+  by pattern-matching, which is why breaking it fails three tests and not one.
+
+  The Enter row is not about correctness at all — both buttons work either way.
+  It is there because repointing a daily keyboard habit at a different
+  destination would stop it producing files without anyone noticing, and a
+  change nobody notices is the kind that needs a test to hold it still.
+
+  The no-student-records row is duplicated from `07-saveload` on purpose. It is
+  a property of `serialiseGraph()`, and the only thing keeping it true of the
+  library is that the library reuses it rather than writing a second
+  serialiser. A second place to write a query down is a second place for
+  records to escape to, and the one nobody would think to check is the one in
+  browser storage that never appears as a file.
+
+- **`17-shape-styling` › the library card's palette.** The fifth way a node's
+  appearance can disagree with itself, and the first one with no screen to
+  catch it: a node coloured wrongly on a card appears only inside a dialog,
+  beside other cards that look perfectly plausible. Checked both ways — shipping
+  SelectFor violet among the indigo ones (exactly the bug that suite was written
+  for, one layer further out) fails the distribution test, and removing a type
+  from `LIB_INK` altogether fails the "every node the canvas can draw" test as
+  well, because the fallback grey is not a family.
 
 If any of these is ever rewritten, re-check it the same way.
 

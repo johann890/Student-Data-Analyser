@@ -1262,7 +1262,26 @@ var STUDENT_COLUMNS = [
   { key:'degree',         label:'Degree',         type:COLTYPE.ENUM,   values:DEGREES },
   { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
   { key:'gpa',            label:'GPA',            type:COLTYPE.NUMBER, def:'5' },
-  { key:'letterGrade',    label:'Grade',          type:COLTYPE.TEXT,   order:GRADE_ORDER },
+  /* "Overall grade", not "Grade", and the rename is the whole of it.
+     ---------------------------------------------------------------------
+     This column and the one a Project puts on an enrolment were both called
+     Grade, and they are not the same fact. This is the student's standing for
+     the year: their GPA, rounded to the nearest letter by gradeFromGpa(). The
+     other is the letter actually awarded for one course. A student whose GPA
+     is 6.4 shows B+ here without ever having been given a B+.
+
+     Worse than ambiguous, the two shared a name across a step that swaps one
+     for the other. They also share a KEY, so projectCarried() drops this one
+     and the enrolment's takes its place: before a Project the column called
+     Grade meant the year, after it the column called Grade meant the course,
+     and nothing on screen marked the change. Two names is what makes that
+     visible. The keys are deliberately left alone, so every saved query, every
+     filter and every export keeps working; only what is displayed changes.
+
+     The supervisor asked for this the other way round, thinking GPA was a
+     numeric grade and this the letter form of it. GPA is a real average, so
+     its name was right; the collision was here. */
+  { key:'letterGrade',    label:'Overall grade',  type:COLTYPE.TEXT,   order:GRADE_ORDER },
   { key:'courses',        label:'Courses',        type:COLTYPE.COURSES }
 ];
 

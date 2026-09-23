@@ -328,4 +328,57 @@ module.exports = ({ describe, test }) => {
       assert.ok(h.app.nodes.some(n => n.type === 'sort'), 'the node was still added');
     });
   });
+
+  /* ----------------------------------------------- the fifth way to get it wrong
+
+     This suite's own note says a node's appearance is checked by four separate
+     things — SHAPE, the size rule, the family rule and the menu group — and
+     that if a fifth turns up it belongs here. One has: the query library draws
+     a card from the graph rather than from the screen, so it carries its own
+     palette in LIB_INK, and that palette has no screen to catch it. A node
+     coloured wrongly there appears only on a card in a dialog, beside other
+     cards that look perfectly plausible.
+
+     Two claims, because a node can fail either: that every drawable type is
+     named at all, and that the colour named is the family's. */
+
+  describe('the library card draws nodes in their family colour', () => {
+    const A = boot().app;
+
+    test('every node the canvas can draw, the card can draw', () => {
+      Object.keys(A.SHAPE).forEach(type => {
+        assert.ok(A.LIB_INK[type],
+          type + ' has a shape but no colour on a library card, so it would be ' +
+          'drawn in the fallback grey among the coloured ones');
+      });
+    });
+
+    Object.keys(FAMILY).forEach(fam => {
+      const { colour, types } = FAMILY[fam];
+      test(fam + ' nodes are ' + colour + ' on a card too', () => {
+        types.forEach(type => {
+          assert.equal(A.LIB_INK[type].line, colour,
+            type + ' is drawn ' + A.LIB_INK[type].line + ' on a card and ' +
+            colour + ' on the canvas');
+        });
+      });
+    });
+
+    test('Source, Filter and Output match their stylesheet rules', () => {
+      /* The three that have no family: their colour is in their own base rule
+         rather than in a shared one, so it is read out of the stylesheet here
+         rather than restated from a table this test wrote. */
+      const declared = (cls) => {
+        const m = CSS.match(new RegExp('\\.' + cls + '\\s*\\{[^}]*?border:[^;]*?(#[0-9a-f]{6})', 'is'));
+        return m ? m[1] : null;
+      };
+      [['source', 'shape-source'], ['filter', 'shape-filter'], ['output', 'shape-output']]
+        .forEach(([type, cls]) => {
+          const want = declared(cls);
+          assert.ok(want, 'no border colour found for .' + cls);
+          assert.equal(A.LIB_INK[type].line.toLowerCase(), want.toLowerCase(),
+            type + ' disagrees with .' + cls);
+        });
+    });
+  });
 };

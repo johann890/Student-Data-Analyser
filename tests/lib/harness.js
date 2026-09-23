@@ -103,6 +103,54 @@ function shim(qb) {
   return app;
 }
 
+/* A Storage implementation over a Map, with the two behaviours that matter to
+   the code under test and that a naive object literal does not have.
+
+   A real Storage stores strings. `setItem(k, {})` records "[object Object]",
+   so a caller that forgets to stringify reads back something that is not JSON,
+   and the application's defensive parse is what has to notice. Coercing here
+   rather than storing the object keeps that bug reachable by a test.
+
+   A real Storage also has a ceiling, and hitting it throws rather than
+   returning false. Browsers give roughly 5MB per origin, which is a real limit
+   for a library of saved queries rather than a theoretical one — so `quota` is
+   settable and the throw is shaped like the browser's, name and code included.
+   Left at Infinity, nothing changes.
+
+     const h = boot();
+     h.storage.quota = 400;     // bytes, counted as the browser counts them
+
+   The size accounting matches the spec's: two bytes per UTF-16 code unit,
+   summed over keys and values. Approximate against any real browser's
+   bookkeeping, exact enough to put a test on the far side of a limit. */
+function memoryStorage() {
+  const map = new Map();
+  const api = {
+    quota: Infinity,
+    get length() { return map.size; },
+    key(i) { return Array.from(map.keys())[i] ?? null; },
+    getItem(k) { return map.has(String(k)) ? map.get(String(k)) : null; },
+    removeItem(k) { map.delete(String(k)); },
+    clear() { map.clear(); },
+    setItem(k, v) {
+      k = String(k); v = String(v);
+      let used = 0;
+      for (const [ek, ev] of map) if (ek !== k) used += (ek.length + ev.length) * 2;
+      if (used + (k.length + v.length) * 2 > api.quota) {
+        const err = new Error('The quota has been exceeded.');
+        err.name = 'QuotaExceededError';
+        err.code = 22;
+        throw err;
+      }
+      map.set(k, v);
+    },
+    // Not part of Storage. For assertions about what is actually on disk,
+    // as opposed to what the application believes it wrote.
+    raw() { return new Map(map); }
+  };
+  return api;
+}
+
 /* A fresh application instance per test file. State is module-global inside the
    IIFE, so sharing an instance between files would let one test's leftover
    nodes change another's result. */
@@ -147,6 +195,34 @@ function boot() {
   const copied = [];
   w.navigator.clipboard = { writeText: (t) => { copied.push(t); return Promise.resolve(); } };
 
+  /* Storage: supplied, because jsdom does not supply it here.
+
+     jsdom only exposes localStorage for an origin it can key one to, and this
+     harness boots the page from a string with no `url`, so the document sits at
+     about:blank and `window.localStorage` is undefined. Giving the boot a
+     `file://` url does not help — that origin is opaque and jsdom leaves it
+     undefined too. Only an http(s) url produces a real one, and changing the
+     origin of all twenty-six suites to serve one of them is the wrong trade.
+
+     This matters more than it looks. The application already reads and writes
+     localStorage for the panel width and the toolbar height, and every access
+     is wrapped in a try/catch because it legitimately throws in some file://
+     and private-window configurations. With no storage object at all, those
+     catches swallow a TypeError and the code appears to work. Anything else
+     written the same way would be tested by a suite that cannot fail: the
+     assertions would pass because nothing was ever stored OR read.
+
+     So the shim is here for the same reason the download and clipboard shims
+     are — it stands in for a browser facility jsdom lacks, at the same seam a
+     browser would provide it, and everything inward of it is the shipped code.
+
+     Fresh per boot, like the rest of the instance: one test file's saved
+     queries must not be visible to the next. */
+  const storage = memoryStorage();
+  Object.defineProperty(w, 'localStorage', {
+    value: storage, writable: true, configurable: true
+  });
+
   // The flag must be set before the app runs: the export block is guarded by it.
   w.__QB_TEST__ = true;
   APP_PATHS.forEach(p => w.eval(fs.readFileSync(p, 'utf8')));
@@ -165,7 +241,8 @@ function boot() {
   // redraw, so alias it here rather than exporting it from production code.
   w.render = app.render;
 
-  return { w, doc, app, saved, copied, ...helpers(w, doc, app), ...fileHelpers(w, doc, app) };
+  return { w, doc, app, saved, copied, storage,
+           ...helpers(w, doc, app), ...fileHelpers(w, doc, app) };
 }
 
 /* Helpers that drive the UI the way a user would (set a control's value and
@@ -316,4 +393,25 @@ function fileHelpers(w, doc, app) {
   return { file, archiveFile, choose, loadHeaders, loadYears, loadArchive, waitFor };
 }
 
-module.exports = { boot, APP_DIR, APP_SCRIPTS, APP_PATHS, APP_HTML, DATA_DIR, dataDirFile, hasDataDir };
+/* The other half of the storage shim: take it away again.
+
+   Every access the application makes to localStorage is wrapped in a try/catch
+   because a private window, or a file:// origin with site data blocked, does
+   not merely return null — the property access itself throws. That guard is a
+   real behaviour with a real user behind it, so it needs a test, and a test of
+   it needs a window with no storage.
+
+   Before the harness supplied storage that was the default state and the test
+   asserted it. Now it has to be asked for, which is the better arrangement
+   anyway: "this suite is about having nowhere to save" is a statement the test
+   makes, rather than a property of jsdom it happened to inherit.
+
+   Deleting the property is closer to the browser than substituting a throwing
+   stub, because what the guards actually survive is `window.localStorage`
+   being unusable, and both readings arrive there. */
+function withoutStorage(h) {
+  delete h.w.localStorage;
+  return h;
+}
+
+module.exports = { boot, withoutStorage, APP_DIR, APP_SCRIPTS, APP_PATHS, APP_HTML, DATA_DIR, dataDirFile, hasDataDir };

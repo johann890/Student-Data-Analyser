@@ -120,6 +120,11 @@
   <span class="tlabel">Query</span>
   <button class="file-btn" onclick="saveGraph(this)" title="Save this query as a file you can re-open and re-run">Save</button>
   <button class="file-btn" onclick="openGraphFile(this)" title="Open a saved query">Load</button>
+  <!-- Save and Load write and read a file; Library keeps the same queries in
+       the browser instead. Third in the group rather than first because it is
+       the newer habit: a user who already knows where their .json files live
+       should not have to step past a button that does something else. -->
+  <button class="file-btn" onclick="openLibrary(this)" title="Saved queries kept in this browser">Library</button>
   <input type="file" id="loadFile" accept="application/json,.json" hidden>
 
   <!-- The two data pickers, shared by every Source on the canvas: which node
@@ -229,7 +234,7 @@
 
     <div class="help-top">
       <h2 class="help-title" id="helpTitle">Student Data Analyser: how to use it</h2>
-      <button class="help-close" onclick="closeHelp()" aria-label="Close help">&times;</button>
+      <button class="panel-close" onclick="closeHelp()" aria-label="Close help">Close</button>
     </div>
 
     <div class="help-main">
@@ -242,6 +247,7 @@
         <button class="help-navitem" data-goto="help-nodes">Node reference</button>
         <button class="help-navitem" data-goto="help-results">Reading results</button>
         <button class="help-navitem" data-goto="help-files">Saving a query</button>
+        <button class="help-navitem" data-goto="help-library">The query library</button>
         <button class="help-navitem" data-goto="help-keys">Keyboard and mouse</button>
       </nav>
 
@@ -351,6 +357,39 @@
             with it, <q>at 300-level or above</q> becomes the progression question. Put a
             <b>Project</b> in front of an <b>Aggregate</b> to ask for the highest level a student
             reached, or the average level across a cohort.
+          </div>
+
+          <h4>The four grade columns, and which is which</h4>
+          <p>The archive records one letter per enrolment and nothing else. Everything else about
+             grades is worked out from that, which is why there are four columns and not one. Two
+             of them describe a single course and two describe a whole student.</p>
+          <table class="help-keys">
+            <tr><td><b>Grade</b><br><small>one course</small></td>
+                <td>The letter actually awarded, from A+ down to D, E and K. Only on a row that is
+                    an enrolment, so you need a <b>Project</b> to reach it.</td></tr>
+            <tr><td><b>Grade points</b><br><small>one course</small></td>
+                <td>That same letter as a number, A+ being 9 and D, E and K all 0. The form you can
+                    average; the letters themselves cannot be added up.</td></tr>
+            <tr><td><b>GPA</b><br><small>one student, one year</small></td>
+                <td>The average of those points across everything the student was graded on that
+                    year, weighted by the points each course is worth, so a 30-point project counts
+                    twice a 15-point course. An ungraded enrolment is left out rather than counted
+                    as a zero.</td></tr>
+            <tr><td><b>Overall grade</b><br><small>one student, one year</small></td>
+                <td>The GPA rounded to the nearest letter. A GPA of 6.4 shows as <b>B+</b>, so this
+                    is a summary of the year and not a grade anyone was given.</td></tr>
+          </table>
+          <p>Each pair is one fact in two forms, and both forms earn their place: the numbers are
+             what an <b>Aggregate</b> can measure, and the letters are what a question is usually
+             asked in. Neither is a second copy of the data, because the tool knows the ranking of
+             the letters, so <q>grade between A+ and B</q> is a band on either form rather than a
+             comparison of spellings.</p>
+          <div class="help-tip">
+            <b>Grade and Overall grade are different questions.</b> Before a <b>Project</b> a row is
+            a student and the grade column is their standing for the year; after one a row is an
+            enrolment and the grade column is what they got for that course. The two are named
+            apart so a header tells you which you are looking at, and a <b>Project</b> replaces the
+            first with the second rather than carrying both.
           </div>
         </section>
 
@@ -470,7 +509,7 @@
               <text x="112" y="138" fill="#888" font-size="8" letter-spacing="0.8"
                     font-family="system-ui, sans-serif">FIELD</text>
               <rect x="110" y="144" width="200" height="24" rx="4" fill="#121212" stroke="#282828"/>
-              <text x="121" y="160" fill="#d0d0d0" font-size="10" font-family="system-ui, sans-serif">Grade average</text>
+              <text x="121" y="160" fill="#d0d0d0" font-size="10" font-family="system-ui, sans-serif">GPA</text>
               <text x="297" y="160" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">&#9662;</text>
               <rect x="110" y="180" width="86" height="24" rx="4" fill="#121212" stroke="#282828"/>
               <text x="121" y="196" fill="#d0d0d0" font-size="10" font-family="system-ui, sans-serif">at least</text>
@@ -641,8 +680,19 @@
              band under the condition with a bound at each end. Both ends count as inside, so a mark
              range of 70 to 80 keeps a mark of exactly 80. Entering the bounds the other way round
              means the same band, and the query log prints the one that was actually applied.</p>
+          <p class="help-node-desc"><b>Took course</b> and <b>Took subject</b> also offer
+             <b>matches</b>, which takes a pattern rather than a value. <b>*</b> stands for any run
+             of characters and <b>?</b> for exactly one, so <b>SWEN*</b> is every SWEN course,
+             <b>*4??</b> is every 400-level course whatever the subject, and <b>SWEN3??</b> is
+             300-level SWEN. The pattern is the whole code rather than part of it, so <b>COMP</b>
+             matches nothing, and capitals do not matter.</p>
+          <p class="help-node-desc">One pattern over <b>Took course</b> reaches what <b>Took
+             subject</b> and <b>Took level</b> reach, which is the point of it: fewer conditions for
+             the same question. The two fields stay, because picking a subject from a list is easier
+             than remembering a pattern. Everything other than <b>*</b> and <b>?</b> is matched
+             literally, so there is no pattern that can be written wrongly.</p>
           <p class="help-node-desc">Ranges are offered wherever the ordering is a real one: on any
-             number, on <b>Year</b>, and on <b>Grade</b>, whose letters carry a declared ranking from
+             number, on <b>Year</b>, and on either grade column, whose letters carry a declared ranking from
              A+ down to D. That makes &ldquo;grade between A+ and B&rdquo; a band of grades rather
              than a comparison of spellings. They are not offered on Gender or Specialisation, where
              the only ordering would be the order somebody typed the list in.</p>
@@ -737,8 +787,8 @@
                 can filter, sort or average. Without it the tool can tell you whether a student took
                 SWEN421 but never what they got for it, because the marks sit nested inside the row
                 rather than in a column of their own. Wire it after a Source, filter on
-                <b>Course</b>, and from that point <b>Mark</b> and <b>Grade</b> are ordinary
-                columns.
+                <b>Course</b>, and from that point <b>Grade</b> and <b>Grade points</b> are
+                ordinary columns.
                 <br><br>
                 To get back to one row per student afterwards, use <b>Unique</b> on Student.
                 <div class="help-eg">
@@ -886,7 +936,7 @@
                 band, how many enrolments at each mark. Pick the column and the width of a band, and
                 you get one row per band with a count beside it, plus any other measure you add.
                 <br>For anything with only a few values, you do not need this node at all.
-                <b>Select For</b> grouped by <b>Grade</b> is already a grade distribution, in the
+                <b>Select For</b> grouped by <b>Overall grade</b> is already a grade distribution, in the
                 declared A+ to D order. Histogram is for the columns where grouping by value would
                 give you one row per student, which is every genuinely numeric one.
                 <br><b>Bands start at a multiple of the width</b>, not at the smallest value in your
@@ -1011,10 +1061,13 @@
         <!-- ── FILES ───────────────────────────────────────── -->
         <section id="help-files">
           <h3>Saving a query</h3>
-          <p><b>Save</b> writes the whole graph to a <code>.json</code> file, meaning every node,
-             its settings and every wire, and it asks you to name the file first. The
-             <code>.json</code> ending is fixed, so a saved query is always one the tool can open
-             again. Save a second time and it offers the name you used before, so revising a query
+          <p><b>Save</b> asks you to name the query, then offers two places to put it.
+             <b>Save as file</b> writes the whole graph to a <code>.json</code> file, meaning every
+             node, its settings and every wire. The <code>.json</code> ending is fixed, so a saved
+             query is always one the tool can open again. <b>Save to library</b> keeps the same
+             query in this browser instead &mdash; see <b>The query library</b> below. Pressing
+             <kbd>Enter</kbd> writes the file, which is what it has always done.</p>
+          <p>Save a second time and it offers the name you used before, so revising a query
              does not scatter near-identical files around.</p>
           <p><b>Load</b> opens one back onto the canvas, replacing whatever is there. Only
              <code>.json</code> files are accepted.</p>
@@ -1031,6 +1084,71 @@
              then names the files it was built against. Choose them again and the query answers
              exactly as it did before. A query saved last year and loaded against this year's files
              is the same question asked of new data, which is the whole point of keeping one.</p>
+        </section>
+
+        <!-- ── LIBRARY ─────────────────────────────────────── -->
+        <section id="help-library">
+          <h3>The query library</h3>
+          <p>Save and Load write and read a file. <b>Library</b> keeps the same queries
+             <b>in this browser</b> instead, so a query built once is one click away next term
+             rather than something to go and find in a folder.</p>
+
+          <p>It opens as a grid of cards. Each card shows a small picture of the query &mdash; the
+             nodes and the wires between them &mdash; because the shape is what you built and what
+             you will recognise. Type in the search box to narrow the grid by name.</p>
+
+          <table class="help-keys">
+            <tr><td><b>Open</b></td><td>Puts that query on the canvas. If there is already
+                something there it asks once, on the button, because there is no undo.</td></tr>
+            <tr><td><b>Rename</b></td><td>Edits the name in place. <kbd>Enter</kbd> keeps it,
+                <kbd>Esc</kbd> abandons it.</td></tr>
+            <tr><td><b>Export</b></td><td>Writes that one query out as a <code>.json</code> file
+                &mdash; the same file <b>Save</b> writes and <b>Load</b> reads. This is how you
+                send a query to a colleague, and how you keep a copy that survives the
+                browser.</td></tr>
+            <tr><td><b>Delete</b></td><td>Removes it. Asks once, on the button, and there is no
+                way back.</td></tr>
+          </table>
+
+          <p>The box at the bottom names the query on the canvas and <b>Save to library</b> puts it
+             in. If a query of that name is already there, the button asks whether to replace it
+             rather than quietly adding a second card with the same name. The <b>Save</b> button in
+             the toolbar offers the same choice, so you can reach the library without opening it.</p>
+
+          <h4>Taking it with you</h4>
+          <p><b>Export library</b> writes every saved query out as one <code>.json</code> file.
+             That file is the backup, and it is also how you hand a set of queries to a colleague:
+             they press <b>Import</b> and choose it.</p>
+          <p><b>Import merges, and never replaces.</b> Anything in the file whose name is already
+             in your library is left alone, and the tool tells you how many it added and how many
+             it skipped. Your own queries cannot be overwritten by somebody else&rsquo;s file. If
+             you do want their version of a query you already have, rename yours first and import
+             again.</p>
+          <p>Import also accepts a single saved query &mdash; the kind <b>Save as file</b> writes
+             &mdash; and files it under the file&rsquo;s own name. The two look the same in a
+             folder, so there is nothing to get wrong.</p>
+
+          <div class="help-tip">
+            <b>A card holds the question, not the answer</b> &mdash; exactly like a saved file.
+            No student, no grade and no course code is ever kept in the library. Opening a card
+            gives you the graph back with every Source empty, and each Source then names the files
+            it was built against.
+          </div>
+
+          <h4>What the library is not</h4>
+          <p><b>It is not a backup.</b> It lives in this browser on this machine. Clearing site
+             data removes it, a private window never sees it, and it does not follow you to another
+             computer or another browser. Anything you would be sorry to lose should be
+             <b>exported</b> to a file as well &mdash; one card at a time with <b>Export</b>, or
+             the lot with <b>Export library</b>.</p>
+          <p><b>It is not private on a shared computer.</b> The library belongs to the browser
+             profile, not to the person sitting at it, so whoever uses this machine next sees the
+             same cards. That is safe as far as the data goes, because no records are in there,
+             but a query&rsquo;s own settings can name a specific student if you typed one into a
+             Filter &mdash; and that would sit on a card until somebody deletes it.</p>
+          <p>There is a limit on how much a browser will store, and on how many queries the
+             library will hold. If either is reached the tool says so and refuses the save rather
+             than dropping it quietly; export a few and delete them to make room.</p>
         </section>
 
         <!-- ── KEYS ────────────────────────────────────────── -->
@@ -1070,18 +1188,34 @@
 <div class="save-dialog" id="saveDialog">
   <div class="save-card" role="dialog" aria-modal="true" aria-labelledby="saveTitle">
     <h2 class="save-title" id="saveTitle">Save query</h2>
-    <p class="save-sub">The file records the query, not its results. Open it later and press Run Query to evaluate it against the data as it stands then.</p>
+    <!-- Two destinations for one name, rather than a mode to be set first. What
+         is written is the same query either way; the difference is where it
+         goes and what that costs you if the browser is cleared. -->
+    <p class="save-sub">What is saved is the query, not its results. Open it later and press Run Query to evaluate it against the data as it stands then.</p>
 
     <label class="save-field">
       <input type="text" id="saveName" spellcheck="false" autocomplete="off"
-             aria-label="File name">
-      <span class="save-ext">.json</span>
+             aria-label="Name for this query">
+      <!-- True of the file and not of the library card, which keeps the name
+           exactly as typed. Said on the control rather than left to be
+           inferred from a chip that is only half right. -->
+      <span class="save-ext" title="The ending on the file. A query saved to the library keeps the name exactly as typed.">.json</span>
     </label>
     <div class="save-hint" id="saveHint"></div>
 
+    <p class="save-where">
+      <b>Library</b> keeps it in this browser, where it is one click away &mdash; but a cleared
+      browser loses it. <b>File</b> writes it to disk, to keep or to send.
+    </p>
+
     <div class="save-actions">
       <button class="file-btn" onclick="closeSaveDialog()">Cancel</button>
-      <button class="save-go" onclick="confirmSaveGraph()">Save</button>
+      <button class="save-lib" id="saveLibBtn" onclick="confirmSaveToLibrary(this)">Save to library</button>
+      <!-- Still the button Enter presses, and still the one styled as primary.
+           Saving with the keyboard has meant "write a file" for as long as this
+           dialog has existed, and quietly repointing it at the library would
+           stop a daily habit producing files without anyone noticing. -->
+      <button class="save-go" onclick="confirmSaveGraph()">Save as file</button>
     </div>
   </div>
 </div>
@@ -1112,6 +1246,60 @@
       <button class="file-btn" id="clearCancel" onclick="closeClearDialog()">Cancel</button>
       <button class="confirm-go" onclick="confirmClearAll()">Clear canvas</button>
     </div>
+  </div>
+</div>
+
+<!-- QUERY LIBRARY
+     The save dialog's backdrop with a card of its own, wide enough for a grid.
+     Static markup for the same reason the others are: one fixed shape, visible
+     to anyone reading the page rather than assembled out of sight in a script.
+
+     The pictures on the cards are drawn into #libBody by renderLibrary(), from
+     the graphs themselves. There is no <img> anywhere in here and no thumbnail
+     is stored: see libThumb() in ui.js for why a screenshot would have been
+     the wrong answer. -->
+<div class="save-dialog lib-dialog" id="libDialog">
+  <div class="lib-card-frame" role="dialog" aria-modal="true" aria-labelledby="libTitle">
+
+    <div class="lib-head">
+      <h2 class="save-title" id="libTitle">Query library</h2>
+      <div class="lib-search-wrap" id="libSearchWrap">
+        <input type="search" id="libSearch" placeholder="Search by name"
+               spellcheck="false" autocomplete="off" aria-label="Search saved queries"
+               oninput="libSearchInput(this)">
+      </div>
+      <button class="panel-close" onclick="closeLibrary()">Close</button>
+    </div>
+
+    <p class="save-sub lib-sub-note">Kept in this browser on this machine, not in a file.
+       A card records the query and never the data, so opening one asks for the files again.
+       Clearing site data removes the library, and it is not private on a shared
+       computer &mdash; use <b>Export</b> for anything you need to keep or send.</p>
+
+    <!-- One line, for what just happened or what went wrong. Above the grid so
+         a message about a card is not scrolled away from underneath itself. -->
+    <div class="lib-notice" id="libNotice" role="status" aria-live="polite"></div>
+
+    <div class="lib-body" id="libBody"></div>
+
+    <div class="lib-foot">
+      <label class="lib-save-field">
+        <input type="text" id="libSaveName" spellcheck="false" autocomplete="off"
+               aria-label="Name for the query on the canvas">
+      </label>
+      <button class="save-go" id="libSaveBtn" onclick="libSaveCurrent(this)">Save to library</button>
+      <span class="lib-usage" id="libUsage"></span>
+
+      <!-- The only two controls here that reach outside this browser. A library
+           is not a backup and does not travel, so these are the way it does
+           both. Import merges and never replaces: see libImportText. -->
+      <button class="file-btn" onclick="libPickImport(this)"
+              title="Merge a library file, or a single saved query, into this one">Import&hellip;</button>
+      <button class="file-btn" onclick="libExportAll(this)"
+              title="Write every saved query out as one .json file">Export library</button>
+      <input type="file" id="libImportFile" accept="application/json,.json" hidden>
+    </div>
+
   </div>
 </div>
 

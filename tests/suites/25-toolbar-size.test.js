@@ -23,7 +23,7 @@
 
 const fs = require('fs');
 const path = require('path');
-const { boot, APP_DIR } = require('../lib/harness');
+const { boot, withoutStorage, APP_DIR } = require('../lib/harness');
 const { assert } = require('../lib/assert');
 
 const CSS = (() => {
@@ -52,22 +52,14 @@ module.exports = ({ describe, test }) => {
   // One row up to 1.2, two rows after it: the real shape at a laptop width.
   const wrapping = s => (s <= 1.2 ? Math.round(44 * s) : Math.round(44 * s) + 52);
 
-  /* jsdom is built here with no origin, so it has no localStorage: the same
-     situation as a private window, which the application already expects and
-     guards every access against. A test about remembering needs somewhere to
-     remember, so it brings its own. */
-  function withStorage(h) {
-    const mem = {};
-    Object.defineProperty(h.w, 'localStorage', {
-      configurable: true,
-      value: {
-        getItem: k => (k in mem ? mem[k] : null),
-        setItem: (k, v) => { mem[k] = String(v); },
-        removeItem: k => { delete mem[k]; }
-      }
-    });
-    return h;
-  }
+  /* This suite used to bring its own localStorage, because jsdom is built with
+     no origin and has none. The harness supplies one now — the query library
+     needs it, and a facility jsdom lacks belongs at the same seam as the
+     download and clipboard shims rather than in whichever suite noticed first.
+     So `withStorage` is gone and `boot()` already has somewhere to remember.
+
+     The test that storage may be absent altogether now says so with
+     `withoutStorage`, rather than relying on jsdom's silence. */
 
   function sized(innerHeight) {
     const h = boot();
@@ -427,7 +419,7 @@ module.exports = ({ describe, test }) => {
 
   describe('the size is remembered, and is nobody else\'s business', () => {
     test('it survives a reload', () => {
-      const h = withStorage(sized(1200));
+      const h = sized(1200);
       const A = h.app;
       A.applyBarScale(1.15, true, 6);
       const stored = JSON.parse(h.w.localStorage.getItem('sda.toolbar.v1'));
@@ -441,11 +433,11 @@ module.exports = ({ describe, test }) => {
     });
 
     test('a stored size too tall for this window is clamped, not honoured', () => {
-      const tall = withStorage(sized(1200));
+      const tall = sized(1200);
       tall.app.applyBarScale(tall.app.BAR_S_MAX, true);
       const raw = tall.w.localStorage.getItem('sda.toolbar.v1');
 
-      const short = withStorage(sized(420));
+      const short = sized(420);
       short.w.localStorage.setItem('sda.toolbar.v1', raw);
       short.app.loadBarPrefs();
       assert.ok(short.app.barScaleNow() <= short.app.barMaxScale(),
@@ -454,8 +446,8 @@ module.exports = ({ describe, test }) => {
 
     test('no storage at all is not a reason for the bar to stop working', () => {
       // A private window, or a file:// origin with site data blocked.
-      const h = sized(1200);
-      assert.equal(h.w.localStorage, undefined, 'this jsdom was expected to have none');
+      const h = withoutStorage(sized(1200));
+      assert.equal(h.w.localStorage, undefined, 'this window was meant to have none');
       h.app.applyBarScale(1.2, true);          // persist: true, with nowhere to persist
       assert.equal(h.app.barScaleNow(), 1.2, 'the size did not take effect');
       h.app.loadBarPrefs();                     // and reading it back must not throw

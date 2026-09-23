@@ -1326,6 +1326,19 @@ function listBandHTML(nid, ci, cur, c) {
   '</div>';
 }
 
+/* What the two wildcards mean, beside the box they are typed into. A pattern
+   language is not guessable from an empty field, and the alternative to saying
+   it here is a user typing a course code and wondering what the operator was
+   for. One line, no justification: the reasoning lives in Help. */
+function patternNoteHTML(kind) {
+  return '<div class="crit-pattern-note"><b>*</b> is any run of characters, ' +
+    '<b>?</b> is one. ' +
+    (kind === 'courseSubject'
+      ? 'So <b>SW*</b> is every subject starting SW.'
+      : 'So <b>SWEN*</b> is every SWEN course and <b>*4??</b> every 400 level.') +
+    '</div>';
+}
+
 /* Untick everything in one click. Eighty-two courses is a plausible list to
    have opened by accident, and clearing it one box at a time is not a thing to
    ask of anybody. */
@@ -1373,6 +1386,12 @@ function criterionHTML(node, ci, c, schema) {
       ? '<div class="criterion-controls two-col">' + fieldSel +
           opSelect(nid, oKey, CODE_OPS, sOp) + '</div>' +
         listBandHTML(nid, ci, cur, c)
+      : sOp === 'matches'
+      ? '<div class="criterion-controls">' + fieldSel +
+          opSelect(nid, oKey, CODE_OPS, sOp) +
+          '<input type="text" placeholder="SW*" spellcheck="false" ' +
+            'value="' + esc(critValue(c, cur.key, null) || '') + '"' + ctl(nid, vKey) + '>' +
+        '</div>' + patternNoteHTML(cur.kind)
       : '<div class="criterion-controls">' + fieldSel +
           opSelect(nid, oKey, CODE_OPS, sOp) +
           '<select' + ctl(nid, vKey) + '>' +
@@ -1386,6 +1405,12 @@ function criterionHTML(node, ci, c, schema) {
       ? '<div class="criterion-controls two-col">' + fieldSel +
           opSelect(nid, oKey, CODE_OPS, cOp) + '</div>' +
         listBandHTML(nid, ci, cur, c)
+      : cOp === 'matches'
+      ? '<div class="criterion-controls stack">' + fieldSel +
+          '<div class="cc-pair">' + opSelect(nid, oKey, CODE_OPS, cOp) +
+            '<input type="text" placeholder="SWEN*" spellcheck="false" ' +
+              'value="' + esc(critValue(c, cur.key, null) || '') + '"' + ctl(nid, vKey) + '>' +
+          '</div></div>' + patternNoteHTML(cur.kind)
       : '<div class="criterion-controls stack">' + fieldSel +
           '<div class="cc-pair">' + opSelect(nid, oKey, CODE_OPS, cOp) +
             courseSelect(nid, vKey, critValue(c, cur.key, null) || defaultCourse()) +
@@ -3114,11 +3139,19 @@ function markStale() {
 }
 
 function pad2(n) { return (n < 10 ? '0' : '') + n; }
+
+/* Today, as the one date format this tool writes. Its own function because two
+   things want it and only one of them wants the time with it: a suggested name
+   is read by a person, and the minute it was suggested is noise to them. */
+function dateStamp() {
+  var d = new Date();
+  return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
+}
+
 function timeStamp(fileSafe) {
   var d = new Date();
-  var date = d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate());
   var time = pad2(d.getHours()) + (fileSafe ? '' : ':') + pad2(d.getMinutes());
-  return date + (fileSafe ? '-' : ' ') + time;
+  return dateStamp() + (fileSafe ? '-' : ' ') + time;
 }
 
 function csvCell(v) {
@@ -3383,7 +3416,12 @@ function serialiseGraph() {
    "query.json.json" would be a poor way of telling them so. */
 var QUERY_EXT = '.json';
 
-function defaultQueryName() { return 'query-' + timeStamp(true); }
+/* "untitled" rather than "query", because this name is only ever reached by
+   someone who did not give one. Every file this tool writes is a query, so
+   naming one of them "query" says nothing about it; "untitled" says the one
+   thing that is actually true, which is that it still needs a name. Used for
+   both destinations: the file on disk and the card in the library. */
+function defaultQueryName() { return 'untitled-' + dateStamp(); }
 
 /* Typed text to written filename. Two things happen on the way: the extension
    is stripped if present so it can be re-added exactly once, and the rest goes
@@ -3435,6 +3473,7 @@ function openSaveDialog(btn) {
   if (!d || !input) { writeQueryFile(defaultQueryName() + QUERY_EXT, btn); return; }
 
   saveDialogBtn = btn || null;
+  saveLibPending = '';
   input.value = lastQueryName || defaultQueryName();
   // The placeholder is always the timestamp, because that is what an empty
   // field actually writes. Clearing the box should show its own result, not
@@ -3470,6 +3509,9 @@ function updateSaveHint() {
   var changed = !!typed && name !== typed + QUERY_EXT;
   hint.textContent = changed ? 'Saves as ' + name : '';
   hint.classList.toggle('show', changed);
+  // This line is shared with the library's errors, so taking it back means
+  // dropping their colour too, not only their text.
+  hint.classList.remove('bad');
 }
 
 function confirmSaveGraph() {
@@ -3480,6 +3522,64 @@ function confirmSaveGraph() {
   lastQueryName = name.replace(/\.json$/i, '');
   closeSaveDialog();
   writeQueryFile(name, btn);
+}
+
+/* THE SECOND DESTINATION
+   ---------------------------------------------------------------------------
+   The same dialog, the same name, somewhere else to put it. Two buttons rather
+   than a mode to be chosen first: there is no state the user has to get right
+   before typing, and neither destination is hidden behind the other.
+
+   The library is reached from two places — here, and the grid's own footer —
+   because "save this" and "put this in the library" are two different thoughts
+   and a user arrives holding one or the other. Both end up in libAdd(), which
+   is where the refusals live.                                                */
+
+/* A clash is answered on the button, the way the grid answers one: press again
+   to replace. Cleared whenever the name changes, because the question was
+   about a particular name and the answer cannot outlive it. */
+var saveLibPending = '';
+
+/* The hint line doubles as the dialog's error line. Written directly rather
+   than through updateSaveHint(), which has its own thing to say; typing in the
+   field calls that one and takes the line back, which is the right moment for
+   a message about the name that has just been changed to disappear. */
+function saveHintSay(text) {
+  var hint = document.getElementById('saveHint');
+  if (!hint) return;
+  hint.textContent = text || '';
+  hint.classList.toggle('show', !!text);
+  hint.classList.toggle('bad', !!text);
+}
+
+function confirmSaveToLibrary(btn) {
+  /* The extension is stripped even though the library does not use one. The
+     field is shared with the file path and shows ".json" beside it, so a user
+     who types "grades.json" here has said the name is "grades" — carrying the
+     suffix onto a card would be reading the chip back at them. Everything
+     after that is libName's: a card's name is not a filename and keeps its
+     punctuation. */
+  var input = saveNameInput();
+  var name = libName(stripQueryExt(input ? input.value : '')) || defaultQueryName();
+  var again = saveLibPending === name.toLowerCase();
+
+  var r = libAdd(name, { replace: again });
+  saveLibPending = '';
+
+  if (r.conflict) {
+    saveLibPending = name.toLowerCase();
+    saveHintSay('"' + r.conflict.name + '" is already in the library. ' +
+                'Press Save to library again to replace it.');
+    flashBtn(btn, 'Replace?');
+    return;
+  }
+  if (!r.ok) { saveHintSay(r.error.message); flashBtn(btn, 'Save failed'); return; }
+
+  var opener = saveDialogBtn;
+  lastQueryName = name;
+  closeSaveDialog();
+  // On the toolbar button that opened the dialog, since the dialog has gone.
+  flashBtn(opener, 'Saved ✓');
 }
 
 // The write itself, with the emptiness check repeated: the graph can be cleared
@@ -3788,6 +3888,1153 @@ function onGraphFileChosen(e) {
   };
   reader.onerror = function(){ showError('Could not read that file.'); flashBtn(btn, 'Load failed'); };
   reader.readAsText(file);
+}
+
+/* ============================================================================
+   THE QUERY LIBRARY: THE STORE
+   ============================================================================
+   Save and Load above write and read a file. The library keeps the same queries
+   in the browser instead, so a query built once is one click away next term
+   rather than something to go and find in a folder.
+
+   WHAT IS STORED IS THE FILE FORMAT, UNCHANGED.
+
+   An entry's `graph` is exactly what serialiseGraph() writes and exactly what
+   deserialiseGraph() reads, byte for byte. That is the whole design, and it is
+   worth being explicit about why, because a store with its own shape would have
+   been easy to write and wrong:
+
+     - the guarantee that a saved query carries the NAMES of the data files and
+       never their contents is a property of serialiseGraph(), asserted in
+       07-saveload. A second way of writing a query down is a second place for
+       student records to escape to, and the one that nobody would think to
+       check is the one in browser storage that never appears as a file;
+     - the version guard, the port resolution, the repair of a graph whose node
+       types have since changed — all of it lives in deserialiseGraph(), and all
+       of it applies just as much to an entry saved last year as to a file. Two
+       implementations would drift, and the drift would show up as a query that
+       opens from a file but not from the library.
+
+   So loading an entry goes back out through the same door it came in:
+   JSON.stringify the graph and hand it to loadGraphFromText(). Re-serialising
+   something that was just parsed looks wasteful and is: a few kilobytes and a
+   millisecond, in exchange for there being exactly one loader.
+
+   WHAT THIS IS NOT. It is not a backup and must never be described as one.
+   Clearing site data removes it, a private window never sees it, and it does
+   not travel to another machine or another browser. That is what Export is for.
+   It is also not private on a shared staff machine: storage belongs to the
+   browser profile, not to the person sitting at it.                          */
+
+var LIB_STORE       = 'sda.library.v1';
+var LIB_KIND        = 'student-data-analyser-library';
+var LIB_VERSION     = 1;
+var LIB_NAME_MAX    = 80;
+var LIB_MAX_ENTRIES = 200;
+
+/* Failing to remember the panel width is a minor loss, and the guards around
+   those reads say so by returning silently. Failing to save a query is not: the
+   user has just spent twenty minutes building it and pressed a button that says
+   Save. So every failure here comes back as a code and a sentence for the UI to
+   show, rather than being swallowed.
+
+     nostore     the browser refuses storage entirely. A private window, or
+                 file:// with site data blocked. The property access throws
+                 rather than returning null, which is why it is inside the try
+     unreadable  something is in the slot but it is not JSON
+     alien       it is JSON, but not this tool's library
+     newer       written by a later version of this tool than this one
+     full        the library is at its entry ceiling
+     quota       the browser will not accept any more bytes
+     empty       there is no graph on the canvas to save
+     missing     the entry asked for is not there any more                    */
+function libError(code, message) { return { code: code, message: message }; }
+
+var LIB_MESSAGES = {
+  nostore:    'This browser is not letting the page store anything, so the library is unavailable. ' +
+              'A private window does this. Save the query as a file instead.',
+  unreadable: 'The saved library could not be read, so it has not been opened. ' +
+              'Nothing has been overwritten.',
+  alien:      'Something other than this tool\'s library is stored under its name, ' +
+              'so it has not been opened. Nothing has been overwritten.',
+  newer:      'The saved library was written by a newer version of this tool.',
+  full:       'The library already holds ' + LIB_MAX_ENTRIES + ' queries. ' +
+              'Delete one, or export the library and start a fresh one.',
+  quota:      'There is no room left in this browser to save another query. ' +
+              'Export the library, then delete the queries you no longer need.',
+  empty:      'There is nothing on the canvas to save.',
+  missing:    'That query is no longer in the library.'
+};
+
+function libFail(code) { return { ok: false, error: libError(code, LIB_MESSAGES[code]) }; }
+
+/* Quota is reported differently by every engine, and none of them do it the way
+   the specification suggests. WebKit throws a plain QuotaExceededError, Firefox
+   has historically used its own name, and the legacy numeric codes are still
+   what some versions set. Checked in that order so a browser that gets it right
+   costs nothing. */
+function libIsQuota(e) {
+  if (!e) return false;
+  return e.name === 'QuotaExceededError' ||
+         e.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+         e.code === 22 || e.code === 1014;
+}
+
+/* Ids are generated rather than counted, because the counter would have to live
+   in the store and a store that has just failed to be read cannot supply one.
+   Time first so they sort roughly by age when read by a human; the random tail
+   because two saves in the same millisecond are possible and a collision would
+   silently overwrite a different query. */
+function libNewId() {
+  return 'q' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 8);
+}
+
+/* A library name is NOT a file name, and deliberately does not go through
+   safeName(). "Semester 1: withdrawals" is a perfectly good thing to call a
+   query and a poor thing to call a file, and there is no file here to protect:
+   the name is shown on a card and nowhere else. safeName() applies at the one
+   point where a name does become a file, which is Export.
+
+   What is done is the part that is about the card rather than the filesystem:
+   runs of whitespace collapse so two names cannot look identical and compare
+   differently, and the length is capped so one query cannot push every other
+   card off its row. Escaping happens at render, like everywhere else. */
+function libName(raw) {
+  return String(raw == null ? '' : raw).replace(/\s+/g, ' ').trim().slice(0, LIB_NAME_MAX);
+}
+
+/* Read the whole store, every time, rather than keeping it in a variable.
+
+   Two windows open on the same tool is an ordinary thing to do — one to build a
+   query, one to check an old one — and they share the storage. A copy held in
+   memory goes stale the moment the other window saves, and writing that stale
+   copy back would delete whatever the other window had just added, with no
+   error and nothing to notice. Re-reading costs a parse of a few kilobytes. */
+function libRead() {
+  var raw = null;
+  try { raw = window.localStorage.getItem(LIB_STORE); }
+  catch (e) { return { entries: [], error: libError('nostore', LIB_MESSAGES.nostore) }; }
+
+  if (!raw) return { entries: [], error: null };
+
+  var d;
+  try { d = JSON.parse(raw); }
+  catch (e) { return { entries: [], error: libError('unreadable', LIB_MESSAGES.unreadable) }; }
+
+  if (!d || typeof d !== 'object' || d.kind !== LIB_KIND) {
+    return { entries: [], error: libError('alien', LIB_MESSAGES.alien) };
+  }
+  if (typeof d.version !== 'number' || d.version > LIB_VERSION) {
+    return { entries: [], error: libError('newer', LIB_MESSAGES.newer) };
+  }
+
+  /* Entries are validated on the way out, not trusted. Storage is editable by
+     hand, survives versions of this tool that have not been written yet, and is
+     the one input here that arrives with no file picker in front of it.
+
+     An entry is dropped rather than repaired, which is the opposite of what
+     deserialiseGraph() does to a graph, and for a reason: a graph with a broken
+     edge is still recognisably the query somebody built, while an entry with no
+     usable graph is not a saved query at all and there is nothing in it to
+     keep. The graph itself is NOT validated here beyond its kind — that is
+     deserialiseGraph()'s job and it happens when the entry is opened, so a
+     query that can no longer be loaded still appears on its card and can still
+     be exported, rather than vanishing from the library without explanation. */
+  var seen = {};
+  var entries = [];
+  (Array.isArray(d.entries) ? d.entries : []).forEach(function(raw) {
+    if (entries.length >= LIB_MAX_ENTRIES) return;
+    var e = libCleanEntry(raw, null);
+    if (!e || seen[e.id]) return;
+    seen[e.id] = true;
+    entries.push(e);
+  });
+
+  return { entries: entries, error: null };
+}
+
+function libWrite(entries) {
+  var payload = JSON.stringify({
+    kind: LIB_KIND, version: LIB_VERSION, entries: entries
+  });
+  try { window.localStorage.setItem(LIB_STORE, payload); }
+  catch (e) { return libFail(libIsQuota(e) ? 'quota' : 'nostore'); }
+  return { ok: true, error: null };
+}
+
+// What the library occupies, for the line under the grid. Measured off the
+// stored text rather than summed from the entries, so it is the number that
+// actually counts against the browser's ceiling.
+function libBytes() {
+  var raw = null;
+  try { raw = window.localStorage.getItem(LIB_STORE); } catch (e) { return 0; }
+  return raw ? raw.length * 2 : 0;
+}
+
+function libIndexOf(entries, id) {
+  for (var i = 0; i < entries.length; i++) if (entries[i].id === id) return i;
+  return -1;
+}
+
+function libGet(id) {
+  var st = libRead();
+  var i = libIndexOf(st.entries, id);
+  return i === -1 ? null : st.entries[i];
+}
+
+/* Case-insensitive, because two cards reading "Grade histogram" and "grade
+   histogram" are two cards the user will read as the same query. */
+function libNameTaken(entries, name, exceptId) {
+  var want = libName(name).toLowerCase();
+  for (var i = 0; i < entries.length; i++) {
+    if (entries[i].id === exceptId) continue;
+    if (entries[i].name.toLowerCase() === want) return entries[i];
+  }
+  return null;
+}
+
+// The current canvas as an entry. The graph comes from serialiseGraph() and is
+// not touched on the way in.
+function libEntryFor(name) {
+  return {
+    id: libNewId(),
+    name: libName(name) || defaultQueryName(),
+    savedAt: new Date().toISOString(),
+    graph: serialiseGraph()
+  };
+}
+
+/* Save the canvas into the library.
+
+   Refuses rather than overwrites in two places, and both are about not
+   destroying work that cannot be got back:
+
+     - if the store could not be READ, nothing is written. A write here would
+       replace a library that is merely unreadable by this code with one holding
+       a single query, and whatever was in there — possibly a term's work,
+       possibly recoverable by hand from the browser's storage inspector — would
+       be gone. The caller is told which problem it was and can offer to start a
+       new library deliberately, with `replaceStore`;
+     - a name that is already taken comes back as a `conflict` rather than
+       silently replacing that entry. Overwrite is the right default for a FILE,
+       where the user picked a folder and the browser tells them the name is in
+       use; here there is nothing between the button and the loss.            */
+function libAdd(name, opts) {
+  opts = opts || {};
+  if (!nodes.length) return libFail('empty');
+
+  var st = libRead();
+  if (st.error && !(opts.replaceStore && st.error.code !== 'nostore')) {
+    return { ok: false, error: st.error };
+  }
+
+  var entries = st.error ? [] : st.entries;
+  var entry = libEntryFor(name);
+  var idx = opts.replaceId ? libIndexOf(entries, opts.replaceId) : -1;
+
+  if (idx === -1) {
+    var clash = libNameTaken(entries, entry.name);
+    if (clash && !opts.replace) return { ok: false, error: null, conflict: clash };
+    if (clash) idx = libIndexOf(entries, clash.id);
+  }
+
+  if (idx === -1) {
+    if (entries.length >= LIB_MAX_ENTRIES) return libFail('full');
+    // Newest first: the query just saved is the one most likely to be wanted
+    // back, and it should not be at the bottom of a grid of two hundred.
+    entries.unshift(entry);
+  } else {
+    // Replacing keeps the entry's id and its place in the grid, so a card the
+    // user has just re-saved does not jump to the front and change identity
+    // underneath anything holding on to it.
+    entry.id = entries[idx].id;
+    entries[idx] = entry;
+  }
+
+  var w = libWrite(entries);
+  return w.ok ? { ok: true, error: null, entry: entry } : w;
+}
+
+function libRename(id, name) {
+  var st = libRead();
+  if (st.error) return { ok: false, error: st.error };
+  var i = libIndexOf(st.entries, id);
+  if (i === -1) return libFail('missing');
+
+  var wanted = libName(name);
+  if (!wanted) return { ok: true, error: null, entry: st.entries[i] };   // no change
+  var clash = libNameTaken(st.entries, wanted, id);
+  if (clash) return { ok: false, error: null, conflict: clash };
+
+  st.entries[i].name = wanted;
+  var w = libWrite(st.entries);
+  return w.ok ? { ok: true, error: null, entry: st.entries[i] } : w;
+}
+
+function libRemove(id) {
+  var st = libRead();
+  if (st.error) return { ok: false, error: st.error };
+  var i = libIndexOf(st.entries, id);
+  if (i === -1) return libFail('missing');
+  var gone = st.entries.splice(i, 1)[0];
+  var w = libWrite(st.entries);
+  return w.ok ? { ok: true, error: null, entry: gone } : w;
+}
+
+/* ----------------------------------------------------------- EXPORT / IMPORT
+
+   The library lives in one browser on one machine, which makes a file the only
+   way a query gets to a colleague, to a laptop, or through a cleared cache.
+   There is no separate exchange format for that: an exported library is the
+   stored object, and a single exported card is the query file Save has always
+   written. A format invented for sharing would be a third thing to keep in
+   step with the other two.                                                   */
+
+var MAX_LIB_FILE_BYTES = 8 * 1024 * 1024;
+
+/* One entry, cleaned. Shared by the store's read and the importer, because the
+   two are asking the same question — is this an entry — of inputs that are
+   equally untrusted. Storage can be edited by hand; a file arrived from
+   somewhere else entirely.
+
+   `forceId` is how the importer mints a new id for every entry it takes, and
+   it does two jobs at once: it cannot collide with an id already in the
+   library, and it means an id out of the file is never used for anything. A
+   card's buttons carry its id inline, so that closes the injection route for
+   the import path completely rather than relying on the pattern test below. */
+function libCleanEntry(e, forceId) {
+  if (!e || typeof e !== 'object' || Array.isArray(e)) return null;
+
+  var g = e.graph;
+  if (!g || typeof g !== 'object' || Array.isArray(g) || g.kind !== FILE_KIND) return null;
+
+  var id = forceId ||
+    (typeof e.id === 'string' && /^[A-Za-z0-9_-]{1,64}$/.test(e.id) ? e.id : null);
+  if (!id) return null;
+
+  return {
+    id: id,
+    name: libName(e.name) || '(unnamed)',
+    savedAt: typeof e.savedAt === 'string' ? e.savedAt : '',
+    graph: g
+  };
+}
+
+// The whole library as one object, which is exactly what is stored plus a note
+// of when it left. Anything that reads it ignores the extra key.
+function libExportPayload(entries) {
+  return JSON.stringify({
+    kind: LIB_KIND,
+    version: LIB_VERSION,
+    exportedAt: new Date().toISOString(),
+    entries: entries
+  }, null, 2);
+}
+
+/* Import MERGES, and never replaces.
+
+   The alternative — a file overwriting the library — is one click between a
+   colleague's set of standard queries and a term of somebody's own work. So an
+   entry whose name is already in the library is left alone and counted, and the
+   user is told exactly what happened rather than being asked to trust a
+   silence. Somebody who wants the incoming version renames theirs and imports
+   again, which is two deliberate steps instead of one irreversible one.
+
+   Imported entries go on the END. Saving puts a new query at the front because
+   that is the one wanted back; importing twenty should not bury the query that
+   was saved this morning under somebody else's. */
+function libImportText(raw, fallbackName) {
+  var d;
+  try { d = JSON.parse(raw); }
+  catch (e) {
+    return { ok: false, error: libError('badfile', 'That file isn\'t valid JSON.') };
+  }
+
+  var incoming;
+  if (d && d.kind === LIB_KIND) {
+    if (typeof d.version !== 'number' || d.version > LIB_VERSION) {
+      return { ok: false, error: libError('newer',
+        'That library was exported by a newer version of this tool.') };
+    }
+    incoming = Array.isArray(d.entries) ? d.entries : [];
+  } else if (d && d.kind === FILE_KIND) {
+    /* A single saved query, handed to Import rather than to Load. Generous on
+       purpose: the two files look identical in a folder, both end in .json, and
+       refusing on a technicality would be the tool being right about something
+       nobody asked. It becomes a one-entry library named after the file. */
+    incoming = [{ name: fallbackName, savedAt: d.savedAt, graph: d }];
+  } else {
+    return { ok: false, error: libError('badfile',
+      'That doesn\'t look like a library or a saved query from this tool.') };
+  }
+
+  var st = libRead();
+  // Same refusal as libAdd's, for the same reason: a merge into a library that
+  // could not be read would write a new one over it.
+  if (st.error) return { ok: false, error: st.error };
+
+  var entries = st.entries;
+  var added = 0, skipped = 0, dropped = 0, overflow = 0;
+
+  incoming.forEach(function(rawEntry) {
+    var e = libCleanEntry(rawEntry, libNewId());
+    if (!e) { dropped++; return; }
+    if (libNameTaken(entries, e.name)) { skipped++; return; }
+    if (entries.length >= LIB_MAX_ENTRIES) { overflow++; return; }
+    entries.push(e);
+    added++;
+  });
+
+  var out = { ok: true, error: null, added: added, skipped: skipped,
+              dropped: dropped, overflow: overflow };
+  if (!added) return out;
+
+  var w = libWrite(entries);
+  // All or nothing: one setItem carries the whole library, so a write that does
+  // not fit leaves the library exactly as it was rather than half-merged.
+  if (!w.ok) return w;
+  return out;
+}
+
+/* What happened, as a sentence. Built here rather than in the dialog because
+   every number in it is a decision this function made, and a count reported
+   without its reason ("2 skipped") is a count the user cannot act on. */
+function libImportSummary(r) {
+  if (!r.added && !r.skipped && !r.dropped && !r.overflow) {
+    return 'That file held no saved queries.';
+  }
+  var bits = [];
+  bits.push(r.added === 1 ? 'Added 1 query.' : 'Added ' + r.added + ' queries.');
+  if (r.skipped) {
+    bits.push(r.skipped + (r.skipped === 1 ? ' was' : ' were') +
+      ' already in the library under the same name and ' +
+      (r.skipped === 1 ? 'was' : 'were') + ' left alone.');
+  }
+  if (r.overflow) {
+    bits.push(r.overflow + ' did not fit: the library holds ' + LIB_MAX_ENTRIES + '.');
+  }
+  if (r.dropped) {
+    bits.push(r.dropped + (r.dropped === 1 ? ' was' : ' were') + ' not a saved query.');
+  }
+  return bits.join(' ');
+}
+
+/* The two checks a file gets before a byte of it is read, the same pair and in
+   the same order as a picked query file gets. Neither is the last line of
+   defence — libImportText refuses anything that is not a library — but by the
+   time that runs an arbitrary file is in memory and all it can report is that
+   the contents were wrong, which is a poor description of picking the wrong
+   file out of a folder. */
+function libFileProblem(file) {
+  if (!/\.json$/i.test(file.name)) {
+    return 'Only .json files can be imported, and "' + file.name + '" is not one.';
+  }
+  if (file.size > MAX_LIB_FILE_BYTES) {
+    return 'That file is far too large to be a library, so it has not been read.';
+  }
+  if (file.size === 0) return 'That file is empty.';
+  return null;
+}
+
+/* An entry as the loader wants it. The round trip through text is the point
+   rather than an oversight: see the note at the top of this section. Loading is
+   wired up with the rest of the library UI, which needs a confirmation in front
+   of it — a grid of one-click cards replaces the canvas far more easily than a
+   two-step file picker does, and applyGraph() has no undo. */
+function libGraphText(id) {
+  var e = libGet(id);
+  return e ? JSON.stringify(e.graph) : null;
+}
+
+/* ============================================================================
+   THE QUERY LIBRARY: THE PICTURE ON THE CARD
+   ============================================================================
+   A name alone does not tell you which query you are looking at. "2024 grades"
+   and "2024 grades by degree" are the same line of text and two different
+   shapes, and the shape is what the user built and what they remember.
+
+   DRAWN FROM THE GRAPH, NEVER CAPTURED FROM THE SCREEN.
+
+   The obvious implementation is a screenshot of the canvas, and it is wrong
+   here for four separate reasons, the first of which would be a defect:
+
+     1. A screenshot can contain student records. The results panel holds rows,
+        an edge-preview tooltip holds rows, and a Source panel names files. The
+        whole point of the save format is that a stored query carries the
+        QUESTION and never the ANSWER — 07-saveload asserts it, 31-library
+        asserts it again — and a picture of the screen walks straight past that
+        guarantee into the same browser storage, where nobody would think to
+        look for it. A diagram drawn from `nodes` and `connections` cannot
+        contain a record, because it never sees one.
+     2. It does not work in Safari, which is what opens this file on a Mac.
+        Rasterising DOM means <foreignObject> into a canvas, and WebKit taints
+        the canvas when it does, so toDataURL() throws SecurityError.
+     3. It cannot be tested here. jsdom has no 2D context, so a PNG path would
+        need the `canvas` package — a native build, in a project that has no
+        build step on purpose. An SVG is a string.
+     4. It is fifty times the size. A saved query is 2-10KB and a 320x170 PNG
+        is 30-80KB, against a storage ceiling of about 5MB. The difference is a
+        library that holds hundreds and one that holds dozens.
+
+   NOTHING IS STORED. The picture is a pure function of the graph, so it is
+   drawn when the grid renders and thrown away with it. That removes the
+   storage cost, and it removes an injection route with it: a library file from
+   somewhere else can carry a name, but it cannot carry markup to be injected,
+   because no markup of its is ever kept or read back.
+
+   THE GEOMETRY IS THE CANVAS'S OWN. shapeExit() and shapeEntry() are pure
+   functions of a node's type and position, so the card calls the same ones the
+   canvas does and the arrows leave and land in the same places. A second copy
+   of that arithmetic would drift, and the symptom would be a thumbnail that
+   quietly stopped resembling the query.                                      */
+
+var LIB_THUMB_W = 320;
+var LIB_THUMB_H = 170;
+var LIB_THUMB_PAD = 12;
+
+/* Far more nodes than any real query, and low enough that a hand-edited store
+   claiming ten thousand cannot spend a second building one card's markup. */
+var LIB_THUMB_MAX_NODES = 60;
+
+/* THE FIFTH WAY A NODE'S APPEARANCE CAN DISAGREE WITH ITSELF.
+
+   A node is already described in four places that have to stay in step — SHAPE,
+   the size rule, the family colour rule and the menu group — and 17-shape-
+   styling exists because two of them drifted twice. This palette is a fifth,
+   and it is the one with no screen to catch it: a node drawn in the wrong
+   colour here appears only on a card in a dialog, next to other cards that look
+   plausible. So it is held to the stylesheet by a test in that suite rather
+   than by anyone remembering, and a new node that is not named here fails it.
+
+   Border and fill, which is what a shape at this size is: the text colour is
+   the border's lighter partner and is read off the same family. */
+var LIB_INK = {
+  source:           { line: '#2d6640', fill: '#071510', text: '#5ec87a' },
+  filter:           { line: '#7a4a18', fill: '#110900', text: '#f0944a' },
+  output:           { line: '#1e7fff', fill: '#051830', text: '#3db8ff' },
+  sort:             { line: '#5a3a7a', fill: '#120a1a', text: '#b48ce0' },
+  reverse:          { line: '#5a3a7a', fill: '#120a1a', text: '#b48ce0' },
+  take:             { line: '#5a3a7a', fill: '#120a1a', text: '#b48ce0' },
+  unique:           { line: '#5a3a7a', fill: '#120a1a', text: '#b48ce0' },
+  select:           { line: '#5a3a7a', fill: '#120a1a', text: '#b48ce0' },
+  project:          { line: '#4a6a1e', fill: '#0d1405', text: '#a8d050' },
+  aggregate:        { line: '#1f6a6a', fill: '#041416', text: '#5ac8c8' },
+  aggregateColumns: { line: '#1f6a6a', fill: '#041416', text: '#5ac8c8' },
+  aggregateRows:    { line: '#1f6a6a', fill: '#041416', text: '#5ac8c8' },
+  combine:          { line: '#7a2f52', fill: '#170a11', text: '#e089ae' },
+  compare:          { line: '#7a2f52', fill: '#170a11', text: '#e089ae' },
+  selectFor:        { line: '#3a4a8a', fill: '#090c18', text: '#8fa8f0' },
+  histogram:        { line: '#3a4a8a', fill: '#090c18', text: '#8fa8f0' }
+};
+
+var LIB_INK_UNKNOWN = { line: '#3a3a3a', fill: '#101010', text: '#8a8a8a' };
+function libInk(type) { return LIB_INK[type] || LIB_INK_UNKNOWN; }
+
+/* The corner the stylesheet gives each shape: a circle for the Source, the
+   Output's generous 10px, and 3px for everything else. Expressed as a radius in
+   world units so it scales with the rest. */
+function libRadius(type) { return type === 'output' ? 10 : 3; }
+
+// Where the shape sits inside its NODE_W-wide slot, which is what shapeExit()
+// and shapeEntry() measure from. SHAPE describes the head only, and the head is
+// all a thumbnail draws: the config panel below it is not part of the picture.
+function libShapeBox(n) {
+  var s = SHAPE[n.type];
+  return { x: n.x + (NODE_W - s.w) / 2, y: n.y, w: s.w, h: s.h };
+}
+
+/* The nodes worth drawing, with their positions coerced.
+
+   A stored graph is not a trusted input: it survives versions of this tool that
+   do not exist yet and it can be edited by hand. A node whose type this tool no
+   longer has cannot be sized and is skipped; an `x` that arrives as a string or
+   as null would otherwise put NaN into a coordinate, and one NaN in an SVG path
+   is a blank card rather than a wrong one. */
+function libThumbNodes(graph) {
+  var out = [];
+  var ns = (graph && Array.isArray(graph.nodes)) ? graph.nodes : [];
+  for (var i = 0; i < ns.length && out.length < LIB_THUMB_MAX_NODES; i++) {
+    var n = ns[i];
+    if (!n || !SHAPE[n.type]) continue;
+    out.push({ id: n.id, type: n.type, x: Number(n.x) || 0, y: Number(n.y) || 0 });
+  }
+  return out;
+}
+
+function libR1(v) { return Math.round(v * 10) / 10; }
+
+/* A small filled triangle at the tip, pointing the way the wire runs. The
+   canvas draws its own arrowheads the same way and for the same reason: a line
+   between two boxes says they are connected, and an arrow says which way the
+   rows travel, which is the half a reader actually needs. */
+function libArrowHead(x0, y0, x1, y1) {
+  var a = Math.atan2(y1 - y0, x1 - x0);
+  var back = 5.5, wide = 2.8;
+  var bx = x1 - Math.cos(a) * back, by = y1 - Math.sin(a) * back;
+  var nx = -Math.sin(a) * wide, ny = Math.cos(a) * wide;
+  return 'M' + libR1(x1) + ' ' + libR1(y1) +
+         'L' + libR1(bx + nx) + ' ' + libR1(by + ny) +
+         'L' + libR1(bx - nx) + ' ' + libR1(by - ny) + 'Z';
+}
+
+/* The card's picture, as SVG markup.
+
+   Every string that reaches the output is either a number this function
+   computed or a value out of NODE_LABELS, which is a table in this file. No
+   part of a stored entry is written into the markup — not its name, not its
+   config, not a filename. That is worth stating because it is what makes it
+   safe to inject the result with innerHTML, and because it is also a privacy
+   property: a Filter can legitimately hold a typed value that identifies a
+   person, and a picture that renders config text would put it on a card in a
+   dialog somebody is showing on a projector. The card shows what KIND of node
+   it is and nothing else. */
+function libThumb(graph) {
+  var head = '<svg class="lib-thumb-svg" viewBox="0 0 ' + LIB_THUMB_W + ' ' + LIB_THUMB_H +
+             '" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false" ' +
+             'preserveAspectRatio="xMidYMid meet">';
+  var ns = libThumbNodes(graph);
+
+  if (!ns.length) {
+    /* An entry with nothing drawable: a graph of node types this tool has
+       dropped, or one saved by a version that names them differently. The card
+       still exists, so it can be exported or deleted, and says why it is
+       blank rather than showing an empty frame. */
+    return head + '<text x="' + (LIB_THUMB_W / 2) + '" y="' + (LIB_THUMB_H / 2) +
+           '" fill="#5a5a5a" font-size="11" text-anchor="middle" ' +
+           'dominant-baseline="middle">nothing this version can draw</text></svg>';
+  }
+
+  var b = { x1: Infinity, y1: Infinity, x2: -Infinity, y2: -Infinity };
+  ns.forEach(function(n) {
+    var r = libShapeBox(n);
+    b.x1 = Math.min(b.x1, r.x);          b.y1 = Math.min(b.y1, r.y);
+    b.x2 = Math.max(b.x2, r.x + r.w);    b.y2 = Math.max(b.y2, r.y + r.h);
+  });
+  var bw = Math.max(1, b.x2 - b.x1), bh = Math.max(1, b.y2 - b.y1);
+
+  /* Capped at 1, the way zoomToFit is, and for a reason that matters more on a
+     grid than on a canvas: a node is then the same size on every card, so its
+     size means "a node" rather than "a small query". Blown up to fill the
+     frame, a two-node query and a twenty-node one would look equally busy. */
+  var z = Math.min((LIB_THUMB_W - 2 * LIB_THUMB_PAD) / bw,
+                   (LIB_THUMB_H - 2 * LIB_THUMB_PAD) / bh, 1);
+  var ox = (LIB_THUMB_W - bw * z) / 2 - b.x1 * z;
+  var oy = (LIB_THUMB_H - bh * z) / 2 - b.y1 * z;
+  function px(v) { return libR1(v * z + ox); }
+  function py(v) { return libR1(v * z + oy); }
+
+  var byId = {};
+  ns.forEach(function(n) { byId[n.id] = n; });
+
+  /* Wires first, so a shape always sits on top of the line entering it. The
+     port is resolved exactly as the loader resolves it, so a version 1 entry —
+     which names no ports at all — draws its wires where opening it would put
+     them, rather than defaulting to somewhere else. */
+  var wires = '';
+  var cs = (graph && Array.isArray(graph.connections)) ? graph.connections : [];
+  cs.forEach(function(c) {
+    if (!c) return;
+    var a = byId[c.from], d = byId[c.to];
+    if (!a || !d) return;
+    var p0 = shapeExit(a);
+    var p1 = shapeEntry(d, normalisePort(d.type, c.port));
+    var x0 = px(p0.x), y0 = py(p0.y), x1 = px(p1.x), y1 = py(p1.y);
+    wires += '<line x1="' + x0 + '" y1="' + y0 + '" x2="' + x1 + '" y2="' + y1 +
+             '" stroke="#4a4a4a" stroke-width="1.2"/>' +
+             '<path d="' + libArrowHead(x0, y0, x1, y1) + '" fill="#4a4a4a"/>';
+  });
+
+  var shapes = '', labels = '';
+  ns.forEach(function(n) {
+    var r = libShapeBox(n), ink = libInk(n.type);
+    var x = px(r.x), y = py(r.y), w = libR1(r.w * z), h = libR1(r.h * z);
+
+    if (n.type === 'source') {
+      shapes += '<ellipse cx="' + libR1(x + w / 2) + '" cy="' + libR1(y + h / 2) +
+                '" rx="' + libR1(w / 2) + '" ry="' + libR1(h / 2) + '"';
+    } else {
+      shapes += '<rect x="' + x + '" y="' + y + '" width="' + w + '" height="' + h +
+                '" rx="' + libR1(libRadius(n.type) * z) + '"';
+    }
+    shapes += ' fill="' + ink.fill + '" stroke="' + ink.line + '" stroke-width="1.5"/>';
+
+    /* The label, fitted rather than guessed at. `textLength` makes the browser
+       condense the glyphs to exactly the width given, so "Agg. Columns" and
+       "Take" both sit inside their shape at any zoom and neither spills over
+       the edge of a neighbouring node. Sizing the font to fit instead would
+       mean measuring text, which is the one thing this cannot do: the markup
+       is built before it is in a document, and in the test harness there is no
+       layout at all.
+
+       Below about thirty pixels the letters stop being letters, so the label is
+       dropped and the diagram reads by colour and arrangement, which at that
+       size is all anyone is reading anyway. */
+    if (w >= 30) {
+      var fs = libR1(Math.max(5, Math.min(9, h * 0.22)));
+      labels += '<text x="' + libR1(x + w / 2) + '" y="' + libR1(y + h / 2) +
+                '" textLength="' + libR1(w * 0.76) + '" lengthAdjust="spacingAndGlyphs"' +
+                ' fill="' + ink.text + '" font-size="' + fs + '"' +
+                ' font-family="system-ui, sans-serif" font-weight="700"' +
+                ' text-anchor="middle" dominant-baseline="central">' +
+                esc(String(NODE_LABELS[n.type] || n.type).toUpperCase()) + '</text>';
+    }
+  });
+
+  return head + wires + shapes + labels + '</svg>';
+}
+
+/* ============================================================================
+   THE QUERY LIBRARY: THE DIALOG
+   ============================================================================
+   A grid of cards over the canvas, built the way Help and the save dialog are:
+   static markup in the page, inline handlers, and one `open` class. A third
+   mechanism for raising a card over the canvas would be a third thing to keep
+   in step with the Escape handling and the shortcut suppression below.
+
+   TWO-STEP CONFIRMATION RATHER THAN A SECOND DIALOG.
+
+   Two actions here cannot be taken back: opening a query replaces the canvas,
+   and deleting one removes the only copy. Both are a single click on a card in
+   a grid, which is a far easier thing to hit by accident than the two-step file
+   picker Load has always been — that is the cost of making the library
+   convenient, and it has to be paid back somewhere.
+
+   The usual answer is a confirmation dialog, and it is the wrong one here: it
+   would be a modal over a modal, with its own focus to trap and return, over a
+   grid that is itself scrollable. So the button asks instead. The first click
+   turns Open into "Replace canvas?" and Delete into "Delete for good?", and the
+   second does it. The question names what happens rather than asking whether
+   the user is sure, and it is on the control they pressed, where they are
+   already looking.
+
+   Opening skips the question when the canvas is empty, because there is then
+   nothing to replace and a question with only one sensible answer teaches
+   people to click through questions.                                         */
+
+var LIB_SEARCH_MIN = 6;     // cards, below which the search box is pointless
+
+// Which control opened it, so focus goes back there. Same as helpOpener.
+var libOpener = null;
+// The card being renamed, and the one whose destructive button is half-pressed.
+var libRenaming = null;
+var libPending = null;      // { action: 'open' | 'delete' | 'replace', id }
+var libQuery = '';          // the search box's text
+var libNotice = null;       // { tone: 'ok' | 'bad', text } shown under the header
+
+function libDialogEl() { return document.getElementById('libDialog'); }
+function libraryOpen() {
+  var d = libDialogEl();
+  return !!(d && d.classList.contains('open'));
+}
+
+function openLibrary(btn) {
+  var d = libDialogEl();
+  if (!d) return;
+  libOpener = btn || null;
+  // Every half-pressed button and half-typed rename from last time is dropped.
+  // A dialog that reopens mid-question is a dialog that answers it by accident.
+  libPending = null;
+  libRenaming = null;
+  libNotice = null;
+  libQuery = '';
+  var s = document.getElementById('libSearch');
+  if (s) s.value = '';
+
+  /* The name field arrives filled, with the name this query already answers to
+     — the one it was opened under, or the one it was last saved under — and a
+     timestamp only when it has never had one. Same reasoning as the save
+     dialog's: the ordinary loop is save, adjust, save again, and offering a
+     fresh timestamp each time leaves a grid of near-identical cards told apart
+     only by the minute they were written. */
+  var nm = document.getElementById('libSaveName');
+  if (nm) {
+    nm.value = nodes.length ? libSuggestName() : '';
+    nm.placeholder = defaultQueryName();
+  }
+  var save = document.getElementById('libSaveBtn');
+  if (save) save.disabled = !nodes.length;
+
+  d.classList.add('open');
+  renderLibrary();
+  var body = document.getElementById('libBody');
+  if (body) { body.setAttribute('tabindex', '-1'); body.focus(); }
+}
+
+function closeLibrary() {
+  var d = libDialogEl();
+  if (d) d.classList.remove('open');
+  libPending = null;
+  libRenaming = null;
+  // Focus leaves with the dialog. Left on a button inside a hidden card it
+  // belongs to nothing on screen, and the keyboard user has no caret and no
+  // working shortcuts.
+  var btn = libOpener;
+  libOpener = null;
+  if (btn && btn.focus) btn.focus();
+}
+
+function libSay(tone, text) { libNotice = text ? { tone: tone, text: text } : null; }
+
+/* Whatever a card's date means to the person reading it. Formatted in the
+   browser's own locale rather than the tool's, because this is the one string
+   here that is about their calendar rather than about the query. */
+function libWhen(iso) {
+  if (!iso) return '';
+  var d = new Date(iso);
+  if (isNaN(d.getTime())) return '';
+  try {
+    return ' · ' + d.toLocaleDateString(undefined,
+      { day: 'numeric', month: 'short', year: 'numeric' });
+  } catch (e) { return ''; }
+}
+
+function libSizeText(bytes) {
+  if (!bytes) return 'nothing stored yet';
+  return bytes < 1024 ? bytes + ' bytes'
+       : bytes < 1024 * 1024 ? Math.round(bytes / 1024) + ' KB'
+       : (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function libMatches(e, q) {
+  return !q || e.name.toLowerCase().indexOf(q) !== -1;
+}
+
+/* A card. Everything out of the entry is escaped; everything out of libThumb()
+   is markup this file generated from a fixed table and is not. */
+function libCardHTML(e) {
+  var pendOpen = !!(libPending && libPending.action === 'open'   && libPending.id === e.id);
+  var pendDel  = !!(libPending && libPending.action === 'delete' && libPending.id === e.id);
+  var n = (e.graph && Array.isArray(e.graph.nodes)) ? e.graph.nodes.length : 0;
+  var id = e.id;   // constrained to [A-Za-z0-9_-] by libRead, so attribute-safe
+
+  return '<div class="lib-card' + (pendDel ? ' danger' : '') + '">' +
+    '<div class="lib-thumb">' + libThumb(e.graph) + '</div>' +
+    '<div class="lib-meta">' +
+      (libRenaming === id
+        ? '<input class="lib-rename" id="libRenameInput" type="text" value="' + esc(e.name) +
+          '" spellcheck="false" autocomplete="off" aria-label="Query name" ' +
+          'maxlength="' + LIB_NAME_MAX + '" ' +
+          'onkeydown="libRenameKey(event, \'' + id + '\')" ' +
+          'onblur="libCommitRename(\'' + id + '\')">'
+        : '<div class="lib-name" title="' + esc(e.name) + '">' + esc(e.name) + '</div>') +
+      '<div class="lib-sub">' + n + ' node' + (n === 1 ? '' : 's') + esc(libWhen(e.savedAt)) + '</div>' +
+    '</div>' +
+    '<div class="lib-actions">' +
+      '<button class="lib-go" onclick="libOpenEntry(\'' + id + '\', this)" ' +
+        'title="Put this query on the canvas">' +
+        (pendOpen ? 'Replace canvas?' : 'Open') + '</button>' +
+      '<button class="file-btn" onclick="libStartRename(\'' + id + '\')">Rename</button>' +
+      '<button class="file-btn" onclick="libExportEntry(\'' + id + '\', this)" ' +
+        'title="Write this query out as a .json file">Export</button>' +
+      '<button class="lib-del" onclick="libDeleteEntry(\'' + id + '\', this)">' +
+        (pendDel ? 'Delete for good?' : 'Delete') + '</button>' +
+    '</div>' +
+  '</div>';
+}
+
+/* A store that could not be read is a screen of its own rather than an empty
+   grid, because "you have no saved queries" and "your saved queries could not
+   be opened" are opposite things to be told and look identical as an empty
+   grid. The offer to start again is deliberately a button and not automatic:
+   see libAdd, which refuses the same write for the same reason. */
+function libProblemHTML(err) {
+  var canReplace = err.code === 'unreadable' || err.code === 'alien' || err.code === 'newer';
+  return '<div class="lib-problem">' +
+    '<div class="lib-problem-text">' + esc(err.message) + '</div>' +
+    (canReplace
+      ? '<button class="lib-del" onclick="libStartOver(this)">Start a new library</button>' +
+        '<div class="lib-problem-warn">This throws away whatever is stored under ' +
+        esc(LIB_STORE) + '. If those queries matter, copy that value out of the ' +
+        'browser\'s storage inspector first.</div>'
+      : '') +
+  '</div>';
+}
+
+function renderLibrary() {
+  var body = document.getElementById('libBody');
+  if (!body) return;
+
+  var st = libRead();
+  var head = document.getElementById('libNotice');
+  if (head) {
+    head.className = 'lib-notice' + (libNotice ? ' show ' + libNotice.tone : '');
+    head.textContent = libNotice ? libNotice.text : '';
+  }
+
+  var foot = document.getElementById('libUsage');
+  if (foot) {
+    foot.textContent = st.error ? ''
+      : st.entries.length + ' of ' + LIB_MAX_ENTRIES + ' · ' + libSizeText(libBytes());
+  }
+
+  var search = document.getElementById('libSearchWrap');
+  if (search) search.classList.toggle('show', !st.error && st.entries.length >= LIB_SEARCH_MIN);
+
+  if (st.error) { body.innerHTML = libProblemHTML(st.error); return; }
+
+  if (!st.entries.length) {
+    body.innerHTML = '<div class="lib-empty">Nothing saved yet. Build a query on the ' +
+      'canvas, then name it below and press Save to library.<br><br>' +
+      'What is kept is the query and never the data: opening one asks for the ' +
+      'files again.</div>';
+    return;
+  }
+
+  var q = libQuery.trim().toLowerCase();
+  var shown = st.entries.filter(function(e) { return libMatches(e, q); });
+  if (!shown.length) {
+    body.innerHTML = '<div class="lib-empty">No saved query is called anything like ' +
+      '"' + esc(libQuery.trim()) + '".</div>';
+    return;
+  }
+  body.innerHTML = '<div class="lib-grid">' +
+    shown.map(libCardHTML).join('') + '</div>';
+
+  // A rename renders as an input and is meant to be typed into immediately.
+  var ren = document.getElementById('libRenameInput');
+  if (ren) { ren.focus(); ren.select(); }
+}
+
+function libSearchInput(el) {
+  libQuery = el ? el.value : '';
+  // Any half-pressed button is dropped: the card it belonged to may not even
+  // be on screen after the filter changes, and a question nobody can see is a
+  // question that gets answered by the next click somewhere else.
+  libPending = null;
+  renderLibrary();
+}
+
+/* ------------------------------------------------------------------ opening */
+
+function libOpenEntry(id, btn) {
+  var text = libGraphText(id);
+  if (text === null) { libSay('bad', LIB_MESSAGES.missing); renderLibrary(); return; }
+
+  // The question, once, and only when there is something to lose.
+  if (nodes.length && !(libPending && libPending.action === 'open' && libPending.id === id)) {
+    libPending = { action: 'open', id: id };
+    libSay(null, '');
+    renderLibrary();
+    return;
+  }
+
+  libPending = null;
+  /* Through the same loader a picked file goes through, which is what makes the
+     version guard, the port resolution and the repair apply here without being
+     written twice. It reports into the results panel behind this dialog, so the
+     dialog closes first and the user is left looking at what it said. */
+  var entry = libGet(id);
+  closeLibrary();
+  if (loadGraphFromText(text, btn) && entry) lastQueryName = entry.name;
+}
+
+/* ----------------------------------------------------------------- renaming */
+
+function libStartRename(id) {
+  libPending = null;
+  libRenaming = id;
+  renderLibrary();
+}
+
+function libCancelRename() {
+  if (libRenaming === null) return;
+  libRenaming = null;
+  renderLibrary();
+}
+
+/* Enter commits, Escape abandons. Escape is handled here rather than left to
+   the document handler because that one closes the dialog, and abandoning a
+   rename should not also shut the library: the key means "never mind about
+   this", and the smallest thing it can mean that is what it should mean. */
+function libRenameKey(e, id) {
+  if (e.key === 'Enter')  { e.preventDefault(); e.target.blur(); }
+  if (e.key === 'Escape') {
+    e.preventDefault();
+    e.stopPropagation();
+    // Cleared first so the blur this causes does not commit what was typed.
+    libRenaming = null;
+    e.target.blur();
+    renderLibrary();
+  }
+}
+
+function libCommitRename(id) {
+  if (libRenaming !== id) return;          // already abandoned by Escape
+  var input = document.getElementById('libRenameInput');
+  var wanted = input ? input.value : '';
+  libRenaming = null;
+
+  var r = libRename(id, wanted);
+  if (r.conflict) libSay('bad', 'Another query is already called "' + r.conflict.name + '".');
+  else if (!r.ok) libSay('bad', r.error.message);
+  renderLibrary();
+}
+
+/* ----------------------------------------------------------------- deleting */
+
+function libDeleteEntry(id, btn) {
+  if (!(libPending && libPending.action === 'delete' && libPending.id === id)) {
+    libPending = { action: 'delete', id: id };
+    libSay(null, '');
+    renderLibrary();
+    return;
+  }
+  libPending = null;
+  var r = libRemove(id);
+  libSay(r.ok ? 'ok' : 'bad',
+         r.ok ? 'Deleted "' + r.entry.name + '".' : r.error.message);
+  renderLibrary();
+}
+
+/* Only reachable from the problem screen, and only after its warning. This is
+   the one place the tool throws away a store it could not read, and it is a
+   deliberate act each time rather than a preference that could be left on. */
+function libStartOver(btn) {
+  try { window.localStorage.removeItem(LIB_STORE); }
+  catch (e) { libSay('bad', LIB_MESSAGES.nostore); renderLibrary(); return; }
+  libSay('ok', 'Started a new library.');
+  renderLibrary();
+}
+
+/* ---------------------------------------------------------------- exporting */
+
+/* One card out as a .json file, in the format Load already reads. Sharing a
+   query with a colleague is this button and an email: there is no separate
+   exchange format, because the query file has been one all along.
+
+   safeName() applies HERE and not to the library name itself. On a card the
+   name is text and a colon is fine; the moment it becomes a filename it is the
+   filesystem's problem, which is exactly the distinction queryFileName() draws
+   for the save dialog. */
+function libExportEntry(id, btn) {
+  libPending = null;
+  var e = libGet(id);
+  if (!e) { libSay('bad', LIB_MESSAGES.missing); renderLibrary(); return; }
+  var ok = downloadFile(queryFileName(e.name), JSON.stringify(e.graph, null, 2));
+  flashBtn(btn, ok ? 'Saved ✓' : 'Save failed');
+}
+
+/* ------------------------------------------------- EXPORTING THE WHOLE THING
+
+   The only thing here that survives a cleared browser, a new laptop or a
+   reinstall, which is why it sits in the footer next to the usage line rather
+   than behind anything. The library is not a backup; this is how it gets one. */
+function libExportAll(btn) {
+  libPending = null;
+  var st = libRead();
+  if (st.error) { libSay('bad', st.error.message); renderLibrary(); return; }
+  if (!st.entries.length) {
+    libSay('bad', 'There is nothing in the library to export yet.');
+    renderLibrary();
+    return;
+  }
+  var name = safeName('query-library-' + timeStamp(true), 'query-library') + QUERY_EXT;
+  var ok = downloadFile(name, libExportPayload(st.entries));
+  libSay(ok ? 'ok' : 'bad',
+         ok ? 'Wrote ' + st.entries.length + ' quer' + (st.entries.length === 1 ? 'y' : 'ies') +
+              ' to ' + name + '.'
+            : 'The library could not be written.');
+  renderLibrary();
+  flashBtn(btn, ok ? 'Saved ✓' : 'Save failed');
+}
+
+/* ------------------------------------------------------------------ IMPORTING */
+
+function libPickImport(btn) {
+  var input = document.getElementById('libImportFile');
+  if (!input) return;
+  // Reset first, or choosing the same file twice in a row fires no change
+  // event — the same reason openGraphFile() does it.
+  input.value = '';
+  input._btn = btn;
+  input.click();
+}
+
+function onLibImportChosen(e) {
+  var input = e.target;
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var btn = input._btn;
+
+  var problem = libFileProblem(file);
+  if (problem) { libSay('bad', problem); renderLibrary(); flashBtn(btn, 'Import failed'); return; }
+
+  var reader = new FileReader();
+  reader.onload = function() {
+    // A lone query file arrives with no name of its own, so it borrows the
+    // file's — which is what the user called it when they saved it.
+    var r = libImportText(String(reader.result), libName(stripQueryExt(file.name)));
+    if (!r.ok) {
+      libSay('bad', r.error.message);
+      renderLibrary();
+      flashBtn(btn, 'Import failed');
+      return;
+    }
+    /* The search box is cleared, because an import that lands entirely outside
+       the current filter looks exactly like an import that did nothing. */
+    libQuery = '';
+    var s = document.getElementById('libSearch');
+    if (s) s.value = '';
+    libSay(r.added ? 'ok' : 'bad', libImportSummary(r));
+    renderLibrary();
+    flashBtn(btn, r.added ? 'Imported ✓' : 'Nothing added');
+  };
+  reader.onerror = function() {
+    libSay('bad', 'Could not read that file.');
+    renderLibrary();
+    flashBtn(btn, 'Import failed');
+  };
+  reader.readAsText(file);
+}
+
+/* ------------------------------------------------------------------- saving */
+
+/* The library's own way in. The Save dialog gets one too, so a user who thinks
+   "save this" and a user who thinks "put this in the library" both arrive; this
+   is the one that does not need the dialog, because the name field is already
+   on screen with the grid it is about to appear in.
+
+   A clash is a question rather than a refusal, asked on the button the same way
+   the destructive ones are: press again to replace the query of that name. */
+function libSaveCurrent(btn) {
+  var input = document.getElementById('libSaveName');
+  var name = input ? input.value : '';
+  var again = !!(libPending && libPending.action === 'replace' &&
+                 libPending.id === libName(name).toLowerCase());
+
+  var r = libAdd(name, { replace: again });
+  libPending = null;
+
+  if (r.conflict) {
+    libPending = { action: 'replace', id: libName(name).toLowerCase() };
+    libSay('bad', '"' + r.conflict.name + '" is already in the library. ' +
+                  'Press Save to library again to replace it.');
+    renderLibrary();
+    flashBtn(btn, 'Replace?');
+    return;
+  }
+  if (!r.ok) {
+    libSay('bad', r.error.message);
+    renderLibrary();
+    flashBtn(btn, 'Save failed');
+    return;
+  }
+
+  if (input) input.value = '';
+  libQuery = '';
+  var s = document.getElementById('libSearch');
+  if (s) s.value = '';
+  libSay('ok', 'Saved "' + r.entry.name + '" to the library.');
+  renderLibrary();
+  flashBtn(btn, 'Saved ✓');
+}
+
+/* Opening the library with a graph on the canvas offers a name for it, the way
+   the save dialog does: the one it was loaded or last saved under, or a
+   timestamp. Read at open rather than held, so a query loaded from a file since
+   the last time the dialog was up brings its name with it. */
+function libSuggestName() {
+  return lastQueryName || defaultQueryName();
 }
 
 /* THE NODE MENUS
@@ -4515,6 +5762,12 @@ if (panelEl) panelEl.addEventListener('input', onExportNameInput);
 var loadInput = document.getElementById('loadFile');
 if (loadInput) loadInput.addEventListener('change', onGraphFileChosen);
 
+// The library's own picker. Its own input rather than a shared one, because
+// what happens to the file afterwards is different: Load replaces the canvas,
+// Import merges into the store and leaves the canvas alone.
+var libImportInput = document.getElementById('libImportFile');
+if (libImportInput) libImportInput.addEventListener('change', onLibImportChosen);
+
 /* The two data pickers. Shared by every Source rather than one pair per node:
    which node asked is carried on the input itself by pickHeadersFile(), and a
    dozen Sources would otherwise mean two dozen hidden inputs in the document
@@ -4685,7 +5938,11 @@ if (clearDlgEl) {
 
 var saveNameEl = document.getElementById('saveName');
 if (saveNameEl) {
-  saveNameEl.addEventListener('input', updateSaveHint);
+  saveNameEl.addEventListener('input', function() {
+    // The half-answered "replace?" goes with the name it was asked about.
+    saveLibPending = '';
+    updateSaveHint();
+  });
   saveNameEl.addEventListener('keydown', function(e) {
     if (e.key === 'Enter')  { e.preventDefault(); confirmSaveGraph(); }
     // Escape is left to the document handler above, so cancelling behaves the
@@ -4760,6 +6017,20 @@ document.addEventListener('keydown', function(e) {
     // Escape on a confirmation means "no", which is what Cancel means, so it
     // closes without clearing. The checkbox goes with it unread.
     if (clearDialogOpen()) { e.preventDefault(); closeClearDialog(); return; }
+    /* The library, before Help and after the two small cards, which is the
+       order they stack in. A rename in progress handles its own Escape and
+       stops the event, so this is only reached when nothing inside the dialog
+       has a smaller thing to abandon.
+
+       A half-pressed Open or Delete is abandoned WITHOUT closing the dialog:
+       the user asked a question of the button and Escape is the answer "no" to
+       that question, not "shut the library". Pressing it twice still closes. */
+    if (libraryOpen()) {
+      e.preventDefault();
+      if (libPending) { libPending = null; renderLibrary(); }
+      else closeLibrary();
+      return;
+    }
     if (helpOpen())        { e.preventDefault(); closeHelp(); return; }
     closeProcMenu();
     clearSelection();
@@ -4771,6 +6042,11 @@ document.addEventListener('keydown', function(e) {
      stray F or Delete rearrange or destroy the graph you came here to learn
      about. Escape above is the deliberate exception: it closes it. */
   if (helpOpen()) return;
+  /* And the library, for the same reason. Its grid is scrollable and its cards
+     carry buttons, so the keyboard is in use while it is up, and a stray F or
+     Delete reaching the canvas would rearrange or destroy the graph the user
+     came here to replace deliberately. */
+  if (libraryOpen()) return;
   /* And the confirmation, for the same reason with more at stake. The check
      below catches this while focus is inside the card, but a click on the
      backdrop can leave focus on <body> with the dialog still up, and the one
@@ -5015,6 +6291,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     binsFor: binsFor, binLabel: binLabel, fmtEdge: fmtEdge,
     binColumn: binColumn, histogramColumns: histogramColumns,
     applyHistogram: applyHistogram,
+    globToRegExp: globToRegExp,
     labelCols: labelCols, labelsFromTable: labelsFromTable,
     labelsFromData: labelsFromData, rowsForLabel: rowsForLabel,
     addStat: addStat, removeStat: removeStat,
@@ -5079,7 +6356,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     // export + persistence
     serialiseTable: serialiseTable, exportTableFor: exportTableFor, safeName: safeName,
     exportNameOf: exportNameOf, defaultExportName: defaultExportName, markStale: markStale,
-    timeStamp: timeStamp, resultHTML: resultHTML, scalarHTML: scalarHTML, tableHTML: tableHTML,
+    timeStamp: timeStamp, dateStamp: dateStamp, resultHTML: resultHTML, scalarHTML: scalarHTML, tableHTML: tableHTML,
     courseLabel: courseLabel, courseTitle: courseTitle, courseSelect: courseSelect,
     serialiseGraph: serialiseGraph, deserialiseGraph: deserialiseGraph,
     applyGraph: applyGraph, loadGraphFromText: loadGraphFromText,
@@ -5098,7 +6375,46 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     skipClearConfirm: function(){ return skipClearConfirm; },
     openHelp: openHelp, closeHelp: closeHelp, helpOpen: helpOpen,
     syncHelpNav: syncHelpNav, scrollHelpTo: scrollHelpTo,
-    QUERY_EXT: QUERY_EXT, MAX_QUERY_FILE_BYTES: MAX_QUERY_FILE_BYTES
+    QUERY_EXT: QUERY_EXT, MAX_QUERY_FILE_BYTES: MAX_QUERY_FILE_BYTES,
+
+    // query library
+    LIB_STORE: LIB_STORE, LIB_KIND: LIB_KIND, LIB_VERSION: LIB_VERSION,
+    LIB_NAME_MAX: LIB_NAME_MAX, LIB_MAX_ENTRIES: LIB_MAX_ENTRIES,
+    LIB_MESSAGES: LIB_MESSAGES,
+    libRead: libRead, libWrite: libWrite, libBytes: libBytes,
+    libGet: libGet, libIndexOf: libIndexOf, libNameTaken: libNameTaken,
+    libName: libName, libNewId: libNewId, libEntryFor: libEntryFor,
+    libAdd: libAdd, libRename: libRename, libRemove: libRemove,
+    libGraphText: libGraphText, libIsQuota: libIsQuota,
+
+    // the card's picture. Drawn from the graph, never stored, never carrying
+    // anything out of an entry but its node types: see libThumb.
+    libThumb: libThumb, libInk: libInk, LIB_INK: LIB_INK,
+    libThumbNodes: libThumbNodes, libShapeBox: libShapeBox,
+    LIB_THUMB_W: LIB_THUMB_W, LIB_THUMB_H: LIB_THUMB_H,
+    LIB_THUMB_MAX_NODES: LIB_THUMB_MAX_NODES,
+
+    // the dialog
+    openLibrary: openLibrary, closeLibrary: closeLibrary, libraryOpen: libraryOpen,
+    renderLibrary: renderLibrary, libSearchInput: libSearchInput,
+    libOpenEntry: libOpenEntry, libDeleteEntry: libDeleteEntry,
+    libExportEntry: libExportEntry, libSaveCurrent: libSaveCurrent,
+    libStartRename: libStartRename, libCommitRename: libCommitRename,
+    libRenameKey: libRenameKey, libStartOver: libStartOver,
+    libCardHTML: libCardHTML, libWhen: libWhen, libSizeText: libSizeText,
+    LIB_SEARCH_MIN: LIB_SEARCH_MIN,
+    libPendingNow: function(){ return libPending; },
+    libNoticeNow:  function(){ return libNotice; },
+
+    // export / import
+    libCleanEntry: libCleanEntry, libExportPayload: libExportPayload,
+    libImportText: libImportText, libImportSummary: libImportSummary,
+    libFileProblem: libFileProblem, MAX_LIB_FILE_BYTES: MAX_LIB_FILE_BYTES,
+    libExportAll: libExportAll, libPickImport: libPickImport,
+
+    // the save dialog's second destination
+    confirmSaveToLibrary: confirmSaveToLibrary, saveHintSay: saveHintSay,
+    saveLibPendingNow: function(){ return saveLibPending; }
   };
 }
 

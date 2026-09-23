@@ -598,6 +598,17 @@ select option {
   line-height: 1.35;
   color: #8578a0;
 }
+
+/* The wildcard legend, sized and coloured as the list band's note is: both are
+   a line of guidance under the control they belong to. No band around it,
+   because a pattern is one box rather than the several a list needs. */
+.crit-pattern-note {
+  font-size: 9px;
+  line-height: 1.35;
+  color: #8578a0;
+  padding-left: 8px;
+}
+.crit-pattern-note b { color: #c2b3e0; font-weight: 600; }
 /* The operator select wears the band's colour once the list is chosen, the same
    way .op-wide wears the range's. */
 .op-list {
@@ -2388,20 +2399,43 @@ th.cmp-num { color: #383838 !important; }
   border-bottom: 1px solid #232323;
   flex-shrink: 0;
 }
-.help-title { font-size: 13px; font-weight: 600; color: #e8e8e8; }
-.help-close {
-  width: 26px; height: 26px;
+/* 20px rather than the 13px it shared with the save dialog's heading. That
+   size was set for a 330px card; this panel is 860px wide and its heading was
+   reading as a label rather than as the name of the thing you opened. The
+   library's heading is raised to match, in the query library block below. */
+.help-title { font-size: 20px; font-weight: 600; color: #e8e8e8; }
+/* THE CLOSE BUTTON ON A FULL PANEL.
+
+   Shared by Help and the query library, because they are the same control in
+   the same corner doing the same job, and two rules for that is two things to
+   keep in step. Help used to carry a grey 26px multiplication sign instead:
+   the same dismissal offered as an icon on one panel and as a word on the
+   other, which asks the reader to learn the corner twice.
+
+   Red is the one the toolbar's Clear button uses. It is the only red in the
+   application that means "this control ends what you are doing".
+
+   flex-shrink is kept from the rule this replaces. Both headers are flex rows
+   whose other child can grow (Help's title, the library's search box), and
+   without it the button is the thing that gives way.
+
+   Written long rather than as a `border:` shorthand, for the reason recorded
+   against .shape-histogram. */
+.panel-close {
   background: transparent;
-  border: 1px solid #2a2a2a;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #7a2828;
   border-radius: 5px;
-  color: #8a8a8a;
+  color: #e35d5d;
   font-family: inherit;
-  font-size: 15px;
-  line-height: 1;
+  font-size: 11px;
+  padding: 5px 13px;
   cursor: pointer;
   flex-shrink: 0;
+  transition: background 0.12s;
 }
-.help-close:hover { border-color: #3d3d3d; color: #d0d0d0; background: #1a1a1a; }
+.panel-close:hover { background: #240d0d; }
 
 .help-main { display: flex; flex: 1; min-height: 0; }
 
@@ -2782,3 +2816,272 @@ th.cmp-num { color: #383838 !important; }
   cursor: pointer;
 }
 .confirm-go:hover { background: #2e0d0d; }
+
+/* ═══════════════════════════════════════════════════════════
+   QUERY LIBRARY
+   Appended block. Nothing above this line is modified.
+
+   The backdrop is .save-dialog's, reused rather than restated: it already
+   centres a card over the canvas at the right z-index and is dismissed by the
+   same rules. Only the card is new, because this one holds a grid.
+
+   Border colours are written long rather than as a `border:` shorthand, for
+   the reason recorded against .shape-histogram: a shorthand carrying a colour
+   wins on source order over a rule meant to set it, and that is how a node
+   once shipped in the wrong family's colour with the suite green.
+   ═══════════════════════════════════════════════════════════ */
+
+.lib-card-frame {
+  width: 940px;
+  max-width: calc(100vw - 48px);
+  height: 100%;
+  max-height: 680px;
+  display: flex;
+  flex-direction: column;
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 18px 20px 14px;
+  box-shadow: 0 18px 60px rgba(0,0,0,0.6);
+}
+.lib-dialog { padding: 24px; }
+
+/* ── HEAD ─────────────────────────────────────────────────── */
+.lib-head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 0;
+}
+/* Scoped, not a change to .save-title itself: that rule also heads the save
+   dialog and the clear confirmation, both of which are small cards where 13px
+   is the right size. Only the two full panels are raised. Matches
+   .help-title. */
+.lib-head .save-title { margin: 0; flex-shrink: 0; font-size: 20px; }
+
+/* Hidden until there are enough cards for searching to beat looking. Held by
+   a class rather than by removing the input, so focus and value survive a
+   render that crosses the threshold. */
+.lib-search-wrap { display: none; margin-left: auto; }
+.lib-search-wrap.show { display: block; }
+/* Close is pushed to the far edge by whichever of the two carries the auto
+   margin: the search box when it is there, Close itself when it is not.
+   Keyed on .panel-close rather than on .file-btn, because Close no longer wears
+   that class and a selector naming the old one silently stops applying, which
+   drops the button back beside the title. */
+.lib-search-wrap + .panel-close { margin-left: auto; }
+.lib-search-wrap.show + .panel-close { margin-left: 0; }
+
+#libSearch {
+  width: 220px;
+  background: #0b0b0b;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ddd;
+  font: inherit;
+  font-size: 12px;
+  padding: 5px 9px;
+  outline: none;
+}
+#libSearch:focus { border-color: #4a7fb5; }
+
+
+.lib-sub-note {
+  flex-shrink: 0;
+  margin: 8px 0 0;
+  max-width: 76ch;
+}
+
+/* ── NOTICE ───────────────────────────────────────────────── */
+/* Collapsed to nothing when empty, so the grid does not shift down by a blank
+   line the moment the dialog opens. */
+.lib-notice {
+  flex-shrink: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  max-height: 0;
+  overflow: hidden;
+  opacity: 0;
+  transition: max-height 0.12s, opacity 0.12s, margin 0.12s;
+}
+.lib-notice.show { max-height: 4em; opacity: 1; margin: 10px 0 0; }
+.lib-notice.ok  { color: #6ec87a; }
+.lib-notice.bad { color: #e0864a; }
+
+/* ── BODY ─────────────────────────────────────────────────── */
+/* The frame is bounded by the viewport and this scrolls inside it, so the
+   heading, the search box and the save row stay put while the grid moves.
+   Same arrangement as .help-card. */
+.lib-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  margin-top: 12px;
+  outline: none;
+}
+
+.lib-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(212px, 1fr));
+  gap: 14px;
+  padding-bottom: 4px;
+}
+
+/* ── CARD ─────────────────────────────────────────────────── */
+.lib-card {
+  display: flex;
+  flex-direction: column;
+  background: #0d0d0d;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #2a2a2a;
+  border-radius: 5px;
+  overflow: hidden;
+}
+.lib-card:hover { border-color: #3a3a3a; }
+/* Half-pressed Delete. The card says so as well as the button, because the
+   button is small and the thing about to happen is not. */
+.lib-card.danger { border-color: #8a3030; background: #150a0a; }
+
+.lib-thumb {
+  background: #070707;
+  border-bottom: 1px solid #1e1e1e;
+  line-height: 0;
+}
+.lib-thumb-svg { display: block; width: 100%; height: auto; }
+
+.lib-meta { padding: 8px 10px 6px; }
+.lib-name {
+  font-size: 12px;
+  color: #ddd;
+  font-weight: 600;
+  /* One line. A two-line name would make its card taller than its neighbours
+     and break the row, and the full text is on the title attribute. */
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.lib-sub { font-size: 10px; color: #777; margin-top: 2px; }
+
+.lib-rename {
+  width: 100%;
+  background: #0b0b0b;
+  border: 1px solid #4a7fb5;
+  border-radius: 3px;
+  color: #ddd;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 2px 5px;
+  outline: none;
+}
+
+.lib-actions {
+  display: flex;
+  gap: 4px;
+  padding: 0 8px 8px;
+  flex-wrap: wrap;
+}
+.lib-actions .file-btn,
+.lib-actions .lib-go,
+.lib-actions .lib-del {
+  font-size: 10px;
+  padding: 3px 7px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  border-width: 1px;
+  border-style: solid;
+}
+.lib-go {
+  background: #0f2a44;
+  border-color: #1e5f9a;
+  color: #7ec4ff;
+  font-weight: 600;
+  margin-right: auto;
+}
+.lib-go:hover { background: #14395c; }
+.lib-del {
+  background: #180b0b;
+  border-color: #4a2020;
+  color: #c87070;
+}
+.lib-del:hover { background: #2a1010; border-color: #8a3030; color: #e08080; }
+.lib-card.danger .lib-del {
+  background: #8a2020;
+  border-color: #c04040;
+  color: #fff;
+  font-weight: 600;
+}
+
+/* ── EMPTY AND BROKEN ─────────────────────────────────────── */
+.lib-empty,
+.lib-problem {
+  color: #777;
+  font-size: 12px;
+  line-height: 1.6;
+  padding: 28px 4px;
+  max-width: 62ch;
+}
+.lib-problem-text { color: #e0864a; margin-bottom: 12px; }
+.lib-problem-warn { color: #777; margin-top: 10px; font-size: 11px; }
+
+/* ── FOOT ─────────────────────────────────────────────────── */
+.lib-foot {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid #242424;
+}
+.lib-save-field { flex: 1; max-width: 340px; }
+#libSaveName {
+  width: 100%;
+  background: #0b0b0b;
+  border: 1px solid #333;
+  border-radius: 4px;
+  color: #ddd;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 9px;
+  outline: none;
+}
+#libSaveName:focus { border-color: #4a7fb5; }
+#libSaveBtn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+.lib-usage { margin-left: auto; font-size: 11px; color: #666; }
+
+/* ── THE SAVE DIALOG'S SECOND DESTINATION ─────────────────── */
+/* The library button sits between Cancel and the file button: secondary to the
+   one Enter presses, but not tucked in with Cancel either, since it is the
+   one that actually does something. */
+.save-lib {
+  background: #0f2a44;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #1e5f9a;
+  color: #7ec4ff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.save-lib:hover { background: #14395c; }
+
+.save-where {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.55;
+  color: #777;
+}
+.save-where b { color: #999; font-weight: 600; }
+
+/* The hint line under the field doubles as the dialog's error line, so it has
+   a second colour. The 'show' class still decides whether it is there at all. */
+.save-hint.bad { color: #e0864a; }
