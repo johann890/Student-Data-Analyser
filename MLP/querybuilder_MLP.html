@@ -1061,10 +1061,13 @@
         <!-- ── FILES ───────────────────────────────────────── -->
         <section id="help-files">
           <h3>Saving a query</h3>
-          <p><b>Save</b> writes the whole graph to a <code>.json</code> file, meaning every node,
-             its settings and every wire, and it asks you to name the file first. The
-             <code>.json</code> ending is fixed, so a saved query is always one the tool can open
-             again. Save a second time and it offers the name you used before, so revising a query
+          <p><b>Save</b> asks you to name the query, then offers two places to put it.
+             <b>Save as file</b> writes the whole graph to a <code>.json</code> file, meaning every
+             node, its settings and every wire. The <code>.json</code> ending is fixed, so a saved
+             query is always one the tool can open again. <b>Save to library</b> keeps the same
+             query in this browser instead &mdash; see <b>The query library</b> below. Pressing
+             <kbd>Enter</kbd> writes the file, which is what it has always done.</p>
+          <p>Save a second time and it offers the name you used before, so revising a query
              does not scatter near-identical files around.</p>
           <p><b>Load</b> opens one back onto the canvas, replacing whatever is there. Only
              <code>.json</code> files are accepted.</p>
@@ -1109,7 +1112,21 @@
 
           <p>The box at the bottom names the query on the canvas and <b>Save to library</b> puts it
              in. If a query of that name is already there, the button asks whether to replace it
-             rather than quietly adding a second card with the same name.</p>
+             rather than quietly adding a second card with the same name. The <b>Save</b> button in
+             the toolbar offers the same choice, so you can reach the library without opening it.</p>
+
+          <h4>Taking it with you</h4>
+          <p><b>Export library</b> writes every saved query out as one <code>.json</code> file.
+             That file is the backup, and it is also how you hand a set of queries to a colleague:
+             they press <b>Import</b> and choose it.</p>
+          <p><b>Import merges, and never replaces.</b> Anything in the file whose name is already
+             in your library is left alone, and the tool tells you how many it added and how many
+             it skipped. Your own queries cannot be overwritten by somebody else&rsquo;s file. If
+             you do want their version of a query you already have, rename yours first and import
+             again.</p>
+          <p>Import also accepts a single saved query &mdash; the kind <b>Save as file</b> writes
+             &mdash; and files it under the file&rsquo;s own name. The two look the same in a
+             folder, so there is nothing to get wrong.</p>
 
           <div class="help-tip">
             <b>A card holds the question, not the answer</b> &mdash; exactly like a saved file.
@@ -1122,7 +1139,8 @@
           <p><b>It is not a backup.</b> It lives in this browser on this machine. Clearing site
              data removes it, a private window never sees it, and it does not follow you to another
              computer or another browser. Anything you would be sorry to lose should be
-             <b>exported</b> to a file as well.</p>
+             <b>exported</b> to a file as well &mdash; one card at a time with <b>Export</b>, or
+             the lot with <b>Export library</b>.</p>
           <p><b>It is not private on a shared computer.</b> The library belongs to the browser
              profile, not to the person sitting at it, so whoever uses this machine next sees the
              same cards. That is safe as far as the data goes, because no records are in there,
@@ -1170,18 +1188,34 @@
 <div class="save-dialog" id="saveDialog">
   <div class="save-card" role="dialog" aria-modal="true" aria-labelledby="saveTitle">
     <h2 class="save-title" id="saveTitle">Save query</h2>
-    <p class="save-sub">The file records the query, not its results. Open it later and press Run Query to evaluate it against the data as it stands then.</p>
+    <!-- Two destinations for one name, rather than a mode to be set first. What
+         is written is the same query either way; the difference is where it
+         goes and what that costs you if the browser is cleared. -->
+    <p class="save-sub">What is saved is the query, not its results. Open it later and press Run Query to evaluate it against the data as it stands then.</p>
 
     <label class="save-field">
       <input type="text" id="saveName" spellcheck="false" autocomplete="off"
-             aria-label="File name">
-      <span class="save-ext">.json</span>
+             aria-label="Name for this query">
+      <!-- True of the file and not of the library card, which keeps the name
+           exactly as typed. Said on the control rather than left to be
+           inferred from a chip that is only half right. -->
+      <span class="save-ext" title="The ending on the file. A query saved to the library keeps the name exactly as typed.">.json</span>
     </label>
     <div class="save-hint" id="saveHint"></div>
 
+    <p class="save-where">
+      <b>Library</b> keeps it in this browser, where it is one click away &mdash; but a cleared
+      browser loses it. <b>File</b> writes it to disk, to keep or to send.
+    </p>
+
     <div class="save-actions">
       <button class="file-btn" onclick="closeSaveDialog()">Cancel</button>
-      <button class="save-go" onclick="confirmSaveGraph()">Save</button>
+      <button class="save-lib" id="saveLibBtn" onclick="confirmSaveToLibrary(this)">Save to library</button>
+      <!-- Still the button Enter presses, and still the one styled as primary.
+           Saving with the keyboard has meant "write a file" for as long as this
+           dialog has existed, and quietly repointing it at the library would
+           stop a daily habit producing files without anyone noticing. -->
+      <button class="save-go" onclick="confirmSaveGraph()">Save as file</button>
     </div>
   </div>
 </div>
@@ -1255,6 +1289,15 @@
       </label>
       <button class="save-go" id="libSaveBtn" onclick="libSaveCurrent(this)">Save to library</button>
       <span class="lib-usage" id="libUsage"></span>
+
+      <!-- The only two controls here that reach outside this browser. A library
+           is not a backup and does not travel, so these are the way it does
+           both. Import merges and never replaces: see libImportText. -->
+      <button class="file-btn" onclick="libPickImport(this)"
+              title="Merge a library file, or a single saved query, into this one">Import&hellip;</button>
+      <button class="file-btn" onclick="libExportAll(this)"
+              title="Write every saved query out as one .json file">Export library</button>
+      <input type="file" id="libImportFile" accept="application/json,.json" hidden>
     </div>
 
   </div>

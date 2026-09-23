@@ -725,4 +725,260 @@ module.exports = ({ describe, test }) => {
       assert.ok(h.app.loadGraphFromText(f.content), 'the file it wrote should load');
     });
   });
+
+  /* --------------------------------------------------- the second destination */
+
+  describe('the save dialog can send a query either way', () => {
+    test('the same name, two places, and neither hidden behind the other', () => {
+      const h = built();
+      h.w.saveGraph(h.doc.createElement('button'));
+      h.doc.getElementById('saveName').value = 'Semester 1: withdrawals';
+
+      h.w.confirmSaveToLibrary(null);
+      assert.equal(h.saved.length, 0, 'the library path should not write a file');
+      assert.equal(h.app.libRead().entries[0].name, 'Semester 1: withdrawals',
+        'and should keep the punctuation a filename could not');
+      assert.notOk(h.app.saveDialogOpen(), 'the dialog should get out of the way');
+    });
+
+    test('a typed .json is dropped, because the chip beside the field put it there', () => {
+      /* The field is shared with the file path and shows ".json" next to it. A
+         user who types "grades.json" has said the query is called "grades";
+         carrying the suffix onto a card reads the chip back at them. */
+      const h = built();
+      h.w.saveGraph(h.doc.createElement('button'));
+      h.doc.getElementById('saveName').value = 'grades.json';
+      h.w.confirmSaveToLibrary(null);
+      assert.equal(h.app.libRead().entries[0].name, 'grades');
+    });
+
+    test('Enter still writes a file, as it always has', () => {
+      /* Repointing a daily keyboard habit at a different destination would stop
+         it producing files without anyone noticing. Checked through the real
+         listener rather than by calling confirmSaveGraph directly. */
+      const h = built();
+      h.w.saveGraph(h.doc.createElement('button'));
+      const field = h.doc.getElementById('saveName');
+      field.value = 'by keyboard';
+      field.dispatchEvent(new h.w.KeyboardEvent('keydown',
+        { key: 'Enter', bubbles: true, cancelable: true }));
+
+      assert.equal(h.saved[h.saved.length - 1].name, 'by-keyboard.json');
+      assert.equal(h.app.libRead().entries.length, 0, 'Enter went to the library');
+    });
+
+    test('a clash is asked about on the button, and the question dies with the name', () => {
+      const h = built();
+      h.app.libAdd('Grades');
+      h.w.saveGraph(h.doc.createElement('button'));
+      const field = h.doc.getElementById('saveName');
+      field.value = 'grades';
+
+      h.w.confirmSaveToLibrary(null);
+      assert.equal(h.app.libRead().entries.length, 1, 'a second copy was written');
+      assert.ok(h.app.saveDialogOpen(), 'it should stay open to ask from');
+      assert.includes(h.doc.getElementById('saveHint').textContent, 'again');
+      assert.includes(h.doc.getElementById('saveHint').className, 'bad');
+
+      // Changing the name retracts the question: it was about that name.
+      field.value = 'grades other';
+      field.dispatchEvent(new h.w.Event('input', { bubbles: true }));
+      assert.equal(h.app.saveLibPendingNow(), '');
+      assert.excludes(h.doc.getElementById('saveHint').className, 'bad',
+        'the error colour outlived the error');
+
+      field.value = 'grades';
+      h.w.confirmSaveToLibrary(null);      // asks again, because the name came back
+      h.w.confirmSaveToLibrary(null);      // and now replaces
+      assert.equal(h.app.libRead().entries.length, 1);
+    });
+  });
+
+  /* ------------------------------------------------------------ export / import */
+
+  describe('getting a library out and back in', () => {
+    const exported = (h) => {
+      h.w.openLibrary(null);
+      h.w.libExportAll(null);
+      return h.saved[h.saved.length - 1];
+    };
+
+    test('export writes every query as one file that names itself', () => {
+      const h = built();
+      h.app.libAdd('one');
+      h.add('filter');
+      h.app.libAdd('two');
+
+      const f = exported(h);
+      assert.includes(f.name, 'query-library');
+      assert.includes(f.name, '.json');
+      const d = JSON.parse(f.content);
+      assert.equal(d.kind, LIB_KIND);
+      assert.equal(d.version, 1);
+      assert.equal(d.entries.length, 2);
+      assert.ok(d.exportedAt);
+    });
+
+    test('an exported library carries no student records either', () => {
+      const h = built();
+      h.w.runQuery();
+      h.app.libAdd('after a run');
+      const f = exported(h);
+      assert.excludes(f.content, 'gpa":78');
+      assert.excludes(f.content, '"rows":[[');
+    });
+
+    test('it round-trips into an empty library', () => {
+      const h = built();
+      h.app.libAdd('one');
+      const f = exported(h);
+
+      const fresh = built();
+      const r = fresh.app.libImportText(f.content, 'ignored');
+      assert.ok(r.ok, r.error && r.error.message);
+      assert.equal(r.added, 1);
+      assert.equal(fresh.app.libRead().entries[0].name, 'one');
+    });
+
+    test('import merges and never replaces', () => {
+      /* One click between a colleague's standard queries and a term of your
+         own work, if this were a replace. A name already here is left alone
+         and counted. */
+      const h = built();
+      h.app.libAdd('mine');
+      h.app.libAdd('shared');
+      const f = exported(h);
+
+      const other = built();
+      other.app.libAdd('shared');        // same name, a different query
+      other.add('filter'); other.add('sort');
+      other.app.libAdd('theirs only');
+
+      const r = other.app.libImportText(f.content, 'x');
+      assert.equal(r.added, 1, 'only the one that was not already there');
+      assert.equal(r.skipped, 1);
+
+      const names = other.app.libRead().entries.map(e => e.name);
+      assert.equal(names.length, 3);
+      assert.includes(names.join(','), 'theirs only', 'their own work survived');
+      assert.includes(names.join(','), 'mine');
+      // Imported entries go on the end, so today's save is not buried.
+      assert.equal(names[names.length - 1], 'mine');
+    });
+
+    test('every imported entry gets a fresh id', () => {
+      /* Two jobs at once: it cannot collide with an id already here, and an id
+         out of a file is never used for anything — which closes the inline-
+         attribute route for the import path outright rather than by pattern. */
+      const h = built();
+      const mine = h.app.libAdd('one').entry;
+      const f = exported(h);
+
+      const fresh = built();
+      fresh.app.libImportText(f.content, 'x');
+      assert.notOk(fresh.app.libRead().entries[0].id === mine.id,
+        'the imported entry kept the id it arrived with');
+    });
+
+    test('a hostile id in a file cannot reach a card', () => {
+      const h = built();
+      const r = h.app.libImportText(JSON.stringify({
+        kind: LIB_KIND, version: 1, entries: [{
+          id: "x' onclick='alert(1)", name: 'hostile', savedAt: '',
+          graph: h.app.serialiseGraph()
+        }]
+      }), 'x');
+      assert.equal(r.added, 1, 'the entry itself is fine, only its id was not');
+      assert.equal(h.app.libRead().entries[0].id.indexOf("'"), -1);
+    });
+
+    test('a single saved query can be imported too', () => {
+      /* The two files look identical in a folder and both end in .json.
+         Refusing on a technicality would be the tool being right about
+         something nobody asked. */
+      const h = built();
+      const query = JSON.stringify(h.app.serialiseGraph());
+      const fresh = built();
+      const r = fresh.app.libImportText(query, 'ds cohort');
+      assert.ok(r.ok);
+      assert.equal(r.added, 1);
+      assert.equal(fresh.app.libRead().entries[0].name, 'ds cohort');
+    });
+
+    test('a file that is neither is refused, and nothing changes', () => {
+      const h = built();
+      h.app.libAdd('mine');
+      const before = h.w.localStorage.getItem(STORE);
+
+      assert.equal(h.app.libImportText('not json', 'x').error.code, 'badfile');
+      assert.equal(h.app.libImportText(JSON.stringify({ kind: 'other' }), 'x').error.code, 'badfile');
+      assert.equal(h.app.libImportText(JSON.stringify(
+        { kind: LIB_KIND, version: 99, entries: [] }), 'x').error.code, 'newer');
+
+      assert.equal(h.w.localStorage.getItem(STORE), before);
+    });
+
+    test('entries in a library file that are not queries are counted, not merged', () => {
+      const h = built();
+      const r = h.app.libImportText(JSON.stringify({
+        kind: LIB_KIND, version: 1, entries: [
+          { id: 'a', name: 'real', savedAt: '', graph: h.app.serialiseGraph() },
+          null,
+          { id: 'b', name: 'no graph' },
+          { id: 'c', name: 'wrong kind', graph: { kind: 'other' } }
+        ]
+      }), 'x');
+      assert.equal(r.added, 1);
+      assert.equal(r.dropped, 3);
+      assert.includes(h.app.libImportSummary(r), 'not a saved query');
+    });
+
+    test('a merge that will not fit leaves the library exactly as it was', () => {
+      const h = built();
+      h.app.libAdd('mine');
+      const before = h.w.localStorage.getItem(STORE);
+
+      const donor = built();
+      donor.add('filter');
+      donor.app.libAdd('theirs');
+      const f = exported(donor);
+
+      h.storage.quota = before.length * 2 + 10;
+      const r = h.app.libImportText(f.content, 'x');
+      assert.notOk(r.ok);
+      assert.equal(r.error.code, 'quota');
+      assert.equal(h.w.localStorage.getItem(STORE), before, 'a half-merged library');
+    });
+
+    test('an unreadable library is not merged into', () => {
+      const donor = built();
+      donor.app.libAdd('theirs');
+      const f = exported(donor);
+
+      const h = built();
+      h.w.localStorage.setItem(STORE, 'corrupt, but somebody\'s');
+      const r = h.app.libImportText(f.content, 'x');
+      assert.notOk(r.ok);
+      assert.equal(r.error.code, 'unreadable');
+      assert.equal(h.w.localStorage.getItem(STORE), 'corrupt, but somebody\'s');
+    });
+
+    test('the picker refuses a file that was never a library', () => {
+      const h = built();
+      assert.includes(h.app.libFileProblem({ name: 'notes.txt', size: 10 }), 'not one');
+      assert.includes(h.app.libFileProblem({ name: 'x.json', size: 0 }), 'empty');
+      assert.includes(h.app.libFileProblem(
+        { name: 'x.json', size: h.app.MAX_LIB_FILE_BYTES + 1 }), 'too large');
+      assert.equal(h.app.libFileProblem({ name: 'x.json', size: 400 }), null);
+    });
+
+    test('exporting an empty library says so rather than writing nothing', () => {
+      const h = built();
+      h.w.openLibrary(null);
+      const before = h.saved.length;
+      h.w.libExportAll(null);
+      assert.equal(h.saved.length, before, 'an empty file was written');
+      assert.includes(h.doc.getElementById('libNotice').textContent, 'nothing in the library');
+    });
+  });
 };

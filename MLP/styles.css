@@ -3021,3 +3021,34 @@ th.cmp-num { color: #383838 !important; }
   cursor: default;
 }
 .lib-usage { margin-left: auto; font-size: 11px; color: #666; }
+
+/* ── THE SAVE DIALOG'S SECOND DESTINATION ─────────────────── */
+/* The library button sits between Cancel and the file button: secondary to the
+   one Enter presses, but not tucked in with Cancel either, since it is the
+   one that actually does something. */
+.save-lib {
+  background: #0f2a44;
+  border-width: 1px;
+  border-style: solid;
+  border-color: #1e5f9a;
+  color: #7ec4ff;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  padding: 6px 12px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.save-lib:hover { background: #14395c; }
+
+.save-where {
+  margin: 12px 0 0;
+  font-size: 11px;
+  line-height: 1.55;
+  color: #777;
+}
+.save-where b { color: #999; font-weight: 600; }
+
+/* The hint line under the field doubles as the dialog's error line, so it has
+   a second colour. The 'show' class still decides whether it is there at all. */
+.save-hint.bad { color: #e0864a; }

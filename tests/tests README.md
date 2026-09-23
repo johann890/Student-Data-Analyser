@@ -215,7 +215,7 @@ bridges them back to getters so tests can write `app.nodes`, in one place —
 | `22-archive-patterns` | The patterns `../data` claims to carry, read through the shipped parser: three linked years, the BEHONS CYBR → BSC COMP migration, a course improving every year, courses growing and shrinking every year, the reliably hard and reliably easy ones measured against the cohort, and the student-level claims — progression, own-subject advantage, who leaves and why |
 | `23-selectfor` | The SelectFor node: grouping as filtering once per label, the predicates that are not columns, the Labels port and the zero-count group only it can produce, share measured against the input rather than the sum of the groups, the registry invariant across five configurations, and the same claims once more against the real archive |
 | `20-source-loading` | The Source from the picker to the answer: the two ordered pickers driven through the real hidden inputs, year files accumulating across picks and coming back off one at a time, all-or-nothing within a pick, one Source per dataset, and that a saved query carries the graph and not one byte of the records |
-| `31-library` | The query library: the round trip through browser storage, that an entry is the file format unchanged and loads through the same door a file does, the no-student-records guarantee asserted a second time, every shape hostile storage can take, the refusals that protect a library from being clobbered, quota, two windows sharing one store — and the dialog: that a card's picture is drawn from the graph and carries nothing out of the entry, that names and ids cannot become markup, and the two-step questions in front of Open and Delete |
+| `31-library` | The query library: the round trip through browser storage, that an entry is the file format unchanged and loads through the same door a file does, the no-student-records guarantee asserted a second time, every shape hostile storage can take, the refusals that protect a library from being clobbered, quota, two windows sharing one store — and the dialog: that a card's picture is drawn from the graph and carries nothing out of the entry, that names and ids cannot become markup, the two-step questions in front of Open and Delete, the save dialog's two destinations, and export/import — that a merge never replaces, that every imported entry is given a fresh id, and that a merge which will not fit leaves the library exactly as it was |
 
 ### What was removed, and why
 
@@ -345,6 +345,10 @@ confirming the suite caught it:
   | let a name clash replace silently instead of returning a conflict | the clash tests |
   | accept any string as an entry id | the hostile-id test |
   | open or delete on the first click instead of asking | the two-step tests |
+  | make import replace the library instead of merging into it | the merge test |
+  | trust the id that arrives in an imported file | three import tests |
+  | point the save field's Enter key at the library | the Enter test |
+  | let a clash replace silently from the save dialog | the save-dialog clash test |
 
   The two-windows row is the one worth keeping, and it is here because the
   first version of that test **could not fail**. A cache written on every
@@ -354,6 +358,18 @@ confirming the suite caught it:
   now reads the store once before the collision — which is what opening the
   grid does anyway — and catches both shapes. Written the obvious way, it was
   testing a bug it had arranged not to meet.
+
+  The import rows are worth their space because import is the only path here
+  that takes a file from outside the machine. Two of them exist because the
+  same bug has two shapes: a merge that replaces destroys the user's own work,
+  and an id taken from a file reaches a card's inline `onclick`. Minting a
+  fresh id for every imported entry closes the second one outright rather than
+  by pattern-matching, which is why breaking it fails three tests and not one.
+
+  The Enter row is not about correctness at all — both buttons work either way.
+  It is there because repointing a daily keyboard habit at a different
+  destination would stop it producing files without anyone noticing, and a
+  change nobody notices is the kind that needs a test to hold it still.
 
   The no-student-records row is duplicated from `07-saveload` on purpose. It is
   a property of `serialiseGraph()`, and the only thing keeping it true of the
