@@ -56,7 +56,15 @@ function rebuildRegistries() {
   Object.keys(COURSE_BY_CODE).forEach(function(k){ delete COURSE_BY_CODE[k]; });
 
   loadedDatasets().forEach(function(d) {
-    d.students.forEach(function(s) {
+    /* A table Source contributes nothing here, and that is not a gap being
+       tolerated: these registries are the archive's vocabulary, the specs, the
+       degrees, the years and the course catalogue that a Filter's dropdowns are
+       built from. A file of bands or labels has no students to have any of
+       those. Skipped explicitly rather than guarded per property, because
+       "a table has no students" is one fact and eight `|| []`s would be the
+       same fact written badly. */
+    if (isTableDataset(d)) return;
+    (d.students || []).forEach(function(s) {
       STUDENTS.push(s);
       if (s.specialisation && !seenSpec[s.specialisation]) {
         seenSpec[s.specialisation] = true; SPECS.push(s.specialisation);
@@ -479,6 +487,39 @@ function buildSyntheticStudents() {
    user, for files this session has not been given.                           */
 
 var DATA_HEADERS_NAME = 'headers.txt';
+
+/* THE HEADER NAMING SCHEME
+   ---------------------------------------------------------------------------
+   The supervisor's, from his email of 2026-09-24:
+
+     "it might be nice to use the format 'headers-<data file name>.txt' so that
+      multiple data files and their headers could be in the same directory. If
+      every header file is named 'header.txt' then one needs one directory per
+      data format."
+
+   So both are accepted: the plain name, which the archive already uses, and the
+   qualified one, which lets a folder hold a band file, a label list and the
+   archive side by side. Which of the two a Source was handed is remembered only
+   so the panel can name it; nothing downstream cares.
+
+   The qualified form is NOT enforced against the data file's name. The pairing
+   is for the user's filesystem, not for this tool to police, and refusing a
+   header for being called the wrong thing is the class of refusal he asked to
+   be rid of. */
+var HEADER_NAME_RE = /^headers(?:-(.+))?\.txt$/i;
+
+function isHeaderFileName(name) { return HEADER_NAME_RE.test(String(name || '')); }
+
+/* The header a data file would be paired with under the scheme. Used by the
+   panel to say what to look for, never to refuse anything. */
+function headerNameFor(dataName) { return 'headers-' + String(dataName || '') + '.txt'; }
+
+/* The data file a qualified header names, or '' for the plain form. */
+function headerTargetOf(headerName) {
+  var m = HEADER_NAME_RE.exec(String(headerName || ''));
+  return (m && m[1]) ? m[1] : '';
+}
+
 var DATA_YEAR_RE      = /^mcs-students-(\d{4})$/;
 var DATA_YEAR_MIN     = 1990;
 var DATA_YEAR_MAX     = 2099;
@@ -496,6 +537,13 @@ var MAX_DATA_FILE_BYTES = 32 * 1024 * 1024;
    a single cell that unbalances every table it appears in. */
 var MAX_DATA_ROWS   = 250000;
 var MAX_FIELD_CHARS = 512;
+
+/* A header wider than this is not a table anyone is going to read, and every
+   column becomes a control in a panel and a cell in the DOM. The archive's own
+   header is 27 columns, so this is an order of magnitude of room. It replaces
+   nothing: there was no ceiling before, because the fixed column list was the
+   ceiling. */
+var MAX_HEADER_COLUMNS = 256;
 
 /* One Source accumulates year files, so there has to be a ceiling on how many.
    Fifty is longer than the archive has existed and longer than any question
@@ -517,6 +565,36 @@ var MAX_COURSE_POINTS = 200;
    and dropped on the floor. It is not needed to answer any of the supervisor's questions, and
    the least exposed way to hold personal data is not to hold it. */
 var REQUIRED_HEADER_COLUMNS = ['ID', 'gender', 'deg1', 'maj1', 'Year', 'Crse', 'Grade', 'Pts'];
+
+/* WHAT THIS LIST IS NOW FOR, WHICH IS NOT WHAT IT WAS FOR
+   ---------------------------------------------------------------------------
+   It used to be an admission gate: a header without these columns was refused
+   as "too few to be the archive header", and that refusal is what stopped a
+   one-column list of labels being loadable at all.
+
+   The supervisor asked for it to go: "We do not need to cater for misshaped
+   input. The input files all come from a certain source and will always have
+   the right format", and "having just one source node that is capable of
+   reading data from a file with various numbers of columns seems more
+   parsimonious and simpler. Users would not have to wonder which node kind
+   they'll need. A single Source node kind can automatically adapt to whatever
+   the input format is."
+
+   So the list stops deciding whether a file may be read and starts deciding HOW
+   it is read. A header carrying all of these describes the archive, and its
+   rows are folded into students with their courses nested. Any other header
+   describes a table, and its rows come through as they are. One node, two
+   shapes, chosen by looking rather than by asking.
+
+   WHAT DID NOT GO WITH IT
+   The size cap, the control-character refusal, the row and field caps and the
+   path-segment stripping all stay. They do not reject a differently shaped
+   file; they reject a hostile one, and his ruling is about shape. Every cell
+   that survives this module still reaches the DOM. */
+function headerIsArchive(header) {
+  if (!header || !header.byName) return false;
+  return REQUIRED_HEADER_COLUMNS.every(function(c){ return c in header.byName; });
+}
 
 /* C0 controls except tab, newline and carriage return, plus DEL. Tested against
    the whole file before it is split, because the cheapest place to refuse a
@@ -569,10 +647,15 @@ function hasSourceData(node) { return !!datasetFor(node); }
 function datasetCfg(node) {
   var cfg = node.cfg = node.cfg || defaultCfg('source');
   if (!cfg.dataset || typeof cfg.dataset !== 'object' || Array.isArray(cfg.dataset)) {
-    cfg.dataset = { headers:'', years:[] };
+    cfg.dataset = { headers:'', years:[], file:'' };
   }
   if (typeof cfg.dataset.headers !== 'string') cfg.dataset.headers = '';
   if (!Array.isArray(cfg.dataset.years)) cfg.dataset.years = [];
+  /* The table path's counterpart to `years`: one name rather than a list, for
+     the reason buildTableDataset() gives. Added rather than replacing `years`,
+     so a query saved before this existed still names its year files and opens
+     saying what it wants. */
+  if (typeof cfg.dataset.file !== 'string') cfg.dataset.file = '';
   return cfg.dataset;
 }
 
@@ -602,11 +685,38 @@ function sizeProblem(file, label) {
 function headersFileProblem(file) {
   if (!file) return 'No file was chosen.';
   var name = dataFileName(file);
-  if (name.toLowerCase() !== DATA_HEADERS_NAME) {
-    return 'The column file has to be named exactly "' + DATA_HEADERS_NAME +
-      '", and "' + name + '" is not. Nothing has been read from it.';
+  if (!isHeaderFileName(name)) {
+    return 'A column file is named "' + DATA_HEADERS_NAME + '", or "headers-" ' +
+      'then the name of the data file it describes and ".txt". "' + name +
+      '" is neither, so nothing has been read from it.';
   }
   return sizeProblem(file, 'column file');
+}
+
+/* A DATA FILE IS ANY FILE THAT IS NOT A COLUMN FILE
+   ---------------------------------------------------------------------------
+   This replaces a check that required the name "mcs-students-" plus a year. The
+   year is still read from the name where the name carries one, because the
+   archive's files are named that way and the agreement check in parseYearFile()
+   is worth keeping for them. It is no longer REQUIRED, which is the change: a
+   file called course-labels.txt is now an ordinary thing to hand a Source.
+
+   The one name still refused is a column file's, and only to catch the two
+   pickers being used the wrong way round. That is a mis-click with a clear
+   message, not a judgement about the file's shape. */
+function dataFileProblem(file) {
+  if (!file) return 'No file was chosen.';
+  var name = dataFileName(file);
+  if (isHeaderFileName(name)) {
+    return '"' + name + '" is a column file, not a data file. Choose it with ' +
+      'the column file button above.';
+  }
+  var y = yearOfFile(file);
+  if (y !== null && (y < DATA_YEAR_MIN || y > DATA_YEAR_MAX)) {
+    return '"' + name + '" claims the year ' + y + ', which is outside ' +
+      DATA_YEAR_MIN + ' to ' + DATA_YEAR_MAX + '. Nothing has been read from it.';
+  }
+  return sizeProblem(file, 'data file "' + name + '"');
 }
 
 /* The year lives in the name, and the name is the only place the tool will take
@@ -658,9 +768,17 @@ function parseHeaderFile(text, name) {
   if (!lines.length) return { error: 'The column file has no column names in it.' };
 
   var names = lines[0].trim().split(/\s+/);
-  if (names.length < REQUIRED_HEADER_COLUMNS.length) {
-    return { error: 'The column file declares only ' + names.length +
-      ' columns, which is too few to be the archive header.' };
+  /* ANY number of columns, down to one. The refusal that used to live here
+     ("too few to be the archive header") is the one the supervisor asked to be
+     rid of, and it is what made a one-column list of labels unloadable. What
+     the columns ARE now decides how the file is read, not whether it may be.
+     See headerIsArchive(). */
+  if (!names.length || names[0] === '') {
+    return { error: 'The column file has no column names in it.' };
+  }
+  if (names.length > MAX_HEADER_COLUMNS) {
+    return { error: 'The column file declares ' + names.length + ' columns, past the ' +
+      MAX_HEADER_COLUMNS + ' this tool will read.' };
   }
 
   /* The index line is optional (a header trimmed to its names alone is still a
@@ -690,12 +808,6 @@ function parseHeaderFile(text, name) {
      degree. The one every other column on the row is about. */
   var byName = {};
   names.forEach(function(n, i) { if (!(n in byName)) byName[n] = i; });
-
-  var missing = REQUIRED_HEADER_COLUMNS.filter(function(c){ return !(c in byName); });
-  if (missing.length) {
-    return { error: 'The column file is missing ' + missing.join(', ') +
-      ', which the tool needs in order to read a year file.' };
-  }
 
   return { name: dataFileName({ name: name }), columns: names, byName: byName };
 }
@@ -835,6 +947,172 @@ function parseYearFile(text, year, header) {
   return { year: year, rows: rows, students: students, warnings: Object.keys(warnings) };
 }
 
+/* ============================================================================
+   READING A FILE THAT IS NOT THE ARCHIVE
+   ============================================================================
+   The other half of the supervisor's generalisation. A header that does not
+   carry the archive's columns describes an ordinary table, and this reads one:
+   whatever columns the header names, whatever rows the file holds, no folding,
+   no student, no year.
+
+   It is what makes a list of labels or a file of named bands loadable, and it
+   is the route the bands on SelectFor's labels port were built for.
+
+   THREE THINGS IT WORKS OUT RATHER THAN DEMANDS
+   His instruction was that a mismatch should be a warning "if it can be
+   rectified by ignoring data, or otherwise automatically fixing the mismatch",
+   so each of these adapts and says so rather than refusing:
+
+     THE SEPARATOR. Tab, comma, or runs of spaces, whichever splits the first
+     row into as many fields as the header names. The archive is tabs; a band
+     file somebody typed is likelier to be spaces, and the header file itself is
+     space separated, so accepting both is the consistent answer.
+
+     RAGGED ROWS. A row with too many fields is trimmed, one with too few is
+     padded with blanks, and the count of both is reported. Refusing the file
+     was the old behaviour and it is the behaviour he objected to.
+
+     COLUMN TYPES. A header names columns; it does not say what is in them. A
+     column whose every non-blank cell reads as a number becomes a number
+     column, and the cells become numbers. Without this a band file's minimum
+     and maximum would arrive as text, and SelectFor could not tell a band table
+     from a list of labels: the detection there reads column types. */
+
+/* Whichever separator splits the sample into the width the header declares.
+   Tab first because the archive uses it and because a tab-separated file that
+   also contains commas would otherwise be split wrongly by the comma rule. */
+var DATA_SEPARATORS = [
+  { key:'tab',   label:'tabs',   re:/\t/ },
+  { key:'comma', label:'commas', re:/,/ },
+  { key:'space', label:'spaces', re:/[ \t]+/ }
+];
+
+function detectSeparator(lines, width) {
+  var sample = null;
+  for (var i = 0; i < lines.length; i++) {
+    if (lines[i] !== '' && lines[i].trim() !== '') { sample = lines[i]; break; }
+  }
+  if (sample === null) return DATA_SEPARATORS[0];
+  for (var j = 0; j < DATA_SEPARATORS.length; j++) {
+    if (sample.split(DATA_SEPARATORS[j].re).length === width) return DATA_SEPARATORS[j];
+  }
+  /* Nothing splits it to the declared width. Tab is the archive's separator and
+     the honest default: the rows will come out ragged and the count of that is
+     reported, which is a better answer than picking whichever separator
+     produced the most fields. */
+  return DATA_SEPARATORS[0];
+}
+
+/* A single column's type, from the cells actually in it. TEXT for an empty
+   column: claiming a column of nothing holds numbers is a guess about data that
+   is not there, and TEXT is the type that constrains nothing downstream. */
+function inferColumnType(rows, i) {
+  var sawValue = false;
+  for (var r = 0; r < rows.length; r++) {
+    var v = rows[r][i];
+    if (v === '' || v === null || v === undefined) continue;
+    sawValue = true;
+    if (!/^[+-]?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$/.test(String(v).trim())) {
+      return COLTYPE.TEXT;
+    }
+  }
+  return sawValue ? COLTYPE.NUMBER : COLTYPE.TEXT;
+}
+
+function parseTableFile(text, header, name) {
+  var problem = controlCharProblem(text, 'data file');
+  if (problem) return { error: problem };
+
+  var lines = String(text).split(/\r?\n/);
+  var width = header.columns.length;
+  var sep = detectSeparator(lines, width);
+
+  /* Counted before anything is built. The row cap used to be enforced inside
+     the loop, which meant a file of a million rows was a quarter of a million
+     row arrays in memory before it was refused: the cap held, and the refusal
+     cost as much as reading the file would have. Counting first allocates
+     nothing, and a file past the cap is turned away before the first row
+     exists. */
+  var n = 0;
+  for (var c = 0; c < lines.length; c++) {
+    if (lines[c] !== '' && lines[c].trim() !== '') n++;
+  }
+  if (n > MAX_DATA_ROWS) {
+    return { error: '"' + name + '" holds ' + n + ' rows, past the ' + MAX_DATA_ROWS +
+      ' this tool will read.' };
+  }
+
+  var rows = [], ragged = 0, trimmed = 0;
+
+  for (var ln = 0; ln < lines.length; ln++) {
+    var line = lines[ln];
+    if (line === '' || line.trim() === '') continue;
+
+    var f = (sep.key === 'space' ? line.trim() : line).split(sep.re);
+    if (f.length !== width) {
+      ragged++;
+      f = f.slice(0, width);
+      while (f.length < width) f.push('');
+    }
+    for (var i = 0; i < width; i++) {
+      var cell = String(f[i] === undefined ? '' : f[i]).trim();
+      if (cell.length > MAX_FIELD_CHARS) { cell = cell.slice(0, MAX_FIELD_CHARS); trimmed++; }
+      f[i] = cell;
+    }
+    rows.push(f);
+  }
+
+  if (!rows.length) return { error: '"' + name + '" has no rows in it.' };
+
+  // Types first, then the cells converted, so a number column carries numbers
+  // rather than strings that happen to look like them.
+  var columns = uniqueColumnKeys(header.columns.map(function(label, i) {
+    return { key: tableColumnKey(label, i), label: label, type: inferColumnType(rows, i) };
+  }));
+  columns.forEach(function(c, i) {
+    if (c.type !== COLTYPE.NUMBER) return;
+    rows.forEach(function(r) { if (r[i] !== '') r[i] = Number(r[i]); });
+  });
+
+  var warnings = [];
+  if (ragged) {
+    warnings.push(ragged + (ragged === 1 ? ' row did' : ' rows did') +
+      ' not have ' + width + ' fields and ' +
+      (ragged === 1 ? 'was' : 'were') + ' padded or trimmed to fit');
+  }
+  if (trimmed) {
+    warnings.push(trimmed + (trimmed === 1 ? ' field was' : ' fields were') +
+      ' longer than ' + MAX_FIELD_CHARS + ' characters and ' +
+      (trimmed === 1 ? 'was' : 'were') + ' cut');
+  }
+
+  return { name: name, columns: columns, rows: rows,
+           separator: sep.label, warnings: warnings };
+}
+
+/* A column KEY from a column NAME. Keys are what a saved query stores and what
+   every node reaches a column by, so they have to be stable and safe to put in
+   an attribute selector. The label keeps whatever the header said.
+
+   The index is appended only when two columns would otherwise collide, which
+   the archive's own header does: it carries maj1 and maj2 twice. First
+   occurrence keeps the plain key, so the common case reads as itself. */
+function tableColumnKey(label, i) {
+  var base = String(label || '').replace(/[^A-Za-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+  return base === '' ? ('col' + (i + 1)) : base;
+}
+
+function uniqueColumnKeys(columns) {
+  var seen = {};
+  columns.forEach(function(c, i) {
+    var key = c.key, n = 2;
+    while (seen[key]) { key = c.key + '_' + n; n++; }
+    seen[key] = true;
+    c.key = key;
+  });
+  return columns;
+}
+
 /* ------------------------------------------------------- BUILDING A DATASET */
 
 /* One header plus any number of parsed year files. A student who appears in two
@@ -853,12 +1131,13 @@ function buildDataset(header, parsedYears) {
   var parsed = parsedYears.slice().sort(function(a, b){ return a.year - b.year; });
   parsed.forEach(function(p) {
     years.push(p.year);
-    files.push({ name: yearFileNameFor(p.year), year: p.year,
+    files.push({ name: p.name || yearFileNameFor(p.year), year: p.year,
                  rows: p.rows, students: p.students.length });
     p.students.forEach(function(s){ students.push(s); });
     (p.warnings || []).forEach(function(w){ warnings[w] = true; });
   });
   return {
+    kind: 'archive',
     headers: header,
     parsed: parsed,
     files: files,
@@ -868,6 +1147,43 @@ function buildDataset(header, parsedYears) {
     loadedAt: new Date().toISOString()
   };
 }
+
+/* THE OTHER KIND OF DATASET
+   ---------------------------------------------------------------------------
+   Same slot, same node, different shape. An archive dataset holds students and
+   the years they belong to; a table dataset holds columns and rows and has
+   neither. `kind` is what everything downstream branches on, and it is a stored
+   field rather than a guess at run time so the two walks cannot read it
+   differently.
+
+   Table files do NOT accumulate the way year files do. A year is a slice of one
+   collection and adding another is ordinary; two arbitrary tables have no
+   reason to share a header, and stacking them silently is what Combine exists
+   to do visibly. So the last one chosen is the one held, and the panel says so.
+
+   `files` keeps the archive's shape so the panel can list either without a
+   second case. `students` is absent rather than empty: an empty list would read
+   as "no students found", which is a claim about the data, and this table has
+   nothing to say about students at all. */
+function buildTableDataset(header, parsedTable) {
+  return {
+    kind: 'table',
+    headers: header,
+    files: [{ name: parsedTable.name, year: null,
+              rows: parsedTable.rows.length, students: null }],
+    years: [],
+    columns: parsedTable.columns,
+    rows: parsedTable.rows,
+    separator: parsedTable.separator,
+    warnings: (parsedTable.warnings || []).slice(),
+    loadedAt: new Date().toISOString()
+  };
+}
+
+/* Archive unless it says otherwise, so a dataset built before `kind` existed
+   (the synthetic one, and anything a test hands in) still reads as one. */
+function datasetKind(d) { return (d && d.kind === 'table') ? 'table' : 'archive'; }
+function isTableDataset(d) { return datasetKind(d) === 'table'; }
 
 /* The one place a year becomes a file name. The admission rule reads names and
    this writes them, so a change to the convention is one edit rather than a
@@ -963,8 +1279,14 @@ function loadHeadersFor(nodeId, file, done) {
       d.years = [];
     }
     setSourceNotice(nodeId, { kind:'ok', text:
-      'Read ' + header.columns.length + ' columns from ' + header.name +
-      '. Now choose the year files.' });
+      'Read ' + header.columns.length + ' column' +
+      (header.columns.length === 1 ? '' : 's') + ' from ' + header.name + '. ' +
+      (headerIsArchive(header)
+        ? 'These are the archive\u2019s columns, so its rows will be read as students. ' +
+          'Now choose the year files.'
+        : 'Now choose the data file' + (headerTargetOf(header.name)
+            ? ', which this header is named for: ' + headerTargetOf(header.name)
+            : '') + '.') });
     render();
     done(null, header);
   });
@@ -999,10 +1321,16 @@ function loadYearFilesFor(nodeId, fileList, done) {
 
   var header = headerFor(nodeId);
   if (!header) {
-    failSource(nodeId, 'Load ' + DATA_HEADERS_NAME + ' first. A year file cannot be ' +
-      'read without the column list that says what its fields are.', done);
+    failSource(nodeId, 'Choose the column file first: ' + DATA_HEADERS_NAME +
+      ', or "headers-" then this file\u2019s name and ".txt". A data file cannot ' +
+      'be read without the column list that says what its fields are.', done);
     return;
   }
+
+  /* Which reader the file goes to is the header's business, not the file's.
+     One node, two shapes, decided by looking at the columns rather than by
+     asking the user which kind of Source they wanted. */
+  if (!headerIsArchive(header)) { loadTableFileFor(nodeId, header, files, done); return; }
 
   var existing = parsedYearsOf(nodeId);
   var held = {};
@@ -1012,6 +1340,13 @@ function loadYearFilesFor(nodeId, fileList, done) {
   var seen = {};
   files.forEach(function(f) {
     if (problem) return;
+    /* The ARCHIVE's own rule, unrelaxed. The supervisor's ruling was that the
+       tool should stop refusing files for being shaped differently, not that
+       the archive should stop being the archive: its exports really are named
+       this way, and the year in the name is what parseYearFile() checks the
+       rows against. A file that is not one of those is read by the table path
+       instead, which is reached by handing this Source a header that does not
+       declare the archive's columns. */
     problem = yearFileProblem(f);
     if (problem) return;
     var y = yearOfFile(f);
@@ -1047,6 +1382,47 @@ function loadYearFilesFor(nodeId, fileList, done) {
       parsed[i] = out;
       if (--pending === 0) finishYearLoad(nodeId, header, existing, parsed, held, done);
     });
+  });
+}
+
+/* THE TABLE STEP.
+   One file, replacing whatever was there. See buildTableDataset() for why these
+   do not accumulate the way year files do. Choosing several at once is a
+   mis-click worth naming rather than resolving by taking the first. */
+function loadTableFileFor(nodeId, header, files, done) {
+  if (files.length > 1) {
+    failSource(nodeId, 'This column file does not describe the archive, so its rows ' +
+      'are read as an ordinary table and a Source holds one of those at a time. ' +
+      'Choose one file, or use a Combine node to bring several together.', done);
+    return;
+  }
+
+  var file = files[0];
+  var problem = dataFileProblem(file);
+  if (problem) { failSource(nodeId, problem, done); return; }
+
+  readFileText(file, function(err, text) {
+    if (err) { failSource(nodeId, err, done); return; }
+
+    var out = parseTableFile(text, header, dataFileName(file));
+    if (out.error) { failSource(nodeId, out.error, done); return; }
+
+    var dataset = buildTableDataset(header, out);
+    setSourceData(nodeId, dataset);
+    delete PENDING_HEADERS[nodeId];
+    applyDatasetToNode(nodeId, dataset);
+
+    /* The separator is worth naming only when there was a choice to get wrong.
+       A one-column file has no separator, and saying it was "separated by tabs"
+       reads as the tool having decided something it did not. */
+    var text2 = 'Read ' + out.rows.length + ' row' + (out.rows.length === 1 ? '' : 's') +
+      ' of ' + out.columns.length + ' column' + (out.columns.length === 1 ? '' : 's') +
+      ' from ' + out.name +
+      (out.columns.length > 1 ? ', separated by ' + out.separator : '') + '.';
+    if (out.warnings.length) text2 += ' ' + out.warnings.join('. ') + '.';
+    setSourceNotice(nodeId, { kind:'ok', text: text2 });
+    render();
+    done(null, dataset);
   });
 }
 
@@ -1126,7 +1502,9 @@ function applyDatasetToNode(nodeId, dataset) {
   var d = datasetCfg(node);
   var header = headerFor(nodeId);
   d.headers = header ? header.name : '';
-  d.years = dataset ? dataset.years.slice() : [];
+  d.years = (dataset && !isTableDataset(dataset)) ? dataset.years.slice() : [];
+  d.file  = (dataset && isTableDataset(dataset) && dataset.files[0])
+    ? dataset.files[0].name : '';
 
   /* A population the Source can no longer answer would leave it silently empty.
      Falling back to "all students" is the only choice that is right whatever is

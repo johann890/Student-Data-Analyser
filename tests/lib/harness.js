@@ -154,11 +154,32 @@ function memoryStorage() {
 /* A fresh application instance per test file. State is module-global inside the
    IIFE, so sharing an instance between files would let one test's leftover
    nodes change another's result. */
+/* EVERY WINDOW THIS HARNESS HAS BUILT, SO THE RUNNER CAN PUT THEM DOWN
+   ---------------------------------------------------------------------------
+   `pretendToBeVisual` gives each JSDOM a live requestAnimationFrame loop, and a
+   live timer is a GC root: nothing a boot() produced was ever collected, so the
+   whole run held every window it had ever made. With a suite this size that
+   reached the heap limit and the run died with "Ineffective mark-compacts"
+   rather than a failure, which is the worst way for a test run to end.
+
+   Closing a window stops its timers and lets it go. It has to be the RUNNER
+   that does it, between suites, because a suite may boot at module scope and
+   use that window in every test it has. */
+const LIVE_WINDOWS = [];
+
+function disposeWindows() {
+  while (LIVE_WINDOWS.length) {
+    const w = LIVE_WINDOWS.pop();
+    try { w.close(); } catch (e) { /* already gone; nothing to do */ }
+  }
+}
+
 function boot() {
   const dom = new JSDOM(fs.readFileSync(APP_HTML, 'utf8'), {
     runScripts: 'outside-only',
     pretendToBeVisual: true
   });
+  LIVE_WINDOWS.push(dom.window);
   const w = dom.window;
   const doc = w.document;
 
@@ -414,4 +435,4 @@ function withoutStorage(h) {
   return h;
 }
 
-module.exports = { boot, withoutStorage, APP_DIR, APP_SCRIPTS, APP_PATHS, APP_HTML, DATA_DIR, dataDirFile, hasDataDir };
+module.exports = { boot, withoutStorage, disposeWindows, APP_DIR, APP_SCRIPTS, APP_PATHS, APP_HTML, DATA_DIR, dataDirFile, hasDataDir };

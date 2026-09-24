@@ -664,11 +664,32 @@
           </figure>
 
           <h4 class="help-cat help-cat-source">Source</h4>
-          <p class="help-node-desc">Where a query begins. It reads the rows in the data file and
+          <p class="help-node-desc">Where a query begins. It reads the rows in a data file and
              hands them on. Every query needs at least one, and a query with none has nothing to
              compute. Several Sources in one graph is perfectly normal, and it is how you reach
              across years.</p>
-          <p class="help-node-desc"><b>Rows</b> chooses what a row means on the way out, and it is
+          <p class="help-node-desc">A data file carries no column names inside it, so a Source is
+             given two files: the <b>column file</b> that names the columns, and then the data
+             itself. Name the column file <b>headers.txt</b>, or <b>headers-</b> then the data
+             file's name and <b>.txt</b>, so that a folder can hold several data files and the
+             columns for each of them side by side: <b>headers-gpa-bands.txt</b> describes
+             <b>gpa-bands.txt</b>.</p>
+          <p class="help-node-desc">The columns decide how the file is read, and there is nothing
+             to choose. A column file naming the archive's columns (<b>ID</b>, <b>Year</b>,
+             <b>Crse</b>, <b>Grade</b> and the rest) means student records, and the rows are folded
+             into students with their courses nested inside them. <b>Any other column file</b>
+             means an ordinary table, and the rows come through as they are: one row per line, no
+             students and no years. That is how a list of labels or a file of named bands gets in,
+             which is what <b>Select For</b>'s Labels port takes. The panel says which of the two
+             it is reading before you load anything into it.</p>
+          <p class="help-node-desc">A table file is read as it finds it. Tabs, commas or spaces,
+             whichever separates the first row into as many fields as the column file names; a
+             column whose every value reads as a number becomes a number column, so it can be
+             measured, sorted or used as a band edge; and a row with the wrong number of fields is
+             padded or trimmed to fit and counted in the notice rather than refusing the file.</p>
+          <p class="help-node-desc"><b>Rows</b> and <b>Population</b> below are about students, so
+             a Source reading an ordinary table shows neither.
+             <b>Rows</b> chooses what a row means on the way out, and it is
              the setting that changes every count downstream. <b>One row per student</b> is the
              default: a row is one student in one year, with that student's courses carried nested
              inside the row, so a student who appears in two years is two rows and each cohort is
@@ -940,6 +961,24 @@
                 before it reaches the port, and a <b>Sort</b> and a <b>Take</b> in front of Labels
                 are how you say "the ten biggest". A <b>Source</b> cannot supply one: it reads the
                 archive files and always produces the archive's columns.
+                <br>Wire in a table of <b>three</b> columns instead and the groups become named
+                bands rather than values. The columns are read in order: the first names the band,
+                the second is its lowest value and the third its highest, so a file reading
+                <b>Fail 0 4 / Pass 4 6 / Merit 6 8 / Excellent 8 9</b> is a grading scheme, and the
+                same four rows are the same scheme next year. That is the difference between this
+                and a <b>Histogram</b>, whose band widths come from the data it is given and so
+                differ between one year and the next. Here you say what the bands are, and
+                <b>Put in bands</b> names the number they apply to.
+                <br>A value sitting on the edge between two bands goes in the higher one, so bands
+                that meet never count it twice and the bands still add up to the rows. The very top
+                of the last band is included, which is what those four rows mean by <b>8 9</b>
+                covering an A+. A row whose value falls in no band at all is left out and counted in
+                the query log, as is a row with no value to compare, so a breakdown that quietly
+                lost a third of its rows says so.
+                <br>The node works out which of the two readings you meant from the shape of the
+                table, and says which one it chose under <b>Read the Labels branch as</b>. Set it
+                there if it guesses wrong, which it can: a <b>Histogram</b> with two measures has
+                three columns and the last two are numbers, and it is not a set of bands.
                 <br>It does not reorder anything. Put a <b>Sort</b> after it, and then a <b>Take</b>
                 after that, if you want the largest few.
                 <div class="help-eg">

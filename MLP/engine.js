@@ -301,6 +301,24 @@ function sourceTable(node, log) {
   var data = datasetFor(node);
   if (!data) return { error: sourceDataError(node) };
 
+  /* A table Source is the whole of the other shape: the rows as the file has
+     them, under the columns the header named. Population and grain are not
+     skipped here so much as absent, because both are facts about students and
+     this table has none. The panel does not offer them either, for the same
+     reason, so there is no setting being quietly ignored. */
+  if (isTableDataset(data)) {
+    log.push(logEntry('SOURCE', [
+      {c:'val', s:data.files[0] ? data.files[0].name : 'a table'},
+      {c:'op', s:'->'},
+      {c:'val', s:data.rows.length}, {s:(data.rows.length === 1 ? 'row' : 'rows')},
+      {s:'of'}, {c:'val', s:data.columns.length},
+      {s:(data.columns.length === 1 ? 'column' : 'columns')}
+    ]));
+    // Copied, because a node downstream that sorts in place would otherwise
+    // reorder the Source's own held rows and change what a re-run reports.
+    return { table: makeTable(data.columns, data.rows.map(function(r){ return r.slice(); })) };
+  }
+
   var pop = cfg.pop || 'all';
   var list = data.students;
   if (pop !== 'all') {
@@ -2058,8 +2076,22 @@ function measureColumns(node, t) {
   return cols;
 }
 
-function selectForColumns(node, t) {
-  return [groupColumn(node, t)].concat(measureColumns(node, t));
+/* In bands mode the group column is the BINNED column's name over text cells,
+   exactly as Histogram's is: "Fail" is not a GPA, so carrying GPA's numeric
+   type and value set across would describe cells that cannot appear. The
+   band names become the column's order in the evaluator, where they are known.
+
+   The column that gets banded is resolved by binField(), the same resolver
+   Histogram uses and against the same set of measurable columns, because it is
+   the same question: which number are we putting in ranges. */
+function selectForGroupColumn(node, t, lt) {
+  if (!selectForUsesBands(node, lt)) return groupColumn(node, t);
+  var col = binField(node, t);
+  return { key:'group', label: col ? col.label : 'Band', type: COLTYPE.TEXT };
+}
+
+function selectForColumns(node, t, lt) {
+  return [selectForGroupColumn(node, t, lt)].concat(measureColumns(node, t));
 }
 
 /* One group's measures, in the order the header declares them. Shared with
@@ -2115,6 +2147,106 @@ function labelsFromTable(node, lt) {
   return out;
 }
 
+/* NAMED BANDS ON THE LABELS PORT
+   ---------------------------------------------------------------------------
+   The supervisor's generalisation, in his words and his format:
+
+       binName    binMinValue    binMaxValue
+
+   The labels port already answers "which groups exist". This lets a group be a
+   RANGE with a name of its own rather than a value, which is the one thing the
+   port could not express. A file of four rows is a grading scheme; the same
+   four rows next year are the same scheme, which is the property Histogram's
+   auto-derived widths cannot have and the reason he asked for this instead.
+
+   WHY A SHAPE AND NOT A SETTING, AND WHY A SETTING AS WELL
+   A table whose second and third columns are numbers is read as bands without
+   being told to. That is his own principle about the Source applied one node
+   further along: the node adapts to the format it is handed.
+
+   Shape alone is not quite enough to be silent about, though. A Histogram with
+   two measures emits [group, count, average] and matches that test exactly, so
+   auto-detection can be wrong, and wrong in the way this tool keeps warning
+   about: a plausible number rather than an error. So the reading is always
+   STATED in the panel and in the query log, and `labelsAs` can pin it. Auto is
+   the default and covers every case anyone will type by hand.
+
+   THE BOUNDARY RULE, WHICH IS THE PART THAT GOES WRONG
+   Histogram's note applies here word for word: the `between` operator includes
+   both ends, which is right for a filter and fatal for a distribution, where a
+   value on a shared edge lands in two bands and the bands stop summing to the
+   rows. So bands are matched half-open, [lo, hi), and a value is tried against
+   the closed form only when no half-open band took it.
+
+   That second pass is not a fudge, it is what someone writing
+
+       Fail 0 4 / Pass 4 6 / Merit 6 8 / Excellent 8 9
+
+   means by the last row. Contiguous bands never double-count, because the
+   half-open pass always claims the value first; the closed pass only ever
+   catches a value sitting on the outer edge of the range the bands cover. */
+var SELECTFOR_BAND_ARITY = 3;
+
+/* Read off the header alone, so the schema walk can ask it too. Which reading
+   is in force changes the TYPE of the group column (a band is named text,
+   a value keeps its own column's type), so the two walks have to agree about
+   it before a single row exists. */
+function labelsAreBands(lt) {
+  if (!lt || lt.columns.length < SELECTFOR_BAND_ARITY) return false;
+  return lt.columns[1].type === COLTYPE.NUMBER && lt.columns[2].type === COLTYPE.NUMBER;
+}
+
+function selectForLabelMode(node) {
+  var m = node && node.cfg ? node.cfg.labelsAs : null;
+  return (m === 'values' || m === 'bands') ? m : 'auto';
+}
+
+/* Bands need something on the labels port to come from. `labelsAs:'bands'` with
+   nothing wired is a setting waiting for a wire, not an empty set of bands. */
+function selectForUsesBands(node, lt) {
+  if (!lt) return false;
+  var m = selectForLabelMode(node);
+  if (m === 'bands')  return true;
+  if (m === 'values') return false;
+  return labelsAreBands(lt);
+}
+
+/* Positional, because the format the supervisor specified is positional: first
+   column the name, second the minimum, third the maximum. `labelCol` is not
+   consulted here for that reason, and the panel says so.
+
+   A row that cannot be a band is dropped and counted rather than guessed at. A
+   blank name would produce a group nothing could refer to; a non-numeric edge
+   has no comparison to make; hi below lo is a band that can never match, which
+   is a typo rather than an empty band. Duplicate names go the same way: the
+   group column declares its own order from these names, and two rows sharing
+   one would make that order ambiguous and a downstream Filter's dropdown wrong. */
+function bandsFromLabels(lt) {
+  var bands = [], malformed = 0, duplicates = 0, seen = {};
+  if (!lt || !lt.rows) return { bands: bands, malformed: 0, duplicates: 0 };
+  lt.rows.forEach(function(r) {
+    var name = r[0], lo = Number(r[1]), hi = Number(r[2]);
+    if (isBlank(name) || !isFinite(lo) || !isFinite(hi) || hi < lo) { malformed++; return; }
+    var key = String(name);
+    if (seen[key]) { duplicates++; return; }
+    seen[key] = true;
+    bands.push({ name: key, lo: lo, hi: hi });
+  });
+  return { bands: bands, malformed: malformed, duplicates: duplicates };
+}
+
+/* Which band a value falls in, or -1. Half-open first so that contiguous bands
+   cannot both claim an edge; closed second so the top of the range covered is
+   not thrown away. First match wins where bands overlap, and the caller counts
+   nothing for that: an overlap is the user's arrangement, and the rows it takes
+   are reported by the band that got them. */
+function bandIndexOf(bands, v) {
+  var i;
+  for (i = 0; i < bands.length; i++) if (v >= bands[i].lo && v < bands[i].hi) return i;
+  for (i = 0; i < bands.length; i++) if (v >= bands[i].lo && v <= bands[i].hi) return i;
+  return -1;
+}
+
 function labelsFromData(node, t) {
   var f = groupField(node, t);
   if (!f) return [];
@@ -2168,13 +2300,127 @@ function rowsForLabel(t, f, value) {
   return applyCriterion(t, crit, f, []);
 }
 
+/* The banded half of SelectFor. Kept beside the value half rather than woven
+   through it: the two share their measures, their share denominator, their
+   meta and their output shape, and differ entirely in what a group IS. Braiding
+   them would put a conditional inside every one of those. */
+function evaluateSelectForBands(node, ctx, t, lt, hasSource) {
+  var cols = selectForColumns(node, t, lt);
+  var col = binField(node, t);
+
+  if (!col) {
+    /* Said, not returned as an empty breakdown. Bands compare numbers, and a
+       table with no number to compare is a wiring mistake the user can fix,
+       not a distribution that happens to be empty. */
+    ctx.log.push(logEntry('SELECT FOR', [
+      {s:'no number in this table to put in bands'}]));
+    return { table: makeTable(cols, []), hasSource: hasSource };
+  }
+
+  var parsed = bandsFromLabels(lt);
+  var bands = parsed.bands;
+  var idx = colIndex(t, col.key);
+
+  /* Every band becomes a group whether or not anything lands in it. That is
+     the whole point of supplying them: a band with no rows is a zero the data
+     cannot produce on its own, and the one the supervisor asked for when he
+     said one sometimes wants labels that receive no hits. */
+  var groups = bands.map(function(b) {
+    return { label: b.name, value: b.name, lo: b.lo, hi: b.hi,
+             table: makeTable(t.columns, []) };
+  });
+
+  var blanks = 0, outside = 0;
+  t.rows.forEach(function(r) {
+    var raw = r[idx];
+    var v = Number(raw);
+    // A blank is not a zero, for the reason reduceValues() skips it too.
+    if (raw === '' || raw === null || raw === undefined || !isFinite(v)) { blanks++; return; }
+    var i = bandIndexOf(bands, v);
+    if (i === -1) { outside++; return; }
+    groups[i].table.rows.push(r);
+  });
+
+  var stats = statsOf(node);
+  var statCols = stats.map(function(s){ return statCol(s, t); });
+  var total = t.rows.length;
+
+  var rows = groups.map(function(g) {
+    return [g.value].concat(measureValues(g.table, stats, statCols, total));
+  });
+
+  /* The bands' own order IS their order, declared on the column so a downstream
+     Sort does not read them alphabetically and a downstream Filter can offer
+     them as a dropdown. Same treatment, and same reason, as Histogram's. */
+  cols[0] = {
+    key: cols[0].key, label: cols[0].label, type: cols[0].type,
+    values: groups.map(function(g){ return g.label; }),
+    order:  groups.map(function(g){ return g.label; })
+  };
+
+  ctx.log.push(logEntry('SELECT FOR', [
+    {c:'val', s:col.label}, {s:'in named bands from the labels branch'},
+    {c:'op', s:'->'},
+    {c:'val', s:groups.length}, {s:(groups.length === 1 ? 'band' : 'bands')},
+    {s:'over'}, {c:'val', s:total}, {s:'rows'}
+  ]));
+  /* Three different ways rows and bands go missing, said separately because
+     they have three different fixes: widen the bands, check the data, or fix
+     the band file. One combined count would need all three explanations. */
+  if (outside) {
+    ctx.log.push(logEntry('SKIP', [
+      {c:'val', s:outside}, {s:(outside === 1 ? 'row falls' : 'rows fall')},
+      {s:'in no band'}
+    ]));
+  }
+  if (blanks) {
+    ctx.log.push(logEntry('SKIP', [
+      {c:'val', s:blanks}, {s:(blanks === 1 ? 'row has' : 'rows have')},
+      {s:'no'}, {c:'val', s:col.label}, {s:'and are in no band'}
+    ]));
+  }
+  /* Counted apart because they are fixed apart. A malformed row is a typo in
+     the band file; a repeat is a table that was never a list of bands, which is
+     what a branch of ordinary data rows looks like when it reaches this port.
+     One combined count would need both explanations every time. */
+  if (parsed.malformed) {
+    ctx.log.push(logEntry('SKIP', [
+      {c:'val', s:parsed.malformed},
+      {s:(parsed.malformed === 1 ? 'band row needs' : 'band rows need')},
+      {s:'a name, a lowest value and a highest'}
+    ]));
+  }
+  if (parsed.duplicates) {
+    ctx.log.push(logEntry('SKIP', [
+      {c:'val', s:parsed.duplicates},
+      {s:(parsed.duplicates === 1 ? 'band row repeats a name' : 'band rows repeat a name')},
+      {s:'already used'}
+    ]));
+  }
+
+  return {
+    table: makeTable(cols, rows, {
+      branches: groups,
+      measures: stats.map(function(s){ return selectForOp(s && s.op).key; }),
+      title:   'Breakdown',
+      unit:    (groups.length === 1 ? 'band' : 'bands')
+    }),
+    hasSource: hasSource
+  };
+}
+
 function evaluateSelectFor(node, ctx) {
   var dataRes  = ctx.at('data')[0];
   var labelRes = ctx.at('labels')[0];
   var t = dataRes ? dataRes.table : makeTable([], []);
   var hasSource = !!(dataRes && dataRes.hasSource);
+  var lt = labelRes ? labelRes.table : null;
 
-  var cols = selectForColumns(node, t);
+  if (selectForUsesBands(node, lt)) {
+    return evaluateSelectForBands(node, ctx, t, lt, hasSource);
+  }
+
+  var cols = selectForColumns(node, t, lt);
   var f = groupField(node, t);
 
   if (!f) {
@@ -2847,6 +3093,16 @@ var NODE_SPEC = {
        sourceGrain(), so the schema pass and the row pass cannot disagree about
        which grain this Source is in. */
     schema: function(node) {
+      /* A table Source's header is the file's, so it is read from what the node
+         is holding rather than from STUDENT_COLUMNS. That is data informing a
+         header, which every other node avoids, and it is unavoidable here: the
+         columns of an arbitrary file are not knowable from the config. It stays
+         sound because both walks call datasetFor() and get the same answer, and
+         because a Source with nothing loaded falls back to the archive's
+         columns, which is what an unconfigured Source has always described. */
+      var data = datasetFor(node);
+      if (data && isTableDataset(data)) return headerOnly(makeTable(data.columns, []));
+
       var t = makeTable(STUDENT_COLUMNS, []);
       return headerOnly(sourceGrain(node).key === 'enrolment' ? projectSchema(node, t) : t);
     },
@@ -2965,13 +3221,19 @@ var NODE_SPEC = {
        entry in NODE_PORTS is the whole declaration, which is what the comment
        there predicted when it named this node.
 
-       schema reads only the data port. The output header is the grouping field
-       plus the measures, and neither depends on the labels branch: what the
-       labels supply is which groups exist, and that is rows. So a half-built
-       graph with nothing on `labels` still describes itself correctly, and the
-       two walks cannot drift over a wire only one of them looks at. */
-    schema: function(node, inSchema) {
-      return makeTable(selectForColumns(node, inSchema), []);
+       schema reads the data port for the measures and the labels port for ONE
+       fact: whether the groups are values or named bands. That used to be true
+       of the data port alone, and the note here said so, because what the
+       labels supplied was only which groups exist, and that is rows.
+
+       Bands changed it. A band is named text where a value carries its own
+       column's type, so the reading decides the TYPE of the group column, and a
+       type is header. It is still only the labels HEADER that is read, never
+       its rows, so a half-built graph still describes itself and the schema
+       walk stays a walk over headers. labelsAreBands() takes a header for
+       exactly this reason. */
+    schema: function(node, inSchema, ctx) {
+      return makeTable(selectForColumns(node, inSchema, ctx.at('labels')[0]), []);
     },
     evaluate: evaluateSelectFor
   },

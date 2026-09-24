@@ -569,7 +569,10 @@ function defaultCfg(type) {
 
      `labelCol` is which column of the labels branch supplies the values, and
      is ignored entirely while nothing is wired there. */
-  if (type === 'selectFor') return { by:'', stats:[newStat()], labelCol:'' };
+  /* `labelsAs` pins how the labels branch is read: 'auto' works it out from
+     the shape, which is right for anything typed by hand. See the bands note
+     in engine.js for why it can be pinned at all. */
+  if (type === 'selectFor') return { by:'', stats:[newStat()], labelCol:'', labelsAs:'auto' };
   /* `by` empty means "the first column that can be binned", resolved against
      the arriving table the way SelectFor resolves its own. `width` is stored as
      typed and coerced on read, exactly as Take stores N. `stats` is the same
@@ -1609,12 +1612,43 @@ function sourceGrainHint(node, data) {
       'identifies a row.';
 }
 
+/* WHAT A TABLE SOURCE EMITS, in place of Rows and Population.
+   The archive Source states its multiplication because a row can mean two
+   things there. A table Source's rows mean one thing only, so what is worth
+   stating instead is the header it is handing on: the columns are the file's
+   rather than the archive's, and which of them came through as numbers is the
+   part that decides what can be measured, sorted or used as a band edge. */
+function sourceTableShapeHTML(data) {
+  var cols = data.columns || [];
+  var nums = cols.filter(function(c){ return c.type === COLTYPE.NUMBER; });
+  return '<div class="cfg-label">Out</div>' +
+    '<div class="cmp-hint"><b>' + data.rows.length + '</b> row' +
+      (data.rows.length === 1 ? '' : 's') + ', one per line of the file, under ' +
+      cols.map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(', ') + '. ' +
+      (nums.length
+        ? (nums.length === cols.length
+            ? 'Every column reads as a number.'
+            : nums.map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(' and ') +
+              ' read' + (nums.length === 1 ? 's' : '') + ' as a number; the rest as text.')
+        : 'Every column reads as text.') +
+    '</div>';
+}
+
 function sourceFilesHTML(node) {
   var id = node.id;
   var data = datasetFor(node);
   var header = headerFor(id);
   var want = datasetCfg(node);
   var notice = SOURCE_NOTICE[id];
+
+  /* WHICH OF THE TWO SHAPES THIS SOURCE IS IN
+     Decided by the header, not by a setting, so the panel describes what the
+     node is actually holding. Before a header is loaded there is nothing to
+     decide, and the archive is what the step names then: it is the file
+     everyone starts with, and naming the general case first would describe the
+     rare one. */
+  var archive = !header || headerIsArchive(header);
+  var wantsFile = header ? headerTargetOf(header.name) : '';
 
   var html = '<div class="cfg-label">Data files</div><div class="src-files">';
 
@@ -1624,7 +1658,10 @@ function sourceFilesHTML(node) {
     '<span class="src-what">' +
       (header
         ? '<b>' + esc(header.name) + '</b><small>' +
-            (header.columns.length ? header.columns.length + ' columns' : 'built in') + '</small>'
+            (header.columns.length
+              ? header.columns.length + ' column' + (header.columns.length === 1 ? '' : 's') +
+                (archive ? ', the archive\u2019s' : '')
+              : 'built in') + '</small>'
         : '<b>' + esc(DATA_HEADERS_NAME) + '</b><small>not loaded</small>') +
     '</span>' +
     '<button class="src-btn" onclick="pickHeadersFile(' + id + ')">' +
@@ -1638,30 +1675,56 @@ function sourceFilesHTML(node) {
      four files look like one thing that had to be re-picked whole. */
   var files = (data && !data.synthetic) ? data.files : [];
   var full = files.length >= MAX_YEAR_FILES;
-  html += '<div class="src-file' + (files.length ? ' done' : '') + '">' +
-    '<span class="src-step">2</span>' +
-    '<span class="src-what">' +
-      (files.length
-        ? '<b>' + files.length + ' year file' + (files.length === 1 ? '' : 's') + '</b>' +
-          '<small>' + files.reduce(function(a, f){ return a + f.rows; }, 0) + ' rows, ' +
-          files.reduce(function(a, f){ return a + f.students; }, 0) + ' students</small>'
-        : '<b>' + yearFileNameFor(want.years.length ? want.years[0] : 'YYYY') + '</b>' +
-          '<small>' + (want.years.length
-            ? (want.years.length === 1 ? 'wanted by this query'
-               : want.years.length + ' wanted by this query')
-            : 'not loaded') + '</small>') +
-    '</span>' +
-    '<button class="src-btn"' + (header && !full ? '' : ' disabled') +
-      ' title="' + (full ? esc('This Source is holding the most year files it can.')
-                         : 'Choose one or more mcs-students-YYYY files') + '"' +
-      ' onclick="pickYearFiles(' + id + ')">' +
-      (files.length ? 'Add' : 'Choose') + '</button>' +
-  '</div>';
+
+  if (archive) {
+    html += '<div class="src-file' + (files.length ? ' done' : '') + '">' +
+      '<span class="src-step">2</span>' +
+      '<span class="src-what">' +
+        (files.length
+          ? '<b>' + files.length + ' year file' + (files.length === 1 ? '' : 's') + '</b>' +
+            '<small>' + files.reduce(function(a, f){ return a + f.rows; }, 0) + ' rows, ' +
+            files.reduce(function(a, f){ return a + f.students; }, 0) + ' students</small>'
+          : '<b>' + yearFileNameFor(want.years.length ? want.years[0] : 'YYYY') + '</b>' +
+            '<small>' + (want.years.length
+              ? (want.years.length === 1 ? 'wanted by this query'
+                 : want.years.length + ' wanted by this query')
+              : 'not loaded') + '</small>') +
+      '</span>' +
+      '<button class="src-btn"' + (header && !full ? '' : ' disabled') +
+        ' title="' + (full ? esc('This Source is holding the most year files it can.')
+                           : 'Choose one or more mcs-students-YYYY files') + '"' +
+        ' onclick="pickYearFiles(' + id + ')">' +
+        (files.length ? 'Add' : 'Choose') + '</button>' +
+    '</div>';
+  } else {
+    /* One file, and the step says so by naming it in the singular and by
+       offering Replace rather than Add. See buildTableDataset() for why these
+       do not accumulate. The name the header was qualified with is shown while
+       nothing is loaded, because that is the file this Source is asking for and
+       the user has it on disk beside the header they just chose. */
+    var one = files[0];
+    html += '<div class="src-file' + (one ? ' done' : '') + '">' +
+      '<span class="src-step">2</span>' +
+      '<span class="src-what">' +
+        (one
+          ? '<b>' + esc(one.name) + '</b><small>' + one.rows + ' row' +
+            (one.rows === 1 ? '' : 's') + '</small>'
+          : '<b>' + esc(wantsFile || want.file || 'the data file') + '</b><small>' +
+            (want.file ? 'wanted by this query' : 'not loaded') + '</small>') +
+      '</span>' +
+      '<button class="src-btn"' +
+        ' title="' + esc(wantsFile
+          ? 'Choose ' + wantsFile + ', the file this column file is named for'
+          : 'Choose the data file these columns describe') + '"' +
+        ' onclick="pickYearFiles(' + id + ')">' +
+        (one ? 'Replace' : 'Choose') + '</button>' +
+    '</div>';
+  }
 
   /* Each loaded year, with the control that drops it. Indented under step 2
      rather than being three more numbered steps: they are the contents of one
      step, and numbering them would say the order they were chosen in matters. */
-  if (files.length) {
+  if (archive && files.length) {
     html += '<div class="src-years">' + files.map(function(f) {
       return '<div class="src-year">' +
         '<span class="src-year-name">' + esc(f.name) + '</span>' +
@@ -1671,7 +1734,7 @@ function sourceFilesHTML(node) {
           ' onclick="removeSourceYear(' + id + ',' + f.year + ')">x</button>' +
       '</div>';
     }).join('') + '</div>';
-  } else if (want.years.length > 1) {
+  } else if (archive && want.years.length > 1) {
     // Nothing loaded, but the saved query knows what it wants. Naming all of
     // them is the difference between re-picking the right files and guessing.
     html += '<div class="src-years">' + want.years.map(function(y) {
@@ -1685,12 +1748,21 @@ function sourceFilesHTML(node) {
   html += '</div>';
 
   if (!header) {
-    html += '<div class="src-hint">A year file has no column names in it, so ' +
-      esc(DATA_HEADERS_NAME) + ' has to come first.</div>';
+    html += '<div class="src-hint">A data file carries no column names in it, so ' +
+      'the column file has to come first. Name it ' + esc(DATA_HEADERS_NAME) +
+      ', or "headers-" then the data file\u2019s name and ".txt".</div>';
+  } else if (!archive && !files.length) {
+    /* Said only in the state where it explains something: a header that is not
+       the archive's, with nothing read yet. It is the one moment the user can
+       be surprised by which of the two shapes they are in. */
+    html += '<div class="src-hint">These are not the archive\u2019s columns, so this ' +
+      'file will come through as an ordinary table: one row per line, no ' +
+      'students and no years.</div>';
   }
   if (data && !data.synthetic) {
     html += '<button class="src-clear" onclick="clearSourceData(' + id + ')">' +
-      'Unload everything, including ' + esc(DATA_HEADERS_NAME) + '</button>';
+      'Unload everything, including ' + esc(header ? header.name : DATA_HEADERS_NAME) +
+      '</button>';
   }
   if (notice) {
     html += '<div class="src-notice ' + (notice.kind === 'error' ? 'bad' : 'ok') + '">' +
@@ -1713,6 +1785,13 @@ function configHTML(node, schemas) {
        offering an empty result dressed as a choice. */
     var data = datasetFor(node);
     var years = data ? data.years : [];
+
+    /* Rows and Population are facts about STUDENTS: one asks whether a row is a
+       student or an enrolment, the other which cohort. A table Source has
+       neither, so the controls are absent rather than present and ignored. A
+       disabled control says "not yet"; no control says "not here", and the
+       second is the true one. */
+    if (isTableDataset(data)) return html + sourceTableShapeHTML(data) + '</div>';
 
     /* Before Population, because it is the larger question. Population narrows
        a set of rows; this decides what a row IS, and every count downstream
@@ -1812,20 +1891,43 @@ function configHTML(node, schemas) {
        empty, which is right for a panel describing the rows and wrong for one
        asking which column holds the labels. It would offer 27 columns of a
        table that is not there. */
-    var gfields = groupFields(schema);
     var labelWires = inputsOf(id, 'labels');
-    var gf = groupField(node, schema);
+    var lschema = labelWires.length ? inputSchema(node, schemas, 'labels') : null;
+    var bands = selectForUsesBands(node, lschema);
 
-    if (!gfields.length) {
-      html += '<div class="cmp-hint">Nothing to group by. Wire a table into ' +
-        '<b>Data</b>.</div>';
+    /* The "For each" list follows the reading. In bands mode the node is
+       putting a NUMBER in ranges, which is binField()'s question and
+       binField()'s set of columns; offering "Specialisation" there would offer
+       a group that can never match a band. Two readings, two lists, one
+       stored key, resolved by whichever resolver the reading calls for. */
+    if (bands) {
+      var bcols = binnableCols(schema);
+      var bf = binField(node, schema);
+      if (!bcols.length) {
+        html += '<div class="cmp-hint">No number in this table to put in bands. ' +
+          'Wire a table with a numeric column into <b>Data</b>.</div>';
+      } else {
+        html += '<div class="cfg-label">Put in bands</div>' +
+          '<select' + ctl(id, 'by') + '>' +
+            bcols.map(function(c) {
+              return opt(c.key, bf ? bf.key : '', c.label);
+            }).join('') +
+          '</select>';
+      }
     } else {
-      html += '<div class="cfg-label">For each</div>' +
-        '<select' + ctl(id, 'by') + '>' +
-          gfields.map(function(f) {
-            return opt(f.key, gf ? gf.key : '', f.label);
-          }).join('') +
-        '</select>';
+      var gfields = groupFields(schema);
+      var gf = groupField(node, schema);
+      if (!gfields.length) {
+        html += '<div class="cmp-hint">Nothing to group by. Wire a table into ' +
+          '<b>Data</b>.</div>';
+      } else {
+        html += '<div class="cfg-label">For each</div>' +
+          '<select' + ctl(id, 'by') + '>' +
+            gfields.map(function(f) {
+              return opt(f.key, gf ? gf.key : '', f.label);
+            }).join('') +
+          '</select>';
+      }
     }
 
     /* Where the groups come from is decided by a wire rather than by a
@@ -1835,22 +1937,47 @@ function configHTML(node, schemas) {
        the labels are read from. What the port BUYS (zero-count groups, labels
        from another branch) is reference material and lives in Help. */
     if (labelWires.length) {
-      var lschema = inputSchema(node, schemas, 'labels');
-      var lcols = labelCols(lschema);
-      var lchosen = (cfg.labelCol && colByKey(lschema, cfg.labelCol) &&
-                     colByKey(lschema, cfg.labelCol).type !== COLTYPE.COURSES)
-        ? cfg.labelCol
-        : (lcols.length ? lcols[0].key : '');
-      html += '<div class="cfg-label">Groups from the Labels branch</div>' +
-        (lcols.length
-          ? '<select' + ctl(id, 'labelCol') + '>' +
-              lcols.map(function(c){ return opt(c.key, lchosen, c.label); }).join('') +
-            '</select>'
-          : '<div class="cmp-hint">No column on that branch can supply labels. ' +
-              'Put a <b>Project</b> in front of it.</div>');
+      /* The reading is never left to be inferred. Auto is right for anything
+         anyone types by hand, but a Histogram with two measures has the shape
+         of a band table and is not one, so what the node decided is written
+         down where the decision can be seen and overridden. */
+      html += '<div class="cfg-label">Read the Labels branch as</div>' +
+        '<select' + ctl(id, 'labelsAs') + '>' +
+          opt('auto',   selectForLabelMode(node),
+              'Work it out (' + (labelsAreBands(lschema) ? 'named bands' : 'a list of values') + ')') +
+          opt('values', selectForLabelMode(node), 'A list of values') +
+          opt('bands',  selectForLabelMode(node), 'Named bands') +
+        '</select>';
+
+      if (bands) {
+        /* Positional, because the format is positional, so there is no column
+           to pick and the picker would be a control with nothing to decide.
+           The three column names, and nothing else: the boundary rule is a
+           paragraph and belongs in Help, which is where the supervisor asked
+           node explanation to go and where Histogram's own boundary paragraph
+           already went when this budget was set. */
+        var bn = lschema.columns;
+        html += '<div class="cmp-hint">In order: <b>' + esc(bn[0].label) +
+          '</b> names the band, <b>' + esc(bn[1].label) + '</b> is its lowest ' +
+          'value, <b>' + esc(bn[2].label) + '</b> its highest.</div>';
+      } else {
+        var lcols = labelCols(lschema);
+        var lchosen = (cfg.labelCol && colByKey(lschema, cfg.labelCol) &&
+                       colByKey(lschema, cfg.labelCol).type !== COLTYPE.COURSES)
+          ? cfg.labelCol
+          : (lcols.length ? lcols[0].key : '');
+        html += '<div class="cfg-label">Groups from the Labels branch</div>' +
+          (lcols.length
+            ? '<select' + ctl(id, 'labelCol') + '>' +
+                lcols.map(function(c){ return opt(c.key, lchosen, c.label); }).join('') +
+              '</select>'
+            : '<div class="cmp-hint">No column on that branch can supply labels. ' +
+                'Put a <b>Project</b> in front of it.</div>');
+      }
     } else {
       html += '<div class="cmp-hint"><b>Labels</b> (optional). Unconnected: the ' +
-        'groups are the values found in the column above.</div>';
+        'groups are the values found in the column above. Wire one column in ' +
+        'for a fixed list, or three for named bands.</div>';
     }
 
     var stats = statsOf(node);
@@ -1885,10 +2012,16 @@ function configHTML(node, schemas) {
         'measures will come out blank.</div>';
     }
 
-    // Say what comes out, in the words the header will use, for the same
-    // reason the Aggregate panels do: the shape is the part people get wrong.
-    html += '<div class="cmp-hint">Out: one row per group \u2014 ' +
-      selectForColumns(node, schema).map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(', ') +
+    /* Say what comes out, in the words the header will use, for the same
+       reason the Aggregate panels do: the shape is the part people get wrong.
+
+       `lschema` is passed, not left out, because the reading decides the group
+       column. Without it this line would describe the value reading while the
+       node emitted bands, which is the one thing a panel that exists to state
+       the output shape may not get wrong. */
+    html += '<div class="cmp-hint">Out: one row per ' + (bands ? 'band' : 'group') +
+      ' \u2014 ' +
+      selectForColumns(node, schema, lschema).map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(', ') +
       '. Not ordered; put a <b>Sort</b> after it.</div>';
   }
 
@@ -3944,7 +4077,7 @@ function mergeCfg(base, saved) {
   // Scalar settings are read straight into HTML attributes and comparisons, so
   // a file supplying an object or array where a string belongs is coerced
   // rather than trusted.
-  ['pop','grain','show','filename','sort','by','labelCol'].forEach(function(k) {
+  ['pop','grain','show','filename','sort','by','labelCol','labelsAs'].forEach(function(k) {
     if (base[k] !== undefined && typeof base[k] !== 'string') {
       base[k] = (base[k] === null || typeof base[k] === 'object') ? '' : String(base[k]);
     }
@@ -6463,6 +6596,14 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     REQUIRED_HEADER_COLUMNS: REQUIRED_HEADER_COLUMNS,
     dataFileName: dataFileName, headersFileProblem: headersFileProblem,
     yearFileProblem: yearFileProblem, yearOfFile: yearOfFile,
+    // One Source, any number of columns: what the header says decides how it reads
+    headerIsArchive: headerIsArchive, isHeaderFileName: isHeaderFileName,
+    headerNameFor: headerNameFor, headerTargetOf: headerTargetOf,
+    dataFileProblem: dataFileProblem, parseTableFile: parseTableFile,
+    buildTableDataset: buildTableDataset, isTableDataset: isTableDataset,
+    datasetKind: datasetKind, detectSeparator: detectSeparator,
+    inferColumnType: inferColumnType, tableColumnKey: tableColumnKey,
+    MAX_HEADER_COLUMNS: MAX_HEADER_COLUMNS,
     parseHeaderFile: parseHeaderFile, parseYearFile: parseYearFile,
     calendarYearOf: calendarYearOf, buildDataset: buildDataset,
     loadHeadersFor: loadHeadersFor, loadYearFilesFor: loadYearFilesFor,
@@ -6504,6 +6645,11 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     listChoices: listChoices, listMatcher: listMatcher,
     newCriterion: newCriterion, defaultCfg: defaultCfg,
     normaliseShow: normaliseShow, outputTable: outputTable, defaultAvgCol: defaultAvgCol,
+    // Named bands on SelectFor's labels port
+    labelsAreBands: labelsAreBands, selectForUsesBands: selectForUsesBands,
+    selectForLabelMode: selectForLabelMode, bandsFromLabels: bandsFromLabels,
+    bandIndexOf: bandIndexOf, selectForGroupColumn: selectForGroupColumn,
+    SELECTFOR_BAND_ARITY: SELECTFOR_BAND_ARITY,
     // What a row means, chosen on the Source
     SOURCE_GRAINS: SOURCE_GRAINS, sourceGrain: sourceGrain,
     sourceGrainHint: sourceGrainHint,
