@@ -4862,13 +4862,11 @@ function renderLibrary() {
 
   if (st.error) { body.innerHTML = libProblemHTML(st.error); return; }
 
-  if (!st.entries.length) {
-    body.innerHTML = '<div class="lib-empty">Nothing saved yet. Build a query on the ' +
-      'canvas, then name it below and press Save to library.<br><br>' +
-      'A saved query holds the question and not the answer, so no student records ' +
-      'are kept here. Opening one asks for the data files again.</div>';
-    return;
-  }
+  /* An empty library says nothing. The dialog's own heading paragraph already
+     explains what the library is for, and the name field and Save button sit
+     in plain sight at the foot, so a second block of prose in the middle was
+     repeating the two things around it. */
+  if (!st.entries.length) { body.innerHTML = ''; return; }
 
   var q = libQuery.trim().toLowerCase();
   var shown = st.entries.filter(function(e) { return libMatches(e, q); });

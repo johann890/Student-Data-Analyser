@@ -54,21 +54,25 @@ body {
   cursor: pointer;
 }
 .run-btn:hover { background: #0a2e5a; }
-/* Red at rest, not only on hover: Clear throws the whole graph away, and the
-   one destructive control in the bar should read as destructive before the
-   pointer reaches it. Hover fades a fill in behind it, the same gesture the
-   Add buttons use, so it belongs to the same family despite the warning. */
+/* Filled, not outlined: Clear throws the whole graph away, and it sat in a row
+   of outlined Add buttons wearing the same shape as them, differing only in
+   hue. Belonging to that family was the wrong instinct for the one control in
+   the bar that cannot be undone. It is now the only solid block up there, which
+   is what makes it findable when it is wanted and unmistakable when it is not.
+   It shares its colours with the armed Delete on a library card, the app's
+   other point of no return. */
 .clear-btn {
-  background: transparent;
-  border: 1px solid #7a2828;
+  background: #8a2020;
+  border: 1px solid #c04040;
   border-radius: 5px;
-  color: #e35d5d;
+  color: #fff;
+  font-weight: 600;
   padding: 5px 13px;
   font-size: 13px;
   cursor: pointer;
   transition: background 0.12s;
 }
-.clear-btn:hover { background: #240d0d; }
+.clear-btn:hover { background: #a02828; }
 
 /* ── TOOLBAR SCALE ───────────────────────────────────────
    The bar can be pulled taller by the handle beneath it, and everything in it
@@ -2481,34 +2485,28 @@ th.cmp-num { color: #8a8a8a !important; }
 
    Written long rather than as a `border:` shorthand, for the reason recorded
    against .shape-histogram. */
+/* Filled rather than outlined, so it is found without being looked for. Both
+   dialogs put it on the pale header band, where an outlined button is the
+   faintest thing on the lightest surface in the app: the one control someone
+   reaches for in a hurry was the one that receded. A solid block reads at a
+   glance on the band and on a dark card alike, which is why there is one
+   treatment here instead of a second set of rules for the band. */
 .panel-close {
-  background: transparent;
+  background: #8a2020;
   border-width: 1px;
   border-style: solid;
-  border-color: #7a2828;
+  border-color: #c04040;
   border-radius: 5px;
-  color: #e35d5d;
+  color: #fff;
   font-family: inherit;
   font-size: 13px;
+  font-weight: 600;
   padding: 5px 13px;
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.12s;
 }
-.panel-close:hover { background: #240d0d; }
-
-/* Both panels' Close now stands on a band, and the light red it wears against
-   a black card is the wrong half of the pair there: it is the paler colour on
-   the paler ground. The hue is kept, because red is what ends a panel
-   everywhere else in here, and only the lightness is swapped so the button
-   stays the darker thing on the band. */
-.help-top .panel-close,
-.lib-header-band .panel-close {
-  border-color: #6b1f1f;
-  color: #5f1414;
-}
-.help-top .panel-close:hover,
-.lib-header-band .panel-close:hover { background: rgba(0, 0, 0, 0.13); }
+.panel-close:hover { background: #a02828; }
 
 .help-main { display: flex; flex: 1; min-height: 0; }
 
