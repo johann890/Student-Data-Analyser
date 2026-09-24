@@ -9,7 +9,13 @@ module.exports = ({ describe, test }) => {
     test('the rule table is the single source of truth', () => {
       const { app } = boot();
       const R = app.CONNECT_RULES;
-      assert.deepEqual(R.output, [], 'an Output is terminal');
+      /* An Output was terminal. That was reversed too, and for a reason of the
+         same shape as Compare's below: a user looking at a result and wanting
+         it narrowed had to go back and rebuild the chain in front of the
+         Output, which is the same query written twice. */
+      assert.deepEqual(R.output, R.filter,
+        'an Output goes wherever any other table-producing node goes');
+      assert.includes(R.output, 'filter');
       assert.includes(R.source, 'filter');
       assert.includes(R.source, 'output');
       assert.includes(R.filter, 'filter');

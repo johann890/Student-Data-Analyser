@@ -2930,18 +2930,36 @@ var NODE_SPEC = {
   },
 
   output: {
-    /* An Output's result IS its input: outputTable() applies the chosen view at
-       render time, not here, so neither the count reshaping nor the column
-       narrowing is part of the graph. Nothing reads downstream of an Output
-       (CONNECT_RULES gives it no outgoing edges), so the distinction costs
-       nothing today, and passthroughSchema stays honest because no node ever
-       asks what an Output produces.
+    /* An Output is now chainable, and this is the entry the old comment here
+       said would have to grow up when that happened.
 
-       If an Output ever becomes chainable this is the entry that has to grow a
-       real schema, and it is now a real piece of work rather than a formality:
-       the header depends on the view AND on the column selection, so the answer
-       is makeTable(outputTable(node, inSchema).columns, []). */
-    schema: passthroughSchema
+       The rule it settles: what an Output SHOWS is what it passes on. The view
+       is part of the graph rather than a coat of paint applied at render time,
+       so a node wired after an Output receives the table the user is looking
+       at, and the screen and the dataflow can never disagree about what came
+       out of it. A Count emits its one-row count; a row view narrowed to three
+       columns emits three columns.
+
+       The header therefore depends on the view AND on the column selection,
+       which is why this is a real schema rather than passthroughSchema: a
+       Filter wired after a narrowed Output must offer the columns that survive
+       it, not the ones that arrived.
+
+       meta survives exactly where it is needed. outputTable() returns its input
+       untouched for the summary and lists views, which are the only views a
+       branch table ever reaches, and drops meta only when narrowing a row view,
+       which is what Select does for the same reason. */
+    schema: function(node, inSchema) {
+      return makeTable(outputTable(node, inSchema).columns, []);
+    },
+    /* The OUTPUT line is logged here rather than at render time so that it is
+       carried by the result like every other node's line. A node wired after an
+       Output inherits its log, and a query log that skipped the Output would
+       describe a path the data did not take. */
+    rows: function(node, t, log) {
+      log.push(logEntry('OUTPUT', [{ c:'val', s:normaliseShow(node) }]));
+      return { table: outputTable(node, t) };
+    }
   }
 };
 

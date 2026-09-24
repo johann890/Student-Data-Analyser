@@ -960,6 +960,31 @@ body.panel-resizing * { cursor: col-resize !important; }
 .val { color: #7fd9a6; }
 .op { color: #f0b96a; }
 
+/* An Output hidden from the panel is drawn and then taken out of sight, never
+   left out of the run, so that ticking it back on is a class change rather than
+   another evaluation of the whole graph.
+
+   Compound selectors, not a bare `.result-hidden`. Both things this hides set
+   their own `display`, and a single class would tie with them on specificity
+   and then lose to whichever rule the file happens to declare last. That is not
+   a hypothetical: the bare version was written first and was beaten by
+   `.result-block { display: flex }` twenty lines below, so the class went on,
+   the block stayed on screen, and only the rendered page showed it. */
+.result-block.result-hidden,
+.all-hidden-note.result-hidden { display: none; }
+
+/* Stands where the results would be and speaks in the same voice as the empty
+   panel line, because to the reader this IS an empty panel, and the only useful
+   thing to say is which switch emptied it. */
+.all-hidden-note {
+  color: #a0a0a0;
+  font-size: 14px;
+  text-align: center;
+  margin-top: 40px;
+  line-height: 1.5;
+  padding: 0 14px;
+}
+
 /* One result block per output node */
 .result-block {
   display: flex; flex-direction: column; gap: 6px;

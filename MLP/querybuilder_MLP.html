@@ -976,13 +976,23 @@
              exactly the columns shown. A <b>Select</b> upstream does the same job to the data
              itself, and the two work together, with Select narrowing what arrives and this
              narrowing what you see of it.</p>
+          <p class="help-node-desc">An Output can be built on. Wire another node after it and that
+             node is handed exactly what the Output is showing, so you can look at an answer and
+             then narrow it without rebuilding the query in front of it. What it shows is what it
+             passes on: a Count passes its count, and a row view narrowed to three columns passes
+             those three columns.</p>
+          <p class="help-node-desc">An Output used as a step on the way to an answer is often not
+             an answer worth the room, so <b>Show in results panel</b> turns its block off. It is
+             still run and still feeds whatever is wired after it, and only the block goes. Turning
+             it back on does not need another run.</p>
         </section>
 
         <!-- ── RESULTS ─────────────────────────────────────── -->
         <section id="help-results">
           <h3>Reading results</h3>
           <p>Pressing Run Query fills the panel on the right, one block per Output node, in the
-             order the Outputs were added.</p>
+             order the Outputs were added. An Output with <b>Show in results panel</b> unticked is
+             still run, and still feeds whatever is wired after it, but writes no block here.</p>
 
           <figure class="help-fig help-fig-narrow">
             <svg viewBox="0 0 300 250" xmlns="http://www.w3.org/2000/svg" role="img"

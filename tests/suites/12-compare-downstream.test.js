@@ -49,9 +49,13 @@ module.exports = ({ describe, test }) => {
         assert.ok(app.canConnect('compare', t), 'compare should reach ' + t));
     });
 
-    test('an Output is still terminal', () => {
+    test('an Output is no longer terminal', () => {
+      /* It was, and the whole of that reasoning is in 32-output-passthrough.
+         Kept here as well because this suite is about what may follow what, and
+         a rule that changed should fail loudly in both places if it changes
+         back. */
       const { app } = boot();
-      assert.notOk(app.canConnect('output', 'filter'));
+      assert.ok(app.canConnect('output', 'filter'));
     });
   });
 
