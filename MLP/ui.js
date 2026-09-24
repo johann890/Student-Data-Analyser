@@ -518,7 +518,12 @@ function defaultCfg(type) {
      their contents. See the loader section. It is the one cfg key whose value
      is a description of state held outside the model, which is exactly what
      makes a saved query re-openable without carrying student records in it. */
-  if (type === 'source')  return { pop:'all', dataset:{ headers:'', years:[] } };
+  /* `grain` is what a row means on the way out: one student, or one enrolment.
+     'student' is the default because it is what every Source emitted before the
+     setting existed, so a saved query written without the key keeps its
+     meaning. See SOURCE_GRAINS in engine.js for why it is visible in four
+     places rather than one. */
+  if (type === 'source')  return { pop:'all', grain:'student', dataset:{ headers:'', years:[] } };
   if (type === 'filter')  return { criteria:[newCriterion()] };
   if (type === 'compare') return { measures:DEFAULT_MEASURES.slice(), sort:'wired', labels:{} };
   if (type === 'sort')    return { keys: [newSortKey()] };
@@ -1569,6 +1574,41 @@ function upstreamLabel(node) {
    constraint rather than a stylistic one (a year file is a list of fields with
    no names on it), so the control says so by being unavailable, and the hint
    underneath says why. */
+/* WHAT A ROW MEANS HERE, IN THIS SOURCE'S OWN NUMBERS
+   ---------------------------------------------------------------------------
+   Project's panel "states the multiplication" rather than describing the
+   setting, because the number is the part that goes wrong quietly. This is that
+   sentence for the Source, and it is built from the files this Source is
+   actually holding, so it reads as a fact about the data in front of the user
+   rather than as a worked example they have to map onto it.
+
+   With nothing loaded there is no multiplication to state, so it describes the
+   shape instead. Saying "0 students become 0 rows" would be arithmetic about
+   nothing dressed as information. */
+function sourceGrainHint(node, data) {
+  var enrolments = null, students = null;
+  if (data && !data.synthetic && data.files && data.files.length) {
+    enrolments = data.files.reduce(function(a, f){ return a + f.rows; }, 0);
+    students   = data.files.reduce(function(a, f){ return a + f.students; }, 0);
+  }
+
+  if (sourceGrain(node).key === SOURCE_GRAINS[0].key) {
+    return students === null
+      ? 'A row is one student in one year, with their courses nested inside it. ' +
+        'A student who appears in two years is two rows, which is what makes each ' +
+        'cohort separately countable.'
+      : 'A row is one student in one year, so this Source emits <b>' + students +
+        '</b> rows. Counting them counts people.';
+  }
+  return enrolments === null
+    ? 'A row is one enrolment, so one student becomes one row per course they ' +
+      'took. Counting them counts course registrations rather than people.'
+    : '<b>' + students + '</b> students become <b>' + enrolments + '</b> rows, ' +
+      'one per course taken. Counting them counts course registrations rather ' +
+      'than people, and <b>ID</b> arrives as <b>Student</b> because it no longer ' +
+      'identifies a row.';
+}
+
 function sourceFilesHTML(node) {
   var id = node.id;
   var data = datasetFor(node);
@@ -1673,6 +1713,25 @@ function configHTML(node, schemas) {
        offering an empty result dressed as a choice. */
     var data = datasetFor(node);
     var years = data ? data.years : [];
+
+    /* Before Population, because it is the larger question. Population narrows
+       a set of rows; this decides what a row IS, and every count downstream
+       means something different depending on the answer. The same reasoning
+       puts "Show in results panel" at the top of an Output's panel. */
+    var grain = sourceGrain(node);
+    html += '<div class="cfg-label">Rows</div>' +
+      '<select' + ctl(id, 'grain') + '>' +
+        SOURCE_GRAINS.map(function(g) {
+          return opt(g.key, grain.key, g.label);
+        }).join('') +
+      '</select>';
+    /* States the multiplication rather than describing the setting, which is
+       what Project's panel does and for the same reason: the number is the
+       part that goes wrong silently. The student count is read from the files
+       this Source is actually holding, so it is this Source's multiplication
+       and not a worked example. */
+    html += '<div class="cmp-hint">' + sourceGrainHint(node, data) + '</div>';
+
     html += '<div class="cfg-label">Population</div>' +
       '<select' + ctl(id, 'pop') + (years.length ? '' : ' disabled') + '>' +
         opt('all', cfg.pop, 'All students') +
@@ -1710,7 +1769,7 @@ function configHTML(node, schemas) {
     }
 
     var picked = measuresOf(node);
-    html += '<div class="cfg-label">Columns</div><div class="cmp-measures">' +
+    html += '<div class="cfg-label">Columns to show</div><div class="cmp-measures">' +
       MEASURES.map(function(m) {
         return '<label class="cmp-measure">' +
           '<input type="checkbox"' + (picked.indexOf(m.key) !== -1 ? ' checked' : '') +
@@ -1718,6 +1777,16 @@ function configHTML(node, schemas) {
           '<span>' + esc(m.label) + '</span></label>';
       }).join('') +
     '</div>' +
+    /* Said at the boxes and not only in the Help. A group headed "Columns"
+       names what the list is about and not what ticking one does, and that is
+       the question the supervisor asked of it: he could see the boxes change
+       and could not see what they were for. The second sentence is the other
+       half of the same question. These three are measures, so each one is a
+       figure that has to be worked out; the box cannot answer until the query
+       runs, and saying so is cheaper than leaving the reader to infer it from
+       a dimmed panel. */
+    '<div class="cmp-hint">Each ticked box is one column of the result. ' +
+      'Re-run the query to fill in a column you have just ticked.</div>' +
     '<div class="cfg-label">Order</div>' +
     '<select' + ctl(id, 'sort') + '>' +
       opt('wired', cfg.sort, 'As connected') +
@@ -2030,7 +2099,7 @@ function configHTML(node, schemas) {
       html += '<div class="cmp-hint">Nothing upstream yet. Wire a Source in to choose columns.</div>';
     } else {
       var kept = selectedCols(node, schema).map(function(c){ return c.key; });
-      html += '<div class="cfg-label">Keep</div><div class="cmp-measures sel-cols">' +
+      html += '<div class="cfg-label">Columns to keep</div><div class="cmp-measures sel-cols">' +
         availCols.map(function(c) {
           // The last ticked box is disabled rather than hidden. A Select with no
           // columns is a table with nothing in it, and the panel it leaves behind
@@ -2044,9 +2113,15 @@ function configHTML(node, schemas) {
             '<span>' + esc(c.label) + '</span></label>';
         }).join('') +
       '</div>';
+      /* A Select narrows the table that travels on, so unticking here changes
+         what every node downstream receives. That is a computation, and the
+         boxes say so rather than leaving the user to read it off the stale
+         note. Deliberately different wording from the Output's boxes below,
+         because the two do different things and reading alike would be the
+         confusion rather than the cure. */
       html += '<div class="cmp-hint">Out: ' + kept.length + ' of ' +
         availCols.length + ' columns, in the order they arrive. Rows are never ' +
-        'touched.</div>';
+        'touched. Re-run the query to pass the change on.</div>';
     }
   }
 
@@ -2166,7 +2241,7 @@ function configHTML(node, schemas) {
           'choose which columns to show.</div>';
       } else {
         var oKept = outputCols(node, schema).map(function(c){ return c.key; });
-        html += '<div class="cfg-label">Show columns</div><div class="cmp-measures sel-cols">' +
+        html += '<div class="cfg-label">Columns to show</div><div class="cmp-measures sel-cols">' +
           oCols.map(function(c) {
             // Last box locked for Select's reason: an Output showing no columns
             // has nothing to show, and the panel it leaves behind offers no way
@@ -2180,9 +2255,16 @@ function configHTML(node, schemas) {
               '<span>' + esc(c.label) + '</span></label>';
           }).join('') +
         '</div>';
+        /* The only tick boxes in the tool that answer without a run, so the
+           only ones whose hint may promise it. See refreshOutputView(). */
         html += '<div class="cmp-hint">Showing ' + oKept.length + ' of ' +
           oCols.length + ' columns. No rows are lost, and Copy and Save follow ' +
-          'this.</div>';
+          'this. The results update as you tick, with no re-run.' +
+          (outputFeedsAnother(node)
+            ? ' A node is wired after this Output, so that branch does need a ' +
+              're-run to catch up.'
+            : '') +
+          '</div>';
       }
     }
 
@@ -2229,9 +2311,22 @@ function shapeHTML(node) {
        delete button lives at top-right, so the two occupied the same spot and
        the badge read as something to click. The border carries the state
        without competing for that corner. */
+    /* The grain is named ON THE SHAPE, not left to the panel. That is the
+       whole of what was wrong with this setting the first time it existed: it
+       was a dropdown nobody had open while reading a count that it had
+       multiplied by eight. Only the non-default grain is written, so an
+       ordinary Source is the shape it has always been and the words appear
+       exactly when they carry information.
+
+       Inside the circle rather than in a corner, for the reason the no-data
+       state is a ring rather than a badge: the delete button owns the top
+       right, and a second thing there reads as something to click. */
+    var grain = sourceGrain(node);
+    var sub = grain.key === SOURCE_GRAINS[0].key ? ''
+      : '<span class="node-grain">' + esc(grain.label.toLowerCase()) + '</span>';
     return '<div class="node-shape shape-source' +
-      (hasSourceData(node) ? '' : ' no-data') + '">' +
-      removeBtn + 'Source</div>';
+      (hasSourceData(node) ? '' : ' no-data') + (sub ? ' has-grain' : '') + '">' +
+      removeBtn + 'Source' + sub + '</div>';
   }
   if (node.type === 'filter') return '<div class="node-shape shape-filter">' + removeBtn + 'Filter</div>';
   if (node.type === 'compare') {
@@ -2413,12 +2508,25 @@ function onConfigInput(e) {
   if (!nid || !key) return;
 
   var value = el.type === 'checkbox' ? el.checked : el.value;
-  setCfg(parseInt(nid, 10), key, value);
+  var id = parseInt(nid, 10);
+  var node = findNode(id);
+  setCfg(id, key, value);
   /* Showing or hiding an Output in the panel computes nothing, so it must not
      invalidate the run. Being made to press Run Query again to get back a block
      you only asked to look away from would be a poor trade, and the answer on
      screen is still the answer. The blocks already drawn are re-dressed. */
   if (key === 'panel') applyPanelVisibility();
+  /* Same rule, one node further in: which columns an Output SHOWS computes
+     nothing either. The same key on a Select does narrow the table that travels
+     on, so the node type is part of the test and not just the key.
+
+     Re-dressing and marking stale are both done when both are true. The block
+     in front of the user is correct the moment the box is ticked, and the note
+     above it is about the blocks BELOW this Output, which really are out of
+     date. Choosing one would either lie about this block or lie about those. */
+  else if (node && node.type === 'output' && key.indexOf('column:') === 0) {
+    if (!refreshOutputView(node) || outputFeedsAnother(node)) markStale();
+  }
   else markStale();
 
   var reshapes = el.tagName === 'SELECT' || el.type === 'checkbox';
@@ -3079,6 +3187,56 @@ function applyPanelVisibility() {
   }
 }
 
+/* The result view on its own, wrapped so that ticking a column box can replace
+   it without redrawing the query log above it or the Copy and Save buttons
+   beside it. The wrapper carries the block's own flex column and gap, so a view
+   made of several elements (a summary with its branch cards under it) sits
+   exactly where it sat when those elements were children of the block itself.
+   See .result-view in styles.css. */
+function outputViewHTML(node, r) {
+  return '<div class="result-view" data-output-view="' + node.id + '">' +
+    resultHTML(node, r) + '</div>';
+}
+
+/* Whether anything is wired after this Output. Its column boxes are a pure view
+   for this block and a real narrowing for that wire, which is the whole reason
+   refreshOutputView() re-dresses and marks stale rather than choosing. */
+function outputFeedsAnother(node) {
+  return connections.some(function(c){ return c.from === node.id; });
+}
+
+/* TICKING A COLUMN ON AN OUTPUT
+   ---------------------------------------------------------------------------
+   The one group of tick boxes in the tool that changes what is on screen and
+   computes nothing, and therefore the one group that must not ask for a run.
+   Which columns are looked at is a property of the view: engine.js says so
+   where outputTable() narrows, and the panel hint beside the boxes promises
+   that Copy and Save follow them. A box that answers only after Run Query
+   breaks both promises, and it is what the supervisor hit. His words were that
+   the ticks changed and the output did not, and he was right to read that as
+   the boxes not being for anything.
+
+   So the block is re-dressed from the table the run already kept. No walk of
+   the graph, no re-evaluation, and the export entry is updated in the same
+   breath so that Copy and Save stay true to what is drawn rather than to what
+   was drawn when Run was last pressed.
+
+   Returns whether it managed it. False means there is nothing on screen to
+   re-dress (never run, or the block belongs to an older run), and the caller
+   falls back to the stale note, which is the honest thing to say then. */
+function refreshOutputView(node) {
+  var entry = exportData[node.id];
+  if (!entry || !entry.arrived) return false;
+
+  var host = document.querySelector('[data-output-view="' + node.id + '"]');
+  if (!host) return false;
+
+  var t = outputTable(node, entry.arrived);
+  entry.table = t;
+  host.innerHTML = resultHTML(node, { table: t });
+  return true;
+}
+
 function runQuery() {
   var srcNodes = nodes.filter(function(n){ return n.type === 'source'; });
   var outNodes = nodes.filter(function(n){ return n.type === 'output'; });
@@ -3139,10 +3297,22 @@ function runQuery() {
         name: exportNameOf(onode, oi + 1),
         table: t,
         source: upstream ? upstream.table : t,
+        /* The table as it ARRIVED, before this Output's own view narrowed it,
+           and null when there was no upstream to take it from. refreshOutputView()
+           re-derives the view from this without another walk of the graph.
+
+           Not folded into `source` above, though the two agree whenever there
+           IS an upstream: `source` falls back to the already-narrowed table so
+           that the per-branch export always has something to read, and
+           narrowing an already-narrowed table cannot put a column back. A
+           fallback that is right for an export and wrong for a re-derivation
+           is two fields, not one. */
+        arrived: upstream ? upstream.table : null,
         log: log.map(logText)
       };
 
-      body = '<div class="query-log">' + log.map(logHTML).join('\n') + '</div>' + resultHTML(onode, r);
+      body = '<div class="query-log">' + log.map(logHTML).join('\n') + '</div>' +
+        outputViewHTML(onode, r);
 
       actions = '<div class="result-actions">' +
         exportNameHTML(onode, oi + 1) +
@@ -3774,7 +3944,7 @@ function mergeCfg(base, saved) {
   // Scalar settings are read straight into HTML attributes and comparisons, so
   // a file supplying an object or array where a string belongs is coerced
   // rather than trusted.
-  ['pop','show','filename','sort','by','labelCol'].forEach(function(k) {
+  ['pop','grain','show','filename','sort','by','labelCol'].forEach(function(k) {
     if (base[k] !== undefined && typeof base[k] !== 'string') {
       base[k] = (base[k] === null || typeof base[k] === 'object') ? '' : String(base[k]);
     }
@@ -6334,9 +6504,15 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     listChoices: listChoices, listMatcher: listMatcher,
     newCriterion: newCriterion, defaultCfg: defaultCfg,
     normaliseShow: normaliseShow, outputTable: outputTable, defaultAvgCol: defaultAvgCol,
+    // What a row means, chosen on the Source
+    SOURCE_GRAINS: SOURCE_GRAINS, sourceGrain: sourceGrain,
+    sourceGrainHint: sourceGrainHint,
     // Output visibility in the results panel
     hiddenInPanel: hiddenInPanel, outputNodes: outputNodes,
     allHiddenNoteHTML: allHiddenNoteHTML, applyPanelVisibility: applyPanelVisibility,
+    // Ticking a column on an Output re-dresses its block instead of asking for a run
+    outputViewHTML: outputViewHTML, refreshOutputView: refreshOutputView,
+    outputFeedsAnother: outputFeedsAnother,
     branchesFeedOutput: branchesFeedOutput, BRANCH_NODES: BRANCH_NODES,
     ROW_SHOWS: ROW_SHOWS, CMP_SHOWS: CMP_SHOWS, branchProducer: branchProducer,
     DISPLAY_ROW_LIMIT: DISPLAY_ROW_LIMIT, DISPLAY_CARD_LIMIT: DISPLAY_CARD_LIMIT,

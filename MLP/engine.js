@@ -237,6 +237,56 @@ function logText(e) {
   return e.kw + '  ' + e.parts.map(function(p){ return p.s; }).join(' ');
 }
 
+/* WHAT A ROW IS, CHOSEN ON THE SOURCE
+   ---------------------------------------------------------------------------
+   This setting existed once and was removed. The removal note is still in
+   applyProject() below and it is worth reading before touching this, because
+   the objection was never to the feature: it was that "a granularity switch
+   hidden in a dropdown made 'count students' wrong by a factor of eight with
+   nothing on screen to say so."
+
+   The supervisor asked for it back by email on 2026-09-24, having found the
+   nesting unexpected and wanting the choice: "I think it should be possible to
+   select whether a Source node performs this transformation or not."
+
+   Both are right, so what comes back is the switch WITHOUT the hiding. Four
+   things say which grain a Source is emitting, and the first two are on screen
+   before the panel is even opened:
+
+     1. the node on the canvas carries the words "one row per enrolment"
+        whenever it is not emitting students (shapeHTML);
+     2. the panel states the multiplication, the way Project's panel does;
+     3. the query log records it as its own step, with the row counts either
+        side, so a count that looks eight times too large has an explanation a
+        line above it;
+     4. the header changes, and `id` becomes `Student`, which is the same
+        rename Project makes and for the same reason.
+
+   The unfold itself is applyProject(), called rather than reimplemented. Two
+   copies of this transformation would be two things to keep in step, and the
+   comment on projectColumns() already explains what happens when a row builder
+   and the column list it claims to produce are allowed to drift. */
+/* The label is the whole of what each option says. A parenthetical gloss was
+   tried and removed: it pushed the option past the width of the select and was
+   cut mid-word, and the hint under the control already says the same thing in
+   this Source's own row counts, which is the better place for it. The shape on
+   the canvas lowercases the same string rather than keeping a second copy. */
+var SOURCE_GRAINS = [
+  { key:'student',   label:'One row per student'   },
+  { key:'enrolment', label:'One row per enrolment' }
+];
+
+/* The object, not the key, matching aggOp() and combineMode(). Anything
+   unrecognised, including a hand-edited file, falls back to the first, which is
+   the grain every existing saved query was built against. */
+function sourceGrain(node) {
+  var g = node && node.cfg ? node.cfg.grain : null;
+  for (var i = 0; i < SOURCE_GRAINS.length; i++) {
+    if (SOURCE_GRAINS[i].key === g) return SOURCE_GRAINS[i];
+  }
+  return SOURCE_GRAINS[0];
+}
+
 /* SOURCE
    Reads THIS node's dataset, not a global one. A Source with no files is not an
    empty result but an error: an empty table would travel down the graph and
@@ -265,7 +315,16 @@ function sourceTable(node, log) {
       return { c:'val', s: f.name + (i === data.files.length - 1 ? '' : ',') };
     })));
   }
-  return { table: studentsTable(list) };
+
+  /* Population first, then the unfold. The order is the meaning: "the 2022
+     cohort, one row per enrolment" is the 2022 STUDENTS' enrolments, and
+     filtering after the unfold would be filtering enrolments by the year on the
+     row, which is the same answer here only because every enrolment carries its
+     student's year. Doing it in the order the sentence reads keeps it the same
+     answer when that stops being true. */
+  var t = studentsTable(list);
+  if (sourceGrain(node).key === 'enrolment') t = applyProject(node, t, log, 'ROWS');
+  return { table: t };
 }
 
 /* Why this Source cannot run, in the terms the user is in a position to act on.
@@ -1494,9 +1553,15 @@ function projectSchema(node, inSchema) {
   return makeTable(projectColumns(inSchema), []);
 }
 
-function applyProject(node, t, log) {
+/* `kw` is the word this step logs under, because the Source calls this too when
+   it is set to emit enrolments. The transformation is identical and the label
+   is not: a log line reading PROJECT beside a graph with no Project node in it
+   would name a step the user cannot find. Defaulted rather than required, so
+   the node that owns the operation reads as it always did. */
+function applyProject(node, t, log, kw) {
+  kw = kw || 'PROJECT';
   if (!canProject(t)) {
-    log.push(logEntry('PROJECT', [{s:'nothing to expand (no course data on this table)'}]));
+    log.push(logEntry(kw, [{s:'nothing to expand (no course data on this table)'}]));
     return t;
   }
 
@@ -1525,7 +1590,7 @@ function applyProject(node, t, log) {
      in the log puts the multiplication in the same place every other step
      reports itself, so a count that looks eight times too large downstream has
      an explanation one line above it. */
-  log.push(logEntry('PROJECT', [
+  log.push(logEntry(kw, [
     {c:'val', s:t.rows.length}, {s:'rows'}, {c:'op', s:'->'},
     {c:'val', s:rows.length}, {s:'rows, one per course'}
   ]));
@@ -1534,7 +1599,7 @@ function applyProject(node, t, log) {
     return c.type !== COLTYPE.COURSES && carry.indexOf(c) === -1;
   });
   if (replaced.length) {
-    log.push(logEntry('PROJECT', [{s:'replaced by course values:'},
+    log.push(logEntry(kw, [{s:'replaced by course values:'},
       {c:'val', s:replaced.map(function(c){ return c.label; }).join(', ')}]));
   }
   return makeTable(cols, rows);
@@ -2775,10 +2840,15 @@ function passthroughSchema(node, inSchema) { return inSchema; }
 
 var NODE_SPEC = {
   source: {
-    // Every Source now emits the same shape (the rows in the file), so the
-    // header is fixed rather than derived from anything.
+    /* The header depends on the Source's own config, the way Unique's does.
+       It was fixed while every Source emitted students; a Source set to
+       enrolments emits what Project would have made of them, so the header is
+       asked of the same function rather than restated here. Both walks read
+       sourceGrain(), so the schema pass and the row pass cannot disagree about
+       which grain this Source is in. */
     schema: function(node) {
-      return headerOnly(makeTable(STUDENT_COLUMNS, []));
+      var t = makeTable(STUDENT_COLUMNS, []);
+      return headerOnly(sourceGrain(node).key === 'enrolment' ? projectSchema(node, t) : t);
     },
     evaluate: function(node, ctx) {
       var out = sourceTable(node, ctx.log);

@@ -665,9 +665,23 @@
 
           <h4 class="help-cat help-cat-source">Source</h4>
           <p class="help-node-desc">Where a query begins. It reads the rows in the data file and
-             hands them on, one row per student, with that student's courses carried inside the row.
-             Every query needs at least one, and a query with none has nothing to compute. Several
-             Sources in one graph is perfectly normal, and it is how you reach across years.</p>
+             hands them on. Every query needs at least one, and a query with none has nothing to
+             compute. Several Sources in one graph is perfectly normal, and it is how you reach
+             across years.</p>
+          <p class="help-node-desc"><b>Rows</b> chooses what a row means on the way out, and it is
+             the setting that changes every count downstream. <b>One row per student</b> is the
+             default: a row is one student in one year, with that student's courses carried nested
+             inside the row, so a student who appears in two years is two rows and each cohort is
+             separately countable. <b>One row per enrolment</b> unfolds those courses into rows of
+             their own, so one student becomes one row per course they took and a Count counts
+             course registrations rather than people.</p>
+          <p class="help-node-desc">Because that difference is easy to read past, a Source set to
+             enrolments says <b>one row per enrolment</b> on the node itself, its panel states the
+             multiplication in this Source's own numbers, and the query log prints the row counts
+             either side of the change. It is the same unfold a <b>Project</b> node performs, and
+             the same rename comes with it: <b>ID</b> arrives as <b>Student</b>, because after the
+             unfold it no longer identifies a row. Use the setting when every branch of the query
+             wants enrolments, and a Project when only one branch does.</p>
 
           <h4 class="help-cat help-cat-filter">Filter</h4>
           <p class="help-node-desc">Keeps the rows that match a condition and discards the rest.
@@ -767,7 +781,7 @@
                     <div class="help-eg-arrow">&rarr;</div>
                     <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Student</th><th>GPA</th></tr><tr><td>Jo</td><td>7.8</td></tr><tr><td>Ana</td><td>6.2</td></tr></table></div>
                   </div>
-                  <p class="help-eg-note">Settings: <b>Keep</b> Student and GPA. Two rows in, two rows out: only the columns change.</p>
+                  <p class="help-eg-note">Settings: <b>Columns to keep</b> Student and GPA. Two rows in, two rows out: only the columns change.</p>
                 </div></dd>
           </dl>
 
@@ -791,6 +805,12 @@
                 ordinary columns.
                 <br><br>
                 To get back to one row per student afterwards, use <b>Unique</b> on Student.
+                <br><br>
+                A <b>Source</b> can do this unfold itself, with its <b>Rows</b> setting. The result
+                is identical; what differs is reach. The setting changes every branch that leaves
+                that Source, which is what you want when the whole query is about courses. This
+                node changes one branch, and shows on the canvas where the change happened, which
+                is what you want when another branch still needs to count people.
                 <div class="help-eg">
                   <div class="help-eg-t">Example</div>
                   <div class="help-eg-io">
@@ -888,7 +908,7 @@
                     <div class="help-eg-arrow">&rarr;</div>
                     <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Branch</th><th>Students</th><th>Avg grade</th></tr><tr><td>Year 2022</td><td>2</td><td>7.00</td></tr><tr><td>Year 2023</td><td>1</td><td>5.10</td></tr></table></div>
                   </div>
-                  <p class="help-eg-note">Two branches wired in, <b>Columns</b> Students and Avg grade ticked. One row per branch, and the ticked boxes are the columns: untick Avg grade and that column goes.</p>
+                  <p class="help-eg-note">Two branches wired in, <b>Columns to show</b> Students and Avg grade ticked. One row per branch, and the ticked boxes are the columns: untick Avg grade and that column goes.</p>
                 </div></dd>
           </dl>
 
@@ -971,16 +991,20 @@
              them there are. It only displays what arrives, so for an average or any other figure,
              wire an <b>Aggregate</b> in front of it.</p>
           <p class="help-node-desc">When it is showing the rows, it also offers a tick box per
-             column, so you can look at three columns of a wide table without wiring anything up.
-             This changes the view and never the answer: no rows are lost, and Copy and Save write
-             exactly the columns shown. A <b>Select</b> upstream does the same job to the data
-             itself, and the two work together, with Select narrowing what arrives and this
-             narrowing what you see of it.</p>
+             column under <b>Columns to show</b>, so you can look at three columns of a wide table
+             without wiring anything up. This changes the view and never the answer: no rows are
+             lost, Copy and Save write exactly the columns shown, and the block in the panel
+             redraws the moment you tick a box, with no re-run. A <b>Select</b> upstream does the
+             same job to the data itself, and the two work together, with Select narrowing what
+             arrives and this narrowing what you see of it. Select does change the answer, so its
+             boxes are the ones that need a re-run.</p>
           <p class="help-node-desc">An Output can be built on. Wire another node after it and that
              node is handed exactly what the Output is showing, so you can look at an answer and
              then narrow it without rebuilding the query in front of it. What it shows is what it
              passes on: a Count passes its count, and a row view narrowed to three columns passes
-             those three columns.</p>
+             those three columns. That is the one case where the column boxes do need a re-run:
+             this block redraws straight away, but the branch wired after it is still showing the
+             columns it was handed last time, and the panel says so.</p>
           <p class="help-node-desc">An Output used as a step on the way to an answer is often not
              an answer worth the room, so <b>Show in results panel</b> turns its block off. It is
              still run and still feeds whatever is wired after it, and only the block goes. Turning

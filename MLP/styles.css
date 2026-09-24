@@ -261,6 +261,27 @@ body.toolbar-resizing * { cursor: row-resize !important; }
 }
 .shape-source:active { cursor: grabbing; }
 
+/* A Source emitting enrolments says so on the shape, so the grain is readable
+   without opening the panel. The modifier carries the column layout rather than
+   the base rule doing it, so an ordinary Source is untouched: it holds one text
+   node, and a flex row and a flex column centre that identically, but "untouched"
+   is worth more than "equivalent" on the shape every graph starts with.
+
+   Not uppercase and not letter-spaced, unlike the word above it. It is a
+   qualifier, not a second name, and setting it in the same voice would read as
+   two labels competing. */
+.shape-source.has-grain { flex-direction: column; gap: 4px; }
+.node-grain {
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  text-transform: none;
+  line-height: 1.25;
+  color: #8fd8a6;
+  text-align: center;
+  max-width: 84px;
+}
+
 /* Filter: tall sharp rectangle, distinct from output's rounded rect */
 .shape-filter {
   width: 106px; height: 84px;
@@ -991,6 +1012,15 @@ body.panel-resizing * { cursor: col-resize !important; }
 
 /* One result block per output node */
 .result-block {
+  display: flex; flex-direction: column; gap: 6px;
+}
+/* The result view inside a block, as one swappable element. It repeats the
+   block's own column and gap deliberately: ticking a column box on an Output
+   replaces this element's contents rather than the whole block, and a view that
+   is several elements (a summary with its branch cards under it) has to go on
+   sitting exactly as it did when they were children of the block. Without the
+   repeat they would collapse into one flex item and lose the gap between them. */
+.result-view {
   display: flex; flex-direction: column; gap: 6px;
 }
 .result-block-head {
