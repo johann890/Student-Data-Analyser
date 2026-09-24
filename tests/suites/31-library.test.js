@@ -630,7 +630,7 @@ module.exports = ({ describe, test }) => {
       h.w.libDeleteEntry(id, null);
       assert.ok(h.app.libGet(id), 'one click deleted it');
       const body = h.doc.getElementById('libBody');
-      assert.includes(body.textContent, 'Delete for good?');
+      assert.includes(body.textContent, 'Confirm deletion?');
       assert.ok(body.querySelector('.lib-card.danger'), 'the card should say so as well as the button');
 
       h.w.libDeleteEntry(id, null);

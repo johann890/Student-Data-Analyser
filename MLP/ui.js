@@ -4602,7 +4602,7 @@ function libThumb(graph) {
    The usual answer is a confirmation dialog, and it is the wrong one here: it
    would be a modal over a modal, with its own focus to trap and return, over a
    grid that is itself scrollable. So the button asks instead. The first click
-   turns Open into "Replace canvas?" and Delete into "Delete for good?", and the
+   turns Open into "Replace canvas?" and Delete into "Confirm deletion?", and the
    second does it. The question names what happens rather than asking whether
    the user is sure, and it is on the control they pressed, where they are
    already looking.
@@ -4727,7 +4727,7 @@ function libCardHTML(e) {
       '<button class="file-btn" onclick="libExportEntry(\'' + id + '\', this)" ' +
         'title="Write this query out as a .json file">Export</button>' +
       '<button class="lib-del" onclick="libDeleteEntry(\'' + id + '\', this)">' +
-        (pendDel ? 'Delete for good?' : 'Delete') + '</button>' +
+        (pendDel ? 'Confirm deletion?' : 'Delete') + '</button>' +
     '</div>' +
   '</div>';
 }
@@ -4775,8 +4775,8 @@ function renderLibrary() {
   if (!st.entries.length) {
     body.innerHTML = '<div class="lib-empty">Nothing saved yet. Build a query on the ' +
       'canvas, then name it below and press Save to library.<br><br>' +
-      'What is kept is the query and never the data: opening one asks for the ' +
-      'files again.</div>';
+      'A saved query holds the question and not the answer, so no student records ' +
+      'are kept here. Opening one asks for the data files again.</div>';
     return;
   }
 

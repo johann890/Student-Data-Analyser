@@ -2886,11 +2886,31 @@ th.cmp-num { color: #383838 !important; }
 #libSearch:focus { border-color: #4a7fb5; }
 
 
+/* 13px, up from the 11px it inherits from .save-sub. That size was chosen for
+   a 330px card where the text is one line of small print; here it is the first
+   thing read on a full panel, under a 20px heading, and 11px under 20px reads
+   as a footnote to the title rather than as the explanation it is. */
 .lib-sub-note {
   flex-shrink: 0;
   margin: 8px 0 0;
-  max-width: 76ch;
+  max-width: 82ch;
+  font-size: 13px;
+  line-height: 1.55;
 }
+.lib-sub-note code {
+  background: #000;
+  padding: 1px 5px;
+  border-radius: 3px;
+  font-size: 12px;
+  color: #8fa8f0;
+}
+/* The warning, set apart from the description above it rather than run on from
+   it. Same size, because it is the half people most need to read. */
+.lib-caveat {
+  margin-top: 9px;
+  color: #8a7a52;
+}
+.lib-caveat b { color: #d0b060; }
 
 /* ── NOTICE ───────────────────────────────────────────────── */
 /* Collapsed to nothing when empty, so the grid does not shift down by a blank
