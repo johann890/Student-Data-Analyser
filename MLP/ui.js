@@ -333,7 +333,17 @@ var CONNECT_RULES = {
      day arriving. */
   compare:          TABLE_NODES.concat(['compare', 'output']),
   selectFor:        TABLE_NODES.concat(['compare', 'output']),
-  output:           []
+  /* An Output takes wires out as well as in. It was the one node that could not
+     be built on, and that exception was the single place where the canvas broke
+     its own promise: every other node here composes with every other, and a
+     user who reached an Output found the graph simply stopped.
+
+     Wanting to narrow an answer you are looking at is an ordinary thing to want
+     ("these 87 rows, but only the 2024 ones"), and the alternative was to go
+     back and rebuild the chain in front of the Output, which is the same query
+     written twice. An Output emits what it shows, so continuing from one reads
+     as continuing from the table on screen. */
+  output:           TABLE_NODES.concat(['compare', 'output'])
 };
 function canConnect(fromType, toType) {
   return (CONNECT_RULES[fromType] || []).indexOf(toType) !== -1;
@@ -562,7 +572,13 @@ function defaultCfg(type) {
   if (type === 'histogram') return { by:'', width:'', stats:[newStat()] };
   // cols:null means "every column", the same convention Select uses, so the
   // validator mergeCfg already applies to that key covers this one too.
-  if (type === 'output')  return { show:'rows', filename:'', cols:null };
+  /* `panel` is whether this Output draws a block in the results panel. It is
+     true by default because an Output that showed nothing anywhere would be a
+     puzzle, and it is a view setting rather than a computed one: turning it off
+     hides the block and changes no answer, which is why nothing marks the run
+     stale when it changes. An Output used purely as a step in a chain is what
+     it is for. */
+  if (type === 'output')  return { show:'rows', filename:'', cols:null, panel:true };
   return {};
 }
 
@@ -2122,6 +2138,13 @@ function configHTML(node, schemas) {
     var show = normaliseShow(node);
     cfg.show = show;
 
+    /* First, because it is the larger question: is this Output an answer to
+       read, or a step on the way to one? Everything below describes how the
+       block is drawn, and none of it matters while it is not being drawn. */
+    html += '<label class="cmb-check"><input type="checkbox"' +
+        (hiddenInPanel(node) ? '' : ' checked') + ctl(id, 'panel') + '>' +
+      '<span>Show in results panel</span></label>';
+
     html += '<div class="cfg-label">Show</div><select' + ctl(id, 'show') + '>';
     if (branchesFeedOutput(node)) {
       html += opt('summary', show, 'Summary table') +
@@ -2391,7 +2414,12 @@ function onConfigInput(e) {
 
   var value = el.type === 'checkbox' ? el.checked : el.value;
   setCfg(parseInt(nid, 10), key, value);
-  markStale();
+  /* Showing or hiding an Output in the panel computes nothing, so it must not
+     invalidate the run. Being made to press Run Query again to get back a block
+     you only asked to look away from would be a poor trade, and the answer on
+     screen is still the answer. The blocks already drawn are re-dressed. */
+  if (key === 'panel') applyPanelVisibility();
+  else markStale();
 
   var reshapes = el.tagName === 'SELECT' || el.type === 'checkbox';
   if (reshapes && e.type === 'change') {
@@ -2950,12 +2978,18 @@ function scalarHTML(t) {
 
 function resultHTML(node, r) {
   var show = normaliseShow(node);
-  var t = outputTable(node, r.table);
+  /* Already the view. The Output applied it during evaluation so that the table
+     drawn here and the table a node wired after this Output receives are one
+     table rather than two computations that have to be kept in agreement. */
+  var t = r.table;
 
   if (show === 'count') return scalarHTML(t);
 
   if (show === 'summary' || show === 'lists') {
-    var branches = (r.table.meta && r.table.meta.branches) || null;
+    /* Read off the view rather than off what arrived, which is the same object
+       in these two views: outputTable() returns its input untouched for summary
+       and lists, and they are the only views a branch table reaches. */
+    var branches = (t.meta && t.meta.branches) || null;
     if (branches) {
       /* Compare-fed or SelectFor-fed: the summary first, then per-branch
          detail if asked for. The heading comes from the meta rather than
@@ -3001,6 +3035,50 @@ function resultHTML(node, r) {
   return tableHTML(t, 'Rows', String(t.rows.length));
 }
 
+/* SHOWING AN OUTPUT IN THE PANEL
+   ---------------------------------------------------------------------------
+   Now that a node can be wired after an Output, an Output is often a step
+   rather than an answer: someone wanting the 2024 rows of a result wants that
+   result narrowed, not the whole result and the narrowed one stacked above each
+   other in the panel. The tick box lets an Output be a step without its block
+   taking up the room an answer deserves.
+
+   It is a property of the view and of nothing else. It changes no table, so it
+   does not mark the run stale, and the blocks are drawn either way and then
+   dressed out of sight, so turning one back on is a class on an element that is
+   already there rather than another walk of the graph. */
+function hiddenInPanel(node) {
+  return !!(node.cfg && node.cfg.panel === false);
+}
+
+function outputNodes() {
+  return nodes.filter(function(n){ return n.type === 'output'; });
+}
+
+/* Drawn always, shown only when nothing else is. A panel that sits empty after
+   a run that succeeded reads as a tool that has failed, so it names the switch
+   that emptied it rather than leaving the user to find the tick box again. */
+function allHiddenNoteHTML(outs) {
+  var allHidden = outs.length > 0 && outs.every(hiddenInPanel);
+  return '<div class="all-hidden-note' + (allHidden ? '' : ' result-hidden') + '">' +
+    'Every Output is hidden from this panel. Tick "Show in results panel" on an ' +
+    'Output node to see its answer here.</div>';
+}
+
+function applyPanelVisibility() {
+  var pb = document.getElementById('panelBody');
+  if (!pb) return;
+  outputNodes().forEach(function(n) {
+    var el = pb.querySelector('[data-output="' + n.id + '"]');
+    if (el) el.classList.toggle('result-hidden', hiddenInPanel(n));
+  });
+  var note = pb.querySelector('.all-hidden-note');
+  if (note) {
+    var outs = outputNodes();
+    note.classList.toggle('result-hidden', !(outs.length > 0 && outs.every(hiddenInPanel)));
+  }
+}
+
 function runQuery() {
   var srcNodes = nodes.filter(function(n){ return n.type === 'source'; });
   var outNodes = nodes.filter(function(n){ return n.type === 'output'; });
@@ -3041,17 +3119,26 @@ function runQuery() {
       body = '<div class="error-box">Not connected to a Source. This Output has no data path.</div>';
     } else {
       var show = normaliseShow(onode);
-      var t = outputTable(onode, r.table);
+      /* Both of these are the evaluator's work now. The view was applied when
+         the Output was evaluated, and the OUTPUT line was logged there too, so
+         re-applying either here would count the rows of a count and print the
+         step twice. */
+      var t = r.table;
+      var log = r.log;
 
-      var log = r.log.slice();
-      log.push(logEntry('OUTPUT', [{ c:'val', s:show }]));
+      /* What ARRIVED at the Output, for the per-branch export. In the two views
+         that carry branches it is the same table as the view, but asking the
+         graph is honest where assuming they are equal is a fact that has to
+         stay true. */
+      var upIds = inputsOf(onode.id, primaryPort('output'));
+      var upstream = upIds.length ? ev.res[upIds[0]] : null;
 
       exportData[onode.id] = {
         index: oi + 1,
         show: show,
         name: exportNameOf(onode, oi + 1),
         table: t,
-        source: r.table,          // pre-Output table, for the per-branch export
+        source: upstream ? upstream.table : t,
         log: log.map(logText)
       };
 
@@ -3071,8 +3158,11 @@ function runQuery() {
           actions +
         '</div>'
       : '';
-    html += '<div class="result-block">' + head + body + '</div>';
+    html += '<div class="result-block' + (hiddenInPanel(onode) ? ' result-hidden' : '') +
+      '" data-output="' + onode.id + '">' + head + body + '</div>';
   });
+
+  html += allHiddenNoteHTML(outNodes);
 
   setOutput(html);
   resultsFresh = true;
@@ -4602,7 +4692,7 @@ function libThumb(graph) {
    The usual answer is a confirmation dialog, and it is the wrong one here: it
    would be a modal over a modal, with its own focus to trap and return, over a
    grid that is itself scrollable. So the button asks instead. The first click
-   turns Open into "Replace canvas?" and Delete into "Delete for good?", and the
+   turns Open into "Replace canvas?" and Delete into "Confirm deletion?", and the
    second does it. The question names what happens rather than asking whether
    the user is sure, and it is on the control they pressed, where they are
    already looking.
@@ -4727,7 +4817,7 @@ function libCardHTML(e) {
       '<button class="file-btn" onclick="libExportEntry(\'' + id + '\', this)" ' +
         'title="Write this query out as a .json file">Export</button>' +
       '<button class="lib-del" onclick="libDeleteEntry(\'' + id + '\', this)">' +
-        (pendDel ? 'Delete for good?' : 'Delete') + '</button>' +
+        (pendDel ? 'Confirm deletion?' : 'Delete') + '</button>' +
     '</div>' +
   '</div>';
 }
@@ -4772,13 +4862,11 @@ function renderLibrary() {
 
   if (st.error) { body.innerHTML = libProblemHTML(st.error); return; }
 
-  if (!st.entries.length) {
-    body.innerHTML = '<div class="lib-empty">Nothing saved yet. Build a query on the ' +
-      'canvas, then name it below and press Save to library.<br><br>' +
-      'What is kept is the query and never the data: opening one asks for the ' +
-      'files again.</div>';
-    return;
-  }
+  /* An empty library says nothing. The dialog's own heading paragraph already
+     explains what the library is for, and the name field and Save button sit
+     in plain sight at the foot, so a second block of prose in the middle was
+     repeating the two things around it. */
+  if (!st.entries.length) { body.innerHTML = ''; return; }
 
   var q = libQuery.trim().toLowerCase();
   var shown = st.entries.filter(function(e) { return libMatches(e, q); });
@@ -6246,6 +6334,9 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     listChoices: listChoices, listMatcher: listMatcher,
     newCriterion: newCriterion, defaultCfg: defaultCfg,
     normaliseShow: normaliseShow, outputTable: outputTable, defaultAvgCol: defaultAvgCol,
+    // Output visibility in the results panel
+    hiddenInPanel: hiddenInPanel, outputNodes: outputNodes,
+    allHiddenNoteHTML: allHiddenNoteHTML, applyPanelVisibility: applyPanelVisibility,
     branchesFeedOutput: branchesFeedOutput, BRANCH_NODES: BRANCH_NODES,
     ROW_SHOWS: ROW_SHOWS, CMP_SHOWS: CMP_SHOWS, branchProducer: branchProducer,
     DISPLAY_ROW_LIMIT: DISPLAY_ROW_LIMIT, DISPLAY_CARD_LIMIT: DISPLAY_CARD_LIMIT,

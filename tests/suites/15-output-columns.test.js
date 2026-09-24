@@ -170,8 +170,10 @@ module.exports = ({ describe, test }) => {
     test('not on the count view — a count has one column of its own', () => {
       const r = rig();
       r.set(r.o.id, 'show', 'count');
+      // `panel` is the show-in-results-panel tick box, which every Output
+      // carries whatever its view. What must not be here is a column picker.
       assert.deepEqual(r.qa('[data-node="' + r.o.id + '"]').map(e => e.getAttribute('data-key')),
-        ['show']);
+        ['panel', 'show']);
     });
 
     test('not on a Compare-fed Output — Compare already picks its measures', () => {
@@ -181,7 +183,8 @@ module.exports = ({ describe, test }) => {
       h.app.connect(s1.id, c.id); h.app.connect(s2.id, c.id); h.app.connect(c.id, o.id);
       h.w.render();
       assert.deepEqual(h.qa('[data-node="' + o.id + '"]').map(e => e.getAttribute('data-key')),
-        ['show'], 'offering a second way to hide measures would be the bad kind of duplication');
+        ['panel', 'show'],
+        'offering a second way to hide measures would be the bad kind of duplication');
     });
 
     test('a comparison reaches an Output unchanged', () => {
