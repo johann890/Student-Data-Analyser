@@ -78,11 +78,12 @@ shipped code.
 
 ## Where it looks for the application
 
-By default the harness searches sibling folders for one containing `data.js`,
-`engine.js`, `ui.js` and an `.html` file — `../MLP`, `../mlp`, `../MMP`, `../mmp`, `../MVP`,
-`../mvp`, then `..`. The order is newest milestone first, so the suite tests the
-work in progress rather than the folder it was first written against. To point it
-somewhere else:
+By default the harness searches sibling folders for one holding an `.html` file
+that loads scripts which exist beside it — `../MLP`, `../mlp`, `../MMP`, `../mmp`,
+`../MVP`, `../mvp`, then `..`. The order is newest milestone first, so the suite
+tests the work in progress rather than the folder it was first written against.
+A folder is only accepted if every script its page names is really there, so the
+suite cannot pick a folder it would then fail to boot. To point it somewhere else:
 
 ```bash
 APP_DIR=../MMP npm test
@@ -96,20 +97,22 @@ If nothing is found it fails with a message rather than testing nothing.
 
 ## How the harness reaches inside the application
 
-The application is three classic scripts — `data.js`, `engine.js`, `ui.js` —
-sharing one global scope, with no module system. That is deliberate: the tool has
-to run from a `file://` URL with no build step, where a module script is fetched
-with CORS against an opaque origin and refused outright. The harness loads them
-in the page's order, which is load-bearing — `ui.js` ends by wiring events and
-painting the first frame, and needs the other two parsed.
+The application is a set of classic scripts (`js/data-*.js`, `js/engine-*.js`,
+`js/ui-*.js`) sharing one global scope, with no module system. That is deliberate:
+the tool has to run from a `file://` URL with no build step, where a module script
+is fetched with CORS against an opaque origin and refused outright. The harness
+reads the script list out of the page and loads them in that order, which is
+load-bearing — `js/ui-boot.js` ends by wiring the inline handlers and painting the
+first frame, and needs everything above it parsed. The list is not copied into the
+harness: a script added to the page joins the suite by being added to the page.
 
-`ui.js` solves the access question itself. Setting `window.__QB_TEST__ = true` **before** it
-loads makes it publish its internals on `window.__qb`. In normal use the flag is
+`js/ui-boot.js` solves the access question itself. Setting `window.__QB_TEST__ = true` **before** it
+loads makes it publish the application's internals on `window.__qb`. In normal use the flag is
 undefined, nothing is exported, and the cost is one branch at start-up.
 
 ```js
 w.__QB_TEST__ = true;
-w.eval(fs.readFileSync(APP_JS, 'utf8'));   // the shipped file, verbatim
+APP_PATHS.forEach(p => w.eval(fs.readFileSync(p, 'utf8')));   // the shipped files, verbatim
 ```
 
 ### Why not source injection
@@ -151,7 +154,7 @@ than in whichever suite noticed first:
 try { window.localStorage.setItem(K, v); } catch (e) { /* ... */ }
 ```
 
-is how every access in `ui.js` is written, correctly — storage genuinely
+is how every storage access in the application is written, correctly — storage genuinely
 throws on a `file://` origin with site data blocked, and in a private window.
 With no storage object at all those catches swallow a `TypeError`, and the code
 *appears* to work. A suite written over that would pass because nothing was
@@ -179,7 +182,7 @@ having nowhere to save says so instead of inheriting jsdom's silence.
 ### Adding to the hook
 
 If a test needs something `__qb` does not expose, add it to the export block at
-the bottom of `ui.js` rather than reaching around it. The block is grouped by
+the bottom of `js/ui-boot.js` rather than reaching around it. The block is grouped by
 subject; put the new entry with its neighbours.
 
 Live state (`nodes`, `connections`, `exportData`, `selection`, `view`) is
@@ -334,7 +337,7 @@ confirming the suite caught it:
   fail.
 
 - **`31-library` › the store's guards.** Five, each checked by writing the bug
-  back into `ui.js` and confirming the named test went red:
+  back into `js/ui-library-store.js` and confirming the named test went red:
 
   | Break | What fails |
   |---|---|

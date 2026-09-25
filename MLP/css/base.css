@@ -1,0 +1,211 @@
+/* base.css: The page itself and the toolbar, including how the toolbar scales.
+   Part of the Student Data Analyser's stylesheet. The files load in the order
+   index.html lists them, and that order is the cascade: it must not change.
+   ========================================================================== */
+* { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* Without this, macOS draws form controls, scrollbars and focus rings in light
+   mode regardless of the colours set below. */
+:root { color-scheme: dark; }
+
+body {
+  font-family: system-ui, sans-serif;
+  background: #111;
+  color: #e8e8e8;
+  height: 100vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+/* TOOLBAR */
+.toolbar {
+  background: #181818;
+  border-bottom: 1px solid #252525;
+  padding: 9px 16px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  z-index: 10;
+}
+.tlabel { font-size: 12px; color: #949494; text-transform: uppercase; letter-spacing: 1px; margin-right: 2px; }
+.add-btn {
+  border-radius: 5px;
+  padding: 5px 13px;
+  font-size: 13px;
+  cursor: pointer;
+  border: 1px solid;
+  background: transparent;
+  transition: background 0.12s;
+}
+.add-btn.source { border-color: #2d6640; color: #5ec87a; }
+.add-btn.source:hover { background: #0e2016; }
+.add-btn.filter { border-color: #7a4a18; color: #f0944a; }
+.add-btn.filter:hover { background: #221408; }
+.add-btn.output { border-color: #1e7fff; color: #3db8ff; }
+.add-btn.output:hover { background: #051830; }
+.sep { width: 1px; height: 22px; background: #282828; margin: 0 2px; }
+.run-btn {
+  margin-left: auto;
+  background: #051830;
+  border: 1px solid #1e7fff;
+  border-radius: 5px;
+  color: #3db8ff;
+  padding: 5px 18px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.run-btn:hover { background: #0a2e5a; }
+/* Filled, not outlined: Clear throws the whole graph away, and it sat in a row
+   of outlined Add buttons wearing the same shape as them, differing only in
+   hue. Belonging to that family was the wrong instinct for the one control in
+   the bar that cannot be undone. It is now the only solid block up there, which
+   is what makes it findable when it is wanted and unmistakable when it is not.
+   It shares its colours with the armed Delete on a library card, the app's
+   other point of no return. */
+.clear-btn {
+  background: #8a2020;
+  border: 1px solid #c04040;
+  border-radius: 5px;
+  color: #fff;
+  font-weight: 600;
+  padding: 5px 13px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.clear-btn:hover { background: #a02828; }
+
+/* ── TOOLBAR SCALE ───────────────────────────────────────
+   The bar can be pulled taller by the handle beneath it, and everything in it
+   grows with it: a 60px bar holding 22px buttons would read as a mistake rather
+   than as more room. One number does it. `--bar-s` multiplies every measurement
+   the bar is built from, so the controls keep their proportions to each other
+   and to the space around them at any height.
+
+   Every value below is the value that rule already had, written as a
+   multiplication instead of a constant. At --bar-s: 1 each one computes to the
+   same pixel it always did, so the default bar is unchanged by this feature
+   rather than merely close to what it was.
+
+   Scoped under .toolbar because two of these classes are shared with the save
+   dialog and the node panels, which are not part of the bar and must not move
+   when it does. */
+:root { --bar-s: 1; --bar-gap: calc(8px * var(--bar-s)); --bar-fill: 0px; }
+
+.toolbar {
+  /* --bar-fill is the difference between the height the drag asked for and the
+     height this layout comes to on its own, spread above and below. It is what
+     lets the bar follow the pointer smoothly across the point where the
+     controls go from one row to two: without it the bar has to jump a whole
+     row, since no arrangement of the controls has a height in between. */
+  padding: calc(9px * var(--bar-s) + var(--bar-fill)) calc(16px * var(--bar-s));
+  gap: var(--bar-gap);
+  /* Wrapping is what makes growing safe. The bar is nearly full at its default
+     size on a laptop, so controls that grow have to go somewhere: onto a second
+     row, rather than off the right edge where Run Query would be unreachable.
+     Without this the flex row squeezes instead, and the first thing to give is
+     the label inside Run Query, which breaks across two lines on its own. */
+  flex-wrap: wrap;
+  align-content: center;
+}
+.toolbar > *, .tgroup > * { flex-shrink: 0; }
+.toolbar button { white-space: nowrap; }
+
+/* A labelled run of controls, kept on one row. The gap matches the bar's own,
+   so grouping changes where a wrap may fall and nothing else. */
+.tgroup {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--bar-gap);
+}
+
+/* The chosen break. A full-width item cannot share a row, so everything after
+   it starts a new one. That empty row of its own sits between the two rows of
+   controls and is charged a row gap on each side, and a negative margin cannot
+   take either back, because a flex line is never shorter than nothing. Halving
+   the row gap while stacked is what pays for it: two halves between the rows of
+   controls comes to the one gap they should have, the same gap as between the
+   controls themselves. */
+.tbreak { display: none; }
+.toolbar.stacked {
+  row-gap: calc(var(--bar-gap) / 2);
+}
+.toolbar.stacked .tbreak {
+  display: block;
+  flex-basis: 100%;
+  height: 0;
+}
+/* The divider that separated these groups is doing nothing at the start of a
+   row, and a stray vertical line above Query reads as a mistake. */
+.toolbar.stacked .tbreak + .sep { display: none; }
+.toolbar .tlabel {
+  font-size: calc(10px * var(--bar-s));
+  letter-spacing: calc(1px * var(--bar-s));
+  margin-right: calc(2px * var(--bar-s));
+}
+.toolbar .add-btn {
+  padding: calc(5px * var(--bar-s)) calc(13px * var(--bar-s));
+  font-size: calc(11px * var(--bar-s));
+  border-radius: calc(5px * var(--bar-s));
+}
+.toolbar .add-btn.reshape,
+.toolbar .add-btn.processing,
+.toolbar .add-btn.distribution { gap: calc(6px * var(--bar-s)); }
+.toolbar .caret { font-size: calc(13px * var(--bar-s)); }
+.toolbar .sep { height: calc(22px * var(--bar-s)); margin: 0 calc(2px * var(--bar-s)); }
+.toolbar .file-btn {
+  font-size: calc(11px * var(--bar-s));
+  padding: calc(5px * var(--bar-s)) calc(11px * var(--bar-s));
+  border-radius: calc(4px * var(--bar-s));
+}
+.toolbar .clear-btn {
+  padding: calc(5px * var(--bar-s)) calc(13px * var(--bar-s));
+  font-size: calc(11px * var(--bar-s));
+  border-radius: calc(5px * var(--bar-s));
+}
+.toolbar .run-btn {
+  padding: calc(5px * var(--bar-s)) calc(18px * var(--bar-s));
+  font-size: calc(11px * var(--bar-s));
+  border-radius: calc(5px * var(--bar-s));
+}
+.toolbar .help-btn {
+  width: calc(24px * var(--bar-s));
+  height: calc(24px * var(--bar-s));
+  font-size: calc(12px * var(--bar-s));
+}
+.toolbar .zoom-group { border-radius: calc(5px * var(--bar-s)); }
+.toolbar .zoom-btn { width: calc(24px * var(--bar-s)); font-size: calc(13px * var(--bar-s)); }
+.toolbar .zoom-level {
+  font-size: calc(10px * var(--bar-s));
+  min-width: calc(46px * var(--bar-s));
+  padding: calc(5px * var(--bar-s)) calc(4px * var(--bar-s));
+}
+
+/* The grab strip under the bar, built the same way as the results panel's: a
+   thin visible strip with an invisible hit area hung off both sides, so it is
+   easy to catch without drawing a line across the window. It sits between the
+   bar and the canvas in the column, so a taller bar shortens the canvas rather
+   than covering the top of it. */
+.toolbar-resize {
+  height: 5px;
+  flex-shrink: 0;
+  background: #0e0e0e;
+  cursor: row-resize;
+  position: relative;
+  z-index: 9;
+}
+.toolbar-resize::after {
+  content: "";
+  position: absolute;
+  left: 0; right: 0; top: -4px; bottom: -4px;
+}
+.toolbar-resize:hover,
+.toolbar-resize:focus-visible { background: #1e7fff33; outline: none; }
+.toolbar-resize.dragging { background: #1e7fff66; }
+
+body.toolbar-resizing { cursor: row-resize; user-select: none; -webkit-user-select: none; }
+body.toolbar-resizing * { cursor: row-resize !important; }
+

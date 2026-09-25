@@ -5,7 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ENGR489 Honours Project - Student Data Analyser
 </title>
-<link rel="stylesheet" href="styles.css">
+<!-- One stylesheet split across files, listed in cascade order. A later file
+     may override an earlier one, so this order is part of the styling and not
+     an arrangement of convenience. -->
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/canvas.css">
+<link rel="stylesheet" href="css/config-panels.css">
+<link rel="stylesheet" href="css/results-panel.css">
+<link rel="stylesheet" href="css/nodes-processing.css">
+<link rel="stylesheet" href="css/canvas-navigation.css">
+<link rel="stylesheet" href="css/node-colours.css">
+<link rel="stylesheet" href="css/dialogs.css">
+<link rel="stylesheet" href="css/library.css">
 </head>
 <body>
 
@@ -133,7 +144,7 @@
        `accept` is a courtesy to the dialog and is trusted by nothing. The year
        input carries none at all, because the archive's year files have no
        extension for a filter to match on, which is precisely why the name
-       rules live in data.js, where the file is actually taken, rather than in an
+       rules live in js/data-loading.js, where the file is actually taken, rather than in an
        attribute a rename walks straight past. -->
   <input type="file" id="headersFile" accept="text/plain,.txt" hidden>
   <input type="file" id="yearFiles" multiple hidden>
@@ -1259,7 +1270,7 @@
      inspected and restyled without reading the script.
 
      The buttons are wired inline like the toolbar's. Dismissing by clicking the
-     backdrop is not, because it carries a condition. See ui.js. -->
+     backdrop is not, because it carries a condition. See js/ui-saveload.js. -->
 <div class="save-dialog" id="saveDialog">
   <div class="save-card" role="dialog" aria-modal="true" aria-labelledby="saveTitle">
     <h2 class="save-title" id="saveTitle">Save query</h2>
@@ -1304,7 +1315,7 @@
      role="alertdialog" rather than "dialog": the screen reader should read the
      question on open, not wait to be asked what the card says.
 
-     The checkbox is answered in ui.js and lasts the session. Nothing about it
+     The checkbox is answered in js/ui-nodes.js and lasts the session. Nothing about it
      is written to disk. -->
 <div class="save-dialog confirm-dialog" id="clearDialog">
   <div class="save-card" role="alertdialog" aria-modal="true"
@@ -1331,7 +1342,7 @@
 
      The pictures on the cards are drawn into #libBody by renderLibrary(), from
      the graphs themselves. There is no <img> anywhere in here and no thumbnail
-     is stored: see libThumb() in ui.js for why a screenshot would have been
+     is stored: see libThumb() in js/ui-library-thumb.js for why a screenshot would have been
      the wrong answer. -->
 <div class="save-dialog lib-dialog" id="libDialog">
   <div class="lib-card-frame" role="dialog" aria-modal="true" aria-labelledby="libTitle">
@@ -1388,14 +1399,45 @@
   </div>
 </div>
 
-<!-- Three classic scripts, in this order and not as modules. The tool is opened
+<!-- The application, as classic scripts and not as modules. The tool is opened
      from Finder at file://, where a module script is fetched with CORS against an
      opaque origin and refused; classic scripts sharing one global scope are what
-     works there. data.js declares the archive and the Table type, engine.js the
-     evaluation, ui.js the canvas, and ui.js last, because it ends by wiring the
-     events and painting the first frame. -->
-<script src="data.js"></script>
-<script src="engine.js"></script>
-<script src="ui.js"></script>
+     works there, which is why a name declared in one file is visible in the next.
+
+     THIS ORDER IS LOAD-BEARING and this list is where it is decided. The data
+     files declare the archive and the Table type, the engine files the evaluation,
+     the ui files the canvas. ui-boot.js is last because it ends by publishing the
+     inline handlers and painting the first frame, which needs everything above it.
+     The test harness reads this list rather than keeping a copy of it. -->
+<script src="js/data-registries.js"></script>
+<script src="js/data-loading.js"></script>
+<script src="js/data-sources.js"></script>
+<script src="js/data-table.js"></script>
+<script src="js/engine-core.js"></script>
+<script src="js/engine-compare.js"></script>
+<script src="js/engine-unique-select.js"></script>
+<script src="js/engine-output.js"></script>
+<script src="js/engine-aggregate.js"></script>
+<script src="js/engine-selectfor.js"></script>
+<script src="js/engine-histogram.js"></script>
+<script src="js/engine-combine.js"></script>
+<script src="js/engine-specs.js"></script>
+<script src="js/ui-state.js"></script>
+<script src="js/ui-nodes.js"></script>
+<script src="js/ui-config-controls.js"></script>
+<script src="js/ui-node-html.js"></script>
+<script src="js/ui-render.js"></script>
+<script src="js/ui-edge-notes.js"></script>
+<script src="js/ui-results.js"></script>
+<script src="js/ui-export.js"></script>
+<script src="js/ui-saveload.js"></script>
+<script src="js/ui-library-store.js"></script>
+<script src="js/ui-library-thumb.js"></script>
+<script src="js/ui-library-dialog.js"></script>
+<script src="js/ui-gestures.js"></script>
+<script src="js/ui-panel-width.js"></script>
+<script src="js/ui-toolbar-height.js"></script>
+<script src="js/ui-events.js"></script>
+<script src="js/ui-boot.js"></script>
 </body>
 </html>

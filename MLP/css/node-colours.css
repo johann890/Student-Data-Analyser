@@ -1,0 +1,497 @@
+/* node-colours.css: The rest of the node shapes, the input ports, and the colour each
+   processing family is drawn in.
+   Part of the Student Data Analyser's stylesheet. The files load in the order
+   index.html lists them, and that order is the cascade: it must not change.
+   ========================================================================== */
+/* ═══════════════════════════════════════════════════════════
+   AGGREGATE / AGGREGATE COLUMNS
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── PROCESSING MENU GROUPS ──────────────────────────────── */
+/* Five flat items in one dropdown is a list to read; three labelled groups is
+   a menu to scan. The grouping is by what the node does to a table (reshape
+   the rows, summarise them, or hold branches apart), which is also the order
+   a query tends to be built in. */
+.proc-group {
+  font-size: 11px;
+  color: #8f8f8f;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  padding: 7px 9px 3px;
+  pointer-events: none;   /* a heading is not a target */
+}
+.proc-group:first-child { padding-top: 3px; }
+
+/* ── SHAPES ──────────────────────────────────────────────── */
+/* Processing-family colour, shared with Sort, Take and Compare. The glyphs are
+   what separate them: ascending bars (Sort), bars with a cut (Take), a funnel
+   to one dot (Aggregate), three funnels side by side (Aggregate Columns), the
+   same three turned on their side (Aggregate Rows). */
+.shape-aggregate,
+.shape-aggcols,
+.shape-aggrows {
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+
+/* Three rows, each collapsing rightwards to a single mark. The sibling glyph
+   runs down the page; this one runs across it, which is the only difference
+   between the two nodes and so the only thing the drawing has to say. */
+.aggr-glyph { display: flex; flex-direction: column; gap: 3px; align-items: flex-start; }
+.aggr-row { display: flex; align-items: center; gap: 2px; }
+.aggr-row i { display: block; width: 5px; height: 3px; border-radius: 1px; opacity: 0.55; }
+.aggr-row b { display: block; width: 3px; height: 3px; border-radius: 50%; margin-left: 2px; opacity: 0.9; }
+.shape-aggregate { width: 106px; height: 72px; }
+.shape-aggcols   { width: 112px; height: 72px; }
+.shape-aggrows   { width: 112px; height: 72px; }
+.shape-aggregate:active,
+.shape-aggcols:active,
+.shape-aggrows:active { cursor: grabbing; }
+
+/* Three bars narrowing to a single dot: many values in, one out. */
+.agg-glyph { display: flex; flex-direction: column; gap: 2px; align-items: center; }
+.agg-glyph i {
+  display: block; height: 3px; border-radius: 1px;
+  background: #b48ce0; opacity: 0.75;
+}
+.agg-glyph i:nth-child(1) { width: 22px; }
+.agg-glyph i:nth-child(2) { width: 16px; }
+.agg-glyph i:nth-child(3) { width: 10px; }
+.agg-glyph b {
+  display: block; width: 4px; height: 4px; border-radius: 50%;
+  background: #b48ce0; margin-top: 1px;
+}
+
+/* The same funnel three times over, one per column. */
+.aggc-glyph { display: flex; gap: 4px; align-items: flex-end; }
+.aggc-col { display: flex; flex-direction: column; gap: 2px; align-items: center; }
+.aggc-col i {
+  display: block; height: 3px; border-radius: 1px;
+  background: #b48ce0; opacity: 0.75;
+}
+.aggc-col i:nth-child(1) { width: 10px; }
+.aggc-col i:nth-child(2) { width: 7px; }
+.aggc-col b {
+  display: block; width: 3px; height: 3px; border-radius: 50%;
+  background: #b48ce0; margin-top: 1px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   COMBINE
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+.shape-combine {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-combine:active { cursor: grabbing; }
+
+/* Two short bars converging on a dot, then one long bar: streams in, one out.
+   Compare's glyph is three bars held apart. The two read as opposites, which
+   is what they are. */
+.cmb-glyph { display: flex; align-items: center; gap: 3px; }
+.cmb-in { display: flex; flex-direction: column; gap: 3px; }
+.cmb-in i, .cmb-out i {
+  display: block; height: 3px; border-radius: 1px;
+  background: #b48ce0; opacity: 0.75;
+}
+.cmb-in i { width: 10px; }
+.cmb-out i { width: 14px; }
+.cmb-glyph b {
+  display: block; width: 4px; height: 4px; border-radius: 50%;
+  background: #b48ce0;
+}
+
+/* Tick box in a node panel. The Compare measures list already has one of these
+   per row; this is the standalone version, sized to sit between two selects
+   without the row looking like a heading. */
+.cmb-check {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: #8a8a8a;
+  cursor: pointer;
+  padding: 1px 0;
+}
+.cmb-check input { width: auto; margin: 0; cursor: pointer; }
+
+/* ═══════════════════════════════════════════════════════════
+   UNIQUE NODE
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Geometry only. The colour comes from the PROCESSING CATEGORY COLOURS block at
+   the foot of this file, where Unique is grouped with Sort and Take as a
+   row-shaping node. A hue set once for the category rather than per node.
+
+   The glyph is defined there too, for the same reason: it is drawn in
+   currentColor, so it cannot drift out of step with the shape around it. */
+.shape-unique {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-unique:active { cursor: grabbing; }
+
+/* Geometry only; the violet comes from the category block at the foot of this
+   file, where Select joins Sort, Take and Unique. It belongs with them because
+   it leaves the data alone. Unique in single-column mode already narrows a
+   table to one column, so the group has held a projection all along. */
+.shape-select {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-select:active { cursor: grabbing; }
+
+/* ═══════════════════════════════════════════════════════════
+   INPUT PORTS
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Drawn only on nodes with more than one input, where the user has to be able
+   to tell them apart. The markers sit on the shape's left edge at the same
+   fractions used by portOffsetY(), so a stub and the arrowhead that lands on it
+   are placed by one rule.
+
+   The rail is pointer-events:none throughout. Ports are a read-out, not a
+   target: wiring is done by dragging a node near another, and making the stubs
+   clickable would suggest a second, non-existent way to connect. */
+.node-ports {
+  position: absolute; inset: 0;
+  pointer-events: none; z-index: 20;
+}
+
+.node-port {
+  position: absolute; left: 0;
+  transform: translate(-50%, -50%);
+  display: flex; align-items: center; gap: 4px;
+}
+
+/* The dot itself. Hollow while the port is empty, filled once a wire lands, so
+   "this input is taken" is visible without hovering or counting arrows. */
+.node-port > i {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  background: #1a1a1a;
+  border: 1.5px solid #4a4a4a;
+  box-sizing: border-box;
+  flex: none;
+}
+.node-port.filled > i { background: #6a6a6a; border-color: #8a8a8a; }
+
+/* Label sits to the LEFT of the dot, out in the wrapper gutter. The shape is
+   narrower than .node, and that margin is otherwise unused. Right-aligned so
+   the text grows away from the shape instead of over it. */
+.node-port > em {
+  position: absolute; right: 10px;
+  font-style: normal;
+  font-size: 11px; line-height: 1;
+  color: #9a9a9a;
+  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.node-port.filled > em { color: #8f8f8f; }
+
+/* Select lists one box per incoming column, and a student header is seven of
+   them. A single column of checkboxes would make the node twice the height of
+   everything around it. Two columns keeps it in proportion; the list stays in
+   header order, read down the first column then the second. */
+.sel-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  column-gap: 4px;
+}
+/* The locked last box still has to read as ticked rather than as unavailable:
+   it is not disabled because the option is missing, but because removing it
+   would leave nothing behind. */
+.cmp-measure.locked { opacity: 0.75; cursor: default; }
+.cmp-measure.locked input { cursor: default; }
+
+/* ═══════════════════════════════════════════════════════════
+   PROCESSING CATEGORY COLOURS
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Until now every processing node was one violet, and the glyph carried the
+   whole burden of telling them apart. That worked while there were four; with
+   seven it does not, and it also threw away information the toolbar already
+   knows. The menu has grouped these nodes for some time, and the canvas said
+   nothing about it.
+
+   Colour now carries the category and the glyph carries the node:
+
+     Reshape rows  violet   Sort, Take, Unique
+                            same rows or fewer, header untouched
+     Summarise     teal     Aggregate, Aggregate Columns
+                            rows collapse, header rewritten
+     Branches      rose     Combine, Compare
+                            several tables in, one out
+
+   The split is by what a node does to the shape of the table, which is the
+   axis the supervisor proposed and the one the dropdown groups already follow.
+   A reader who learns the three colours once can then read an unfamiliar graph
+   at a glance: where it narrows, where it collapses, where branches meet.
+
+   Only the palette lives here. The shapes themselves keep their own geometry
+   and glyphs above, so recolouring a category is three values in one place and
+   adding a node to one is a class, not a new block. */
+
+/* ── RESHAPE ROWS ── violet ─────────────────────────────── */
+.shape-sort,
+.shape-reverse,
+.shape-take,
+.shape-unique,
+.shape-select {
+  border-color: #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+}
+
+/* Project shares the box, not the colour. See the Expand group below. */
+.shape-project {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid #4a6a1e;
+  background: #0d1405;
+  color: #a8d050;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-project:active { cursor: grabbing; }
+
+/* One bar opening into three: rows multiplying, which no other glyph shows. */
+.proj-glyph { display: flex; align-items: center; gap: 3px; }
+.proj-glyph .proj-one { display: block; width: 4px; height: 13px; border-radius: 1px; opacity: 0.8; }
+.proj-glyph .proj-fan {
+  display: block; width: 0; height: 0;
+  border-top: 7px solid transparent;
+  border-bottom: 7px solid transparent;
+  border-left: 7px solid currentColor;
+  opacity: 0.55;
+}
+.proj-many { display: flex; flex-direction: column; gap: 2px; }
+.proj-many i { display: block; width: 13px; height: 3px; border-radius: 1px; opacity: 0.8; }
+
+/* Columns side by side, the middle one hollow. Drawn in currentColor so it
+   cannot drift out of step with the shape around it, and laid out on the
+   horizontal axis while every other glyph runs vertically. The axis is the
+   point, since this is the one node that changes the header and not the rows. */
+.sel-glyph { display: flex; gap: 3px; align-items: center; }
+.sel-glyph i {
+  display: block; width: 5px; height: 16px;
+  border-radius: 1px;
+  background: currentColor; opacity: 0.75;
+  box-sizing: border-box;
+}
+.sel-glyph i.off {
+  background: none;
+  border: 1px solid currentColor;
+  opacity: 0.35;
+}
+
+/* ── DISTRIBUTION ── indigo ─────────────────────────────── */
+/* Its own hue because it is its own menu, and its own menu because "how is this
+   spread out" is a different question from anything in Reshape or Processing.
+   Indigo sits between the violet of Reshape and the blue of Output without
+   being either: this node is neither a reshuffle nor an endpoint. */
+.shape-histogram {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  /* Width and style here, colour in the family rule below, and never both in a
+     shorthand. A `border:` shorthand carrying a colour is what let SelectFor
+     ship violet among the rose nodes: the shorthand won on source order over
+     the family rule meant to colour it, with the suite green because the class
+     WAS named in a rule setting the right colour. */
+  border-width: 2.5px;
+  border-style: solid;
+  background: #090c18;
+  color: #8fa8f0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-histogram:active { cursor: grabbing; }
+
+/* Bars of unequal height sharing a baseline with no gaps between them. The
+   touching is the whole signal: Sort's bars are spaced because its axis is a
+   list of rows, and these are flush because the axis underneath them is a
+   number line. */
+.hist-glyph { display: flex; align-items: flex-end; gap: 1px; height: 14px; }
+.hist-glyph i {
+  display: block; width: 4px;
+  border-radius: 1px 1px 0 0;
+  background: currentColor; opacity: 0.75;
+}
+
+/* The family colour, stated the way every other family states it. Two nodes
+   now, and they are the two the Distribution menu holds. */
+.shape-selectfor,
+.shape-histogram { border-color: #3a4a8a; }
+
+/* ── SUMMARISE ── teal ──────────────────────────────────── */
+.shape-aggregate,
+.shape-aggcols,
+.shape-aggrows {
+  border-color: #1f6a6a;
+  background: #041416;
+  color: #5ac8c8;
+}
+
+/* ── EXPAND ── lime ─────────────────────────────────────── */
+/* Its own colour and its own group because it is its own kind of operation:
+   every other processing node leaves a row meaning what it meant, and this one
+   does not. The menu placement and the colour are load-bearing rather than
+   decorative. They are two of the four ways this node announces that it
+   changes row identity. Lime is already in the edge palette, so it is a colour
+   this interface owns rather than a seventh hue invented here. */
+.shape-project {
+  border-color: #4a6a1e;
+  background: #0d1405;
+  color: #a8d050;
+}
+
+/* ── BRANCHES ── rose ───────────────────────────────────── */
+/* Select For used to be here. It moved to Distribution, where the question it
+   answers actually lives: one row per group with a measure beside it. Taking
+   more than one wire is what it has in common with these two, not what it is
+   for. */
+.shape-combine,
+.shape-compare {
+  border-color: #7a2f52;
+  background: #170a11;
+  color: #e089ae;
+}
+
+/* Glyphs inherit the shape's colour rather than naming one. Every glyph part
+   above hardcoded the violet, which meant a recolour was a dozen edits that had
+   to agree; currentColor makes the shape's `color` the single source, so a
+   category's hue is set once and the bars, dots and rules follow it. */
+.sort-glyph i,
+.proj-glyph .proj-one,
+.proj-many i,
+.rev-bars i,
+.rev-turn,
+.take-glyph i,
+.take-glyph b,
+.uniq-glyph i,
+.agg-glyph i,
+.agg-glyph b,
+.aggc-col i,
+.aggc-col b,
+.aggr-row i,
+.aggr-row b,
+.cmb-in i,
+.cmb-out i,
+.cmb-glyph b,
+.sf-row i,
+.sf-row b,
+.hist-glyph i,
+.cmp-glyph i {
+  background: currentColor;
+}
+.take-glyph b {
+  background: none;
+  border-top-color: currentColor;
+}
+
+/* ── UNIQUE GLYPH ───────────────────────────────────────── */
+/* Two pairs. Each pair is one value: a solid bar kept, then an outline of the
+   same width dropped. Widths differ between the pairs so the eye reads "these
+   two are the same, those two are the same" rather than "four bars getting
+   shorter", which is Aggregate's glyph. */
+.uniq-glyph {
+  display: flex; flex-direction: column;
+  gap: 2px; align-items: flex-start;
+  width: auto;
+}
+.uniq-glyph i {
+  display: block; height: 3px; border-radius: 1px;
+  box-sizing: border-box;
+  opacity: 0.8;
+}
+.uniq-glyph i.wide   { width: 22px; }
+.uniq-glyph i.narrow { width: 13px; }
+.uniq-glyph i.dupe {
+  background: none;
+  border: 1px solid currentColor;
+  opacity: 0.34;
+}
+
+/* ── THE MENU TEACHES THE MAPPING ───────────────────────── */
+/* The dropdown is where a user meets these nodes first, so it is where the
+   colours have to be learnable. Group heading and item name both take the
+   category hue; the description stays grey, because colouring the whole row
+   would make the menu shout rather than group. */
+.proc-group.cat-reshape,
+.proc-item.cat-reshape   .proc-name { color: #b48ce0; }
+.proc-group.cat-summarise,
+.proc-item.cat-summarise .proc-name { color: #5ac8c8; }
+.proc-group.cat-branches,
+.proc-item.cat-branches  .proc-name { color: #e089ae; }
+.proc-group.cat-expand,
+.proc-item.cat-expand    .proc-name { color: #a8d050; }
+.proc-group.cat-distribution,
+.proc-item.cat-distribution .proc-name { color: #8fa8f0; }
+
+.proc-group { opacity: 0.72; }
+
+.proc-item.cat-reshape:hover   { background: #1c1226; }
+.proc-item.cat-expand:hover    { background: #141c08; }
+.proc-item.cat-summarise:hover { background: #0a1e20; }
+.proc-item.cat-branches:hover  { background: #21101a; }
+.proc-item.cat-distribution:hover { background: #10152b; }
+
+/* The Processing button stays neutral, and now for a sharper reason than
+   before. The violet nodes have their own button beside it, so what is left
+   behind Processing is Expand, Summarise and Branches: Lime, teal and rose.
+   Painting the button any one of those would promise a menu of that colour.
+   Grey claims none of the three, which is the honest description of a menu
+   holding all three. */
+.add-btn.processing {
+  border-color: #3d3d3d;
+  color: #9a9a9a;
+}
+.add-btn.processing:hover { background: #1a1a1a; }
+
+/* A one-family menu needs no heading. The button already says Reshape, and a
+   heading repeating it would read as the first of several groups. The rule
+   below restores the padding the absent heading used to provide. Distribution
+   is the second such menu and wants the same treatment. */
+#reshapeMenu .proc-item:first-child,
+#distMenu .proc-item:first-child { margin-top: 2px; }
+
+/* One item, so the menu is only as wide as it needs to be. The 208px minimum
+   exists to stop Processing's three groups reflowing against each other, and a
+   single row does not have that problem: at that width the menu is mostly
+   empty space hanging under a button narrower than it. */
+#distMenu { min-width: 176px; }
+

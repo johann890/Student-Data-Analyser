@@ -1,0 +1,197 @@
+/* canvas.css: The canvas, a node wrapper, the node shapes and the remove button.
+   Part of the Student Data Analyser's stylesheet. The files load in the order
+   index.html lists them, and that order is the cascade: it must not change.
+   ========================================================================== */
+/* ── LAYOUT ──────────────────────────────────────────────── */
+.main { display: flex; flex: 1; overflow: hidden; }
+
+/* ── CANVAS ──────────────────────────────────────────────── */
+.canvas {
+  flex: 1;
+  background: #000;
+  position: relative;
+  overflow: hidden;
+  /* So the overlays inside can answer to the canvas's own width rather than
+     the window's. The canvas is a flex child and gets its width from the row,
+     which a panel dragged wide can halve without the window changing at all. */
+  container-type: inline-size;
+}
+.canvas-hint {
+  position: absolute; top: 50%; left: 50%;
+  transform: translate(-50%,-50%);
+  color: #7a7a7a; font-size: 15px;
+  text-align: center; pointer-events: none; user-select: none;
+  line-height: 1.8;
+}
+.canvas svg {
+  position: absolute; top: 0; left: 0;
+  width: 100%; height: 100%;
+  pointer-events: none;
+}
+
+/* ── NODE WRAPPER ────────────────────────────────────────── */
+.node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 220px; /* matches config panel width so shape centering is predictable */
+  /* The wrapper is 220px wide but the shape inside is only ~100px, leaving wide
+     transparent gutters. Without this those gutters swallow pointer events meant
+     for the connection arrows painted underneath. Only the visible children
+     (the shape and the config panel) capture input. */
+  pointer-events: none;
+}
+.node > * { pointer-events: auto; }
+
+/* SHAPES */
+/* Source Circle */
+.shape-source {
+  width: 100px; height: 100px;
+  border-radius: 50%;
+  border: 2.5px solid #2d6640;
+  background: #071510;
+  color: #5ec87a;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+}
+.shape-source:active { cursor: grabbing; }
+
+/* A Source emitting enrolments says so on the shape, so the grain is readable
+   without opening the panel. The modifier carries the column layout rather than
+   the base rule doing it, so an ordinary Source is untouched: it holds one text
+   node, and a flex row and a flex column centre that identically, but "untouched"
+   is worth more than "equivalent" on the shape every graph starts with.
+
+   Not uppercase and not letter-spaced, unlike the word above it. It is a
+   qualifier, not a second name, and setting it in the same voice would read as
+   two labels competing. */
+.shape-source.has-grain { flex-direction: column; gap: 4px; }
+.node-grain {
+  font-size: 8.5px;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  text-transform: none;
+  line-height: 1.25;
+  color: #8fd8a6;
+  text-align: center;
+  max-width: 84px;
+}
+
+/* Filter: tall sharp rectangle, distinct from output's rounded rect */
+.shape-filter {
+  width: 106px; height: 84px;
+  border-radius: 3px;
+  border: 2.5px solid #7a4a18;
+  background: #110900;
+  color: #f0944a;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 2px;
+}
+.shape-filter:active { cursor: grabbing; }
+.filter-outline-wrap {
+  flex-shrink: 0;
+  position: relative;
+  display: contents;
+}
+
+/* Output: rounded rectangle, vivid electric blue */
+.shape-output {
+  width: 106px; height: 66px;
+  border-radius: 10px;
+  border: 2.5px solid #1e7fff;
+  background: #051830;
+  color: #3db8ff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 2px;
+  box-shadow: 0 0 10px rgba(30,127,255,0.25);
+}
+.shape-output:active { cursor: grabbing; }
+
+/* ── REMOVE BUTTON ───────────────────────────────────────── */
+/* Sits just inside the shape's top-right corner. It must not overhang into the
+   wrapper gutter: .node is pointer-events:none, and only the button's own
+   painted pixels re-enable events. Any overhang beyond the shape lands on dead
+   space and can't be clicked. Positive insets keep the whole button on the
+   shape. */
+.node-remove {
+  position: absolute; top: 3px; right: 3px;
+  width: 18px; height: 18px;
+  border-radius: 50%;
+  background: #1a1a1a; border: 1px solid #3a3a3a;
+  color: #888; font-size: 12px;
+  display: none; align-items: center; justify-content: center;
+  cursor: pointer; z-index: 30; padding: 0; line-height: 1;
+}
+.node:hover .node-remove { display: flex; }
+.node-remove:hover { background: #2a0808; border-color: #c05050; color: #e06060; }
+
+/* ── NODE INLINE RESULT (count/avg preview inside node) ── */
+.node-inline-result {
+  font-size: 13px;
+  font-weight: 700;
+  color: #9dd0ff;
+  margin-top: 2px;
+  opacity: 0.95;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+/* ── CONFIG PANEL (below node shape) ────────────────────── */
+.node-config {
+  margin-top: 7px;
+  background: #0c0c0c;
+  border: 1px solid #202020;
+  border-radius: 7px;
+  padding: 7px 8px;
+  width: 220px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* Field label: Slightly brighter than before */
+.cfg-label {
+  font-size: 11px;
+  color: #888888;
+  text-transform: uppercase;
+  letter-spacing: 0.9px;
+  margin-bottom: 1px;
+}
+
+/* Every control in a node panel, not just selects and number boxes. A text
+   input was previously unstyled: it rendered at the browser's default width
+   with a light background, and (because a grid item defaults to min-width:auto)
+   refused to shrink into its column, so it spilled past the panel edge.
+   Filtering by Grade (a text column) hit exactly that. */
+select,
+input[type=number],
+input[type=text] {
+  background: #141414;
+  border: 1px solid #282828;
+  border-radius: 4px;
+  color: #c8c8c8;
+  padding: 4px 6px;
+  font-size: 13px;
+  font-family: inherit;
+  width: 100%;
+  appearance: none;
+  min-width: 0;   /* lets a grid or flex item shrink below its intrinsic width */
+}
+select:focus, input:focus { outline: none; border-color: #2a5aaa; }
+
+/* Number spinners are drawn by the browser, not by this stylesheet, so they
+   ignore the colours above and render light on a dark panel. They also eat
+   horizontal space the value needs. */
+input[type=number]::-webkit-outer-spin-button,
+input[type=number]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type=number] { -moz-appearance: textfield; }
+

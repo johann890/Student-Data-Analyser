@@ -21,15 +21,10 @@
    The structural half needs no layout at all: which menus exist, where the
    break is, and that the groups are the thing that wraps. */
 
-const fs = require('fs');
-const path = require('path');
-const { boot, withoutStorage, APP_DIR } = require('../lib/harness');
+const { boot, withoutStorage, appStyles } = require('../lib/harness');
 const { assert } = require('../lib/assert');
 
-const CSS = (() => {
-  const f = fs.readdirSync(APP_DIR).filter(x => x.endsWith('.css'))[0];
-  return fs.readFileSync(path.join(APP_DIR, f), 'utf8');
-})();
+const CSS = appStyles();
 
 module.exports = ({ describe, test }) => {
 
