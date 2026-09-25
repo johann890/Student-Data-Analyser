@@ -1,7 +1,7 @@
 /* Test harness.
    Boots the application inside jsdom and exposes its internals to the tests.
 
-   The application is three classic scripts sharing one global scope, with no
+   The application is a set of classic scripts sharing one global scope, with no
    module system. Deliberate, since it must run from a file:// URL with no
    build step, where module scripts are refused outright. They are loaded here
    in the same order the page loads them, and the last of them answers the
@@ -10,7 +10,7 @@
    `window.__qb`. In normal use the flag is undefined and nothing is exported.
 
    This harness used to reach in by rewriting the source text instead, injecting
-   an export block before the closing `})();`. ui.js warns against exactly that
+   an export block before the closing `})();`. The source warns against exactly that
    ("silently broken by any edit near the end of this file"), and it was: the
    injected block named functions that a later refactor deleted, so every test
    died at boot rather than failing on anything it was testing. The sanctioned
@@ -41,31 +41,85 @@ try {
    against MMP, because the behaviour it describes is not there yet. Testing
    the current milestone by default is the useful reading of "npm test", and an
    older folder is then a deliberate request rather than an accident.          */
-/* Load order is the page's load order, and it is load-bearing: ui.js ends with
-   event wiring and the first paint, both of which need the other two parsed. */
-const APP_SCRIPTS = ['data.js', 'engine.js', 'ui.js'];
+/* Load order is the page's load order, and it is load-bearing: the last script
+   ends with event wiring and the first paint, both of which need everything
+   above it parsed. The page is asked for that order rather than a copy of it
+   being kept here: the application is now thirty scripts rather than three, and
+   a list in two places is a list that goes out of date in one of them. A script
+   added to the page joins the suite by being added to the page, which is the
+   only place it has to be right anyway. */
+function scriptSrcs(htmlPath) {
+  const html = fs.readFileSync(htmlPath, 'utf8');
+  const re = /<script\b[^>]*\bsrc\s*=\s*"([^"]+)"/g;
+  const out = [];
+  let m;
+  while ((m = re.exec(html)) !== null) out.push(m[1]);
+  return out;
+}
+
+/* The scripts a folder's page asks for, as absolute paths, or null if this is
+   not a folder holding the application: no page, a page that loads nothing, or
+   one naming a file that is not there. Used both to choose the folder and to
+   load it, so the test cannot be "found" by a folder it then fails to boot. */
+function appScriptsIn(dir) {
+  let html;
+  try { html = findHtml(dir); } catch (e) { return null; }
+  if (!html) return null;
+  const srcs = scriptSrcs(html);
+  if (!srcs.length) return null;
+  const paths = srcs.map(s => path.join(dir, s));
+  return paths.every(p => fs.existsSync(p)) ? paths : null;
+}
 
 function findAppDir() {
   if (process.env.APP_DIR) return path.resolve(process.env.APP_DIR);
   const candidates = ['../MLP', '../mlp', '../MMP', '../mmp', '../MVP', '../mvp', '..', '.'];
   for (const c of candidates) {
     const dir = path.resolve(__dirname, '..', c);
-    if (APP_SCRIPTS.every(f => fs.existsSync(path.join(dir, f))) && findHtml(dir)) return dir;
+    if (appScriptsIn(dir)) return dir;
   }
   throw new Error(
-    'Could not find the application. Looked for ' + APP_SCRIPTS.join(', ') +
-    ' plus an .html file in: ' +
-    candidates.join(', ') + '. Set APP_DIR to point at the right folder.');
+    'Could not find the application. Looked for an .html file loading scripts ' +
+    'that exist beside it, in: ' + candidates.join(', ') +
+    '. Set APP_DIR to point at the right folder.');
 }
 
+/* index.html when there is one, so a folder that also keeps an older page (an
+   export, a copy taken for the report) still boots the one that ships. */
 function findHtml(dir) {
-  const files = fs.readdirSync(dir).filter(f => f.endsWith('.html'));
+  const files = fs.readdirSync(dir).filter(f => f.endsWith('.html')).sort();
+  if (files.indexOf('index.html') !== -1) return path.join(dir, 'index.html');
   return files.length ? path.join(dir, files[0]) : null;
 }
 
 const APP_DIR = findAppDir();
-const APP_PATHS = APP_SCRIPTS.map(f => path.join(APP_DIR, f));
 const APP_HTML = findHtml(APP_DIR);
+const APP_PATHS = appScriptsIn(APP_DIR);
+
+/* The stylesheet, for the suites that hold a rule and the code that depends on
+   it together. It is several files now, read in the order the page links them,
+   which is the order the cascade resolves them in. Concatenated rather than
+   handed over one by one: a test asking "is this selector styled" is asking of
+   the stylesheet as a whole, and which file a rule sits in is exactly the kind
+   of detail a test should not be pinned to. */
+function styleHrefs(htmlPath) {
+  const html = fs.readFileSync(htmlPath, 'utf8');
+  const re = /<link\b[^>]*>/g;
+  const out = [];
+  let tag;
+  while ((tag = re.exec(html)) !== null) {
+    if (!/rel\s*=\s*"stylesheet"/.test(tag[0])) continue;
+    const href = /\bhref\s*=\s*"([^"]+)"/.exec(tag[0]);
+    if (href) out.push(href[1]);
+  }
+  return out;
+}
+
+function appStyles() {
+  const hrefs = styleHrefs(APP_HTML);
+  if (!hrefs.length) throw new Error('No stylesheet linked from ' + APP_HTML);
+  return hrefs.map(h => fs.readFileSync(path.join(APP_DIR, h), 'utf8')).join('\n');
+}
 
 /* The real archive, beside the application rather than inside it. The data
    suites read from here, because a parser tested only against fixtures written
@@ -154,11 +208,32 @@ function memoryStorage() {
 /* A fresh application instance per test file. State is module-global inside the
    IIFE, so sharing an instance between files would let one test's leftover
    nodes change another's result. */
+/* EVERY WINDOW THIS HARNESS HAS BUILT, SO THE RUNNER CAN PUT THEM DOWN
+   ---------------------------------------------------------------------------
+   `pretendToBeVisual` gives each JSDOM a live requestAnimationFrame loop, and a
+   live timer is a GC root: nothing a boot() produced was ever collected, so the
+   whole run held every window it had ever made. With a suite this size that
+   reached the heap limit and the run died with "Ineffective mark-compacts"
+   rather than a failure, which is the worst way for a test run to end.
+
+   Closing a window stops its timers and lets it go. It has to be the RUNNER
+   that does it, between suites, because a suite may boot at module scope and
+   use that window in every test it has. */
+const LIVE_WINDOWS = [];
+
+function disposeWindows() {
+  while (LIVE_WINDOWS.length) {
+    const w = LIVE_WINDOWS.pop();
+    try { w.close(); } catch (e) { /* already gone; nothing to do */ }
+  }
+}
+
 function boot() {
   const dom = new JSDOM(fs.readFileSync(APP_HTML, 'utf8'), {
     runScripts: 'outside-only',
     pretendToBeVisual: true
   });
+  LIVE_WINDOWS.push(dom.window);
   const w = dom.window;
   const doc = w.document;
 
@@ -230,13 +305,14 @@ function boot() {
   const qb = w.__qb;
   if (!qb) {
     throw new Error(
-      'window.__QB_TEST__ was set but window.__qb is missing. ui.js should end ' +
-      'with a block guarded by that flag which publishes its internals. If that ' +
-      'block was removed, restore it rather than going back to source injection.');
+      'window.__QB_TEST__ was set but window.__qb is missing. The last script the ' +
+      'page loads (ui-boot.js) should end with a block guarded by that flag which ' +
+      'publishes its internals. If that block was removed, restore it rather than ' +
+      'going back to source injection.');
   }
   const app = shim(qb);
 
-  // render() lives in ui.js's global scope but is not published on window —
+  // render() lives in the application's global scope but is not published on window —
   // only the toolbar entry points are. Tests legitimately need to force a
   // redraw, so alias it here rather than exporting it from production code.
   w.render = app.render;
@@ -414,4 +490,4 @@ function withoutStorage(h) {
   return h;
 }
 
-module.exports = { boot, withoutStorage, APP_DIR, APP_SCRIPTS, APP_PATHS, APP_HTML, DATA_DIR, dataDirFile, hasDataDir };
+module.exports = { boot, withoutStorage, disposeWindows, appStyles, APP_DIR, APP_PATHS, APP_HTML, DATA_DIR, dataDirFile, hasDataDir };

@@ -193,16 +193,42 @@ module.exports = ({ describe, test }) => {
       assert.equal(h.byName.maj1, 3, 'the first maj1, not the second at 6');
     });
 
-    test('a header missing a column the tool reads is refused by name', () => {
+    /* These two used to assert refusals: a header missing one of the archive's
+       columns, and a header too short to be one, were both turned away. The
+       supervisor overruled that on 2026-09-24 ("we do not need to cater for
+       misshaped input... a single Source node kind can automatically adapt to
+       whatever the input format is"), so the column list stopped deciding
+       WHETHER a file may be read and started deciding HOW. What was worth
+       protecting is still protected, one step along: a header that cannot
+       describe students must not be read as though it did. */
+    test('a header missing a column the tool reads is not the archive header', () => {
       const p = app.parseHeaderFile('ID gender deg1 maj1 Year Crse Grade x y', 'headers.txt');
-      assert.ok(p.error);
-      assert.includes(p.error, 'Pts', 'the refusal should say which column is missing');
+      assert.notOk(p.error, 'it is a perfectly good header, just not the archive\u2019s');
+      assert.notOk(app.headerIsArchive(p),
+        'missing Pts, so its rows must not be folded into students');
     });
 
-    test('a header too short to be one is refused', () => {
-      assert.ok(app.parseHeaderFile('ID gender', 'headers.txt').error);
+    test('a one-column header is admitted: that is the whole point of the change', () => {
+      const p = app.parseHeaderFile('Course', 'headers-course-labels.txt');
+      assert.notOk(p.error);
+      assert.deepEqual(p.columns, ['Course']);
+      assert.notOk(app.headerIsArchive(p));
+    });
+
+    test('a header with no names at all is still refused', () => {
       assert.ok(app.parseHeaderFile('', 'headers.txt').error);
       assert.ok(app.parseHeaderFile('   \n  \n', 'headers.txt').error);
+    });
+
+    test('and one wider than the tool will render is refused', () => {
+      const wide = Array.from({ length: app.MAX_HEADER_COLUMNS + 1 }, (_, i) => 'c' + i).join(' ');
+      assert.ok(app.parseHeaderFile(wide, 'headers.txt').error);
+    });
+
+    test('the archive\u2019s own header still reads as the archive', () => {
+      const p = app.parseHeaderFile('ID gender deg1 maj1 Year Crse Grade Pts', 'headers.txt');
+      assert.notOk(p.error);
+      assert.ok(app.headerIsArchive(p));
     });
 
     test('the index line is checked against the names when it is there', () => {

@@ -1,0 +1,373 @@
+/* nodes-processing.css: The Processing dropdown, Compare, save and export, and the Take,
+   Sort and Reverse nodes.
+   Part of the Student Data Analyser's stylesheet. The files load in the order
+   index.html lists them, and that order is the cascade: it must not change.
+   ========================================================================== */
+/* ═══════════════════════════════════════════════════════════
+   PROCESSING FAMILY: Toolbar dropdown + Compare node
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* ── PROCESSING DROPDOWN ─────────────────────────────────── */
+.proc-wrap { position: relative; display: inline-flex; }
+.add-btn.reshape,
+.add-btn.processing,
+.add-btn.distribution {
+  /* inline-flex so the caret centres on the label's optical midline rather
+     than sitting on the text baseline */
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+.add-btn.reshape {
+  border-color: #5a3a7a;
+  color: #b48ce0;
+}
+.add-btn.reshape:hover { background: #180e22; }
+/* Like Reshape and unlike Processing: one family sits behind this button, so it
+   can wear that family's colour honestly. */
+.add-btn.distribution { border-color: #3a4a8a; color: #8fa8f0; }
+.add-btn.distribution:hover { background: #0c1024; }
+.caret {
+  font-size: 15px;
+  line-height: 1;
+  opacity: 0.85;
+  display: block;
+  transform: translateY(0.5px);
+}
+
+.proc-menu {
+  position: absolute;
+  top: calc(100% + 7px);
+  left: 0;
+  min-width: 208px;
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  border-radius: 6px;
+  padding: 4px;
+  display: none;
+  z-index: 200;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.7);
+}
+.proc-menu.open { display: block; }
+
+.proc-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  border-radius: 4px;
+  padding: 7px 9px;
+  cursor: pointer;
+  font-family: inherit;
+}
+.proc-item:hover { background: #1c1226; }
+.proc-name { font-size: 13px; color: #b48ce0; }
+.proc-desc { font-size: 12px; color: #8f8f8f; }
+
+/* ── COMPARE SHAPE ───────────────────────────────────────── */
+.shape-compare {
+  width: 112px; height: 78px;
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 6px;
+}
+.shape-compare:active { cursor: grabbing; }
+
+/* Three unequal bars. Reads as "several series" next to the Filter rectangle */
+.cmp-glyph { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.cmp-glyph i { display: block; height: 3px; border-radius: 1px; background: #b48ce0; opacity: 0.7; }
+
+/* ── COMPARE CONFIG PANEL ────────────────────────────────── */
+.cmp-hint {
+  font-size: 12px;
+  color: #949494;
+  line-height: 1.5;
+  padding: 2px 0 1px;
+}
+.cmp-branches { display: flex; flex-direction: column; gap: 4px; }
+.cmp-branch { display: flex; align-items: center; gap: 6px; }
+.cmp-swatch {
+  width: 7px; height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+.cmp-label-input {
+  background: #141414;
+  border: 1px solid #282828;
+  border-radius: 4px;
+  color: #c8c8c8;
+  padding: 4px 6px;
+  font-size: 13px;
+  font-family: inherit;
+  width: 100%;
+  min-width: 0;
+}
+.cmp-label-input::placeholder { color: #808080; }
+.cmp-label-input:focus { outline: none; border-color: #5a3a7a; }
+
+/* ── COMPARE RESULT TABLE ────────────────────────────────── */
+.cmp-table { table-layout: fixed; }
+.cmp-table th { background: #060606; }
+
+.cmp-cell-label {
+  color: #8a8a8a !important;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmp-num {
+  text-align: right;
+  color: #b48ce0 !important;
+  white-space: nowrap;
+  width: 58px;
+}
+th.cmp-num { color: #8a8a8a !important; }
+.cmp-empty {
+  padding: 8px 11px;
+  font-size: 12px;
+  color: #8f8f8f;
+  border-top: 1px solid #141414;
+}
+
+/* Per-branch student lists, shown under the summary when Output type = List */
+.cmp-branch-card { margin-top: 8px; }
+.cmp-branch-card .result-head {
+  color: #8a7ab0;
+  text-transform: none;
+  letter-spacing: 0;
+  font-size: 13px;
+}
+.cmp-more {
+  color: #8a8a8a !important;
+  padding: 5px 9px !important;
+  font-size: 12px;
+}
+
+/* Measure column checkboxes on the Compare panel */
+.cmp-measures {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 1px 0 2px;
+}
+.cmp-measure {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: #a8a8a8;
+  cursor: pointer;
+  user-select: none;
+}
+.cmp-measure input[type=checkbox] {
+  width: 12px;
+  height: 12px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: #5a3a7a;
+  cursor: pointer;
+}
+.cmp-measure:hover { color: #d0d0d0; }
+
+/* COURSE CELLS
+   The enrolment count sits in the student table with the full transcript in a
+   tooltip; the dotted underline is the only affordance saying so. */
+.crs-cell {
+  cursor: help;
+  border-bottom: 1px dotted #333 !important;
+}
+.crs-cell:hover { color: #7ab3ff; }
+
+.result-card .cmp-table td.cmp-cell-label {
+  font-variant-numeric: tabular-nums;
+  cursor: help;
+}
+
+/* SAVE / LOAD
+   Query-file actions are neither destructive like Clear nor primary like Run,
+   so they sit between the two in weight. */
+.file-btn {
+  white-space: nowrap;
+  background: #141414;
+  border: 1px solid #2a2a2a;
+  color: #9a9a9a;
+  font-size: 13px;
+  padding: 5px 11px;
+  border-radius: 4px;
+  cursor: pointer;
+  font-family: inherit;
+  transition: border-color .12s, color .12s;
+}
+.file-btn:hover { border-color: #3d3d3d; color: #d0d0d0; }
+.file-btn:active { background: #1a1a1a; }
+
+/* EXPORT FILE NAME
+   Lives in the results panel beside Copy and Save, because it names the file
+   those buttons produce. Styled as a quiet inline field rather than a form
+   control: it is optional, and a heavier treatment would imply it needs filling
+   in before exporting. */
+.export-name {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-right: 6px;
+  padding: 3px 6px;
+  background: #121212;
+  border: 1px solid #262626;
+  border-radius: 4px;
+  transition: border-color .12s;
+}
+.export-name:focus-within { border-color: #3d3d3d; }
+
+.export-name input {
+  width: 108px;
+  background: transparent;
+  border: none;
+  color: #c8c8c8;
+  font-family: inherit;
+  font-size: 13px;
+  padding: 0;
+}
+.export-name input:focus { outline: none; }
+.export-name input::placeholder { color: #808080; }
+
+/* The extension is shown but not editable. It follows the format, not the
+   user's choice, and letting it be typed would invite ".csv.csv". */
+.export-ext {
+  color: #8f8f8f;
+  font-size: 13px;
+  user-select: none;
+  pointer-events: none;
+}
+
+/* The actions row now holds a field as well as buttons, so it needs to wrap
+   rather than push the buttons off a narrow panel. */
+.result-actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   TAKE NODE
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+/* Same palette as Compare (both are Processing-family nodes and arrive from
+   the same dropdown), but a squatter shape with its own glyph, so the two are
+   told apart at a glance on a crowded canvas. */
+.shape-take {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-take:active { cursor: grabbing; }
+
+/* Three solid bars = kept, a rule, then one faded bar = discarded */
+.take-glyph { display: flex; flex-direction: column; gap: 2px; align-items: stretch; width: 24px; }
+.take-glyph i { display: block; height: 3px; border-radius: 1px; background: #b48ce0; opacity: 0.75; }
+.take-glyph i.cut { opacity: 0.22; }
+.take-glyph b {
+  display: block; height: 0;
+  border-top: 1px dashed #b48ce0;
+  opacity: 0.45;
+  margin: 1px 0;
+}
+
+/* ═══════════════════════════════════════════════════════════
+   SORT NODE
+   Appended block. Nothing above this line is modified.
+   ═══════════════════════════════════════════════════════════ */
+
+.shape-sort {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-sort:active { cursor: grabbing; }
+
+/* ── REVERSE SHAPE ───────────────────────────────────────── */
+.shape-reverse {
+  width: 106px; height: 72px;
+  border-radius: 3px;
+  border: 2.5px solid #5a3a7a;
+  background: #120a1a;
+  color: #b48ce0;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase;
+  cursor: grab; position: relative; flex-shrink: 0;
+  flex-direction: column; gap: 5px;
+}
+.shape-reverse:active { cursor: grabbing; }
+
+/* Sort's bars, inverted, with a turn arrow beside them. Laid out as a row so
+   the arrow sits next to the stack rather than under it, which would read as a
+   fourth bar. */
+.rev-glyph { display: flex; align-items: center; gap: 5px; }
+.rev-bars { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.rev-bars i { display: block; height: 3px; border-radius: 1px; opacity: 0.75; }
+/* A U-turn: an open square with its right side drawn, plus a head. Built from
+   borders rather than an SVG so it inherits currentColor with the rest of the
+   family and needs no extra file. */
+.rev-turn {
+  display: block;
+  width: 7px; height: 13px;
+  border-radius: 2px;
+  opacity: 0.75;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 55% 100%, 55% 72%,
+                     100% 72%, 100% 28%, 0 28%);
+}
+
+/* Ascending bars: "ordered". Take's glyph is equal bars with a cut through
+   them, so the two Processing nodes are distinguishable at a glance even
+   though they share the family colour. */
+.sort-glyph { display: flex; flex-direction: column; gap: 2px; align-items: flex-start; }
+.sort-glyph i { display: block; height: 3px; border-radius: 1px; background: #b48ce0; opacity: 0.75; }
+
+/* ── SORT KEY ROWS ───────────────────────────────────────── */
+/* Same left-rule treatment as .criteria-list, so the two list-shaped panels
+   read as the same kind of control. */
+.sort-list { display: flex; flex-direction: column; gap: 5px; }
+.sort-row {
+  display: grid;
+  /* rank | column | direction | delete: Fixed so nothing clips or reflows
+     when a direction label changes length ("A → Z" vs "high → low") */
+  grid-template-columns: 12px 1fr 74px 16px;
+  gap: 4px;
+  align-items: center;
+}
+.sort-rank {
+  font-size: 11px;
+  color: #949494;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+.sort-dir { font-size: 12px; }
+/* Placeholder in the delete column of row 1: keeps the three controls of every
+   row on the same vertical lines whether or not the row can be removed. */
+.sort-nodel { display: block; }
+.add-criterion-btn.sort-add:hover { border-color: #5a3a7a; color: #b48ce0; }
+

@@ -291,7 +291,7 @@ module.exports = ({ describe, test }) => {
       app.clearSourceData(s.id);
       assert.notOk(app.sourceData()[s.id]);
       assert.notOk(app.headerFor(s.id));
-      assert.deepEqual(app.datasetCfg(app.findNode(s.id)), { headers: '', years: [] });
+      assert.deepEqual(app.datasetCfg(app.findNode(s.id)), { headers: '', years: [], file: '' });
     });
   });
 

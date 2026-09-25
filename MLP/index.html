@@ -5,7 +5,18 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>ENGR489 Honours Project - Student Data Analyser
 </title>
-<link rel="stylesheet" href="styles.css">
+<!-- One stylesheet split across files, listed in cascade order. A later file
+     may override an earlier one, so this order is part of the styling and not
+     an arrangement of convenience. -->
+<link rel="stylesheet" href="css/base.css">
+<link rel="stylesheet" href="css/canvas.css">
+<link rel="stylesheet" href="css/config-panels.css">
+<link rel="stylesheet" href="css/results-panel.css">
+<link rel="stylesheet" href="css/nodes-processing.css">
+<link rel="stylesheet" href="css/canvas-navigation.css">
+<link rel="stylesheet" href="css/node-colours.css">
+<link rel="stylesheet" href="css/dialogs.css">
+<link rel="stylesheet" href="css/library.css">
 </head>
 <body>
 
@@ -133,7 +144,7 @@
        `accept` is a courtesy to the dialog and is trusted by nothing. The year
        input carries none at all, because the archive's year files have no
        extension for a filter to match on, which is precisely why the name
-       rules live in data.js, where the file is actually taken, rather than in an
+       rules live in js/data-loading.js, where the file is actually taken, rather than in an
        attribute a rename walks straight past. -->
   <input type="file" id="headersFile" accept="text/plain,.txt" hidden>
   <input type="file" id="yearFiles" multiple hidden>
@@ -544,9 +555,10 @@
         <section id="help-connect">
           <h3>Connecting nodes</h3>
           <p>There are no wires to draw by hand. <b>Drag one node near another</b> and a wire
-             appears between them. Drag it away again and the wire goes. The direction is worked out
-             from what the two nodes are, so a Filter dropped beside a Source is always fed by it,
-             never the other way round.</p>
+             appears between them. To take one out, hover over the wire and click the x that appears
+             halfway along it: dragging the two nodes apart again moves them, and leaves the wire
+             where it was. The direction is worked out from what the two nodes are, so a Filter
+             dropped beside a Source is always fed by it, never the other way round.</p>
 
           <figure class="help-fig">
             <svg viewBox="0 0 540 200" xmlns="http://www.w3.org/2000/svg" role="img"
@@ -593,7 +605,8 @@
                   together, so more than one arrow may land on them.</li>
               <li><b>Every other node takes exactly one input.</b> If you drag a second wire onto a
                   node that is already fed, the tool refuses it rather than merging the two quietly,
-                  so a query never ends up meaning something other than what it looks like.</li>
+                  so a query never ends up meaning something other than what it looks like. A refused
+                  drop says why, in a note between the two nodes.</li>
             </ol>
           </figure>
 
@@ -664,10 +677,45 @@
           </figure>
 
           <h4 class="help-cat help-cat-source">Source</h4>
-          <p class="help-node-desc">Where a query begins. It reads the rows in the data file and
-             hands them on, one row per student, with that student's courses carried inside the row.
-             Every query needs at least one, and a query with none has nothing to compute. Several
-             Sources in one graph is perfectly normal, and it is how you reach across years.</p>
+          <p class="help-node-desc">Where a query begins. It reads the rows in a data file and
+             hands them on. Every query needs at least one, and a query with none has nothing to
+             compute. Several Sources in one graph is perfectly normal, and it is how you reach
+             across years.</p>
+          <p class="help-node-desc">A data file carries no column names inside it, so a Source is
+             given two files: the <b>column file</b> that names the columns, and then the data
+             itself. Name the column file <b>headers.txt</b>, or <b>headers-</b> then the data
+             file's name and <b>.txt</b>, so that a folder can hold several data files and the
+             columns for each of them side by side: <b>headers-gpa-bands.txt</b> describes
+             <b>gpa-bands.txt</b>.</p>
+          <p class="help-node-desc">The columns decide how the file is read, and there is nothing
+             to choose. A column file naming the archive's columns (<b>ID</b>, <b>Year</b>,
+             <b>Crse</b>, <b>Grade</b> and the rest) means student records, and the rows are folded
+             into students with their courses nested inside them. <b>Any other column file</b>
+             means an ordinary table, and the rows come through as they are: one row per line, no
+             students and no years. That is how a list of labels or a file of named bands gets in,
+             which is what <b>Select For</b>'s Labels port takes. The panel says which of the two
+             it is reading before you load anything into it.</p>
+          <p class="help-node-desc">A table file is read as it finds it. Tabs, commas or spaces,
+             whichever separates the first row into as many fields as the column file names; a
+             column whose every value reads as a number becomes a number column, so it can be
+             measured, sorted or used as a band edge; and a row with the wrong number of fields is
+             padded or trimmed to fit and counted in the notice rather than refusing the file.</p>
+          <p class="help-node-desc"><b>Rows</b> and <b>Population</b> below are about students, so
+             a Source reading an ordinary table shows neither.
+             <b>Rows</b> chooses what a row means on the way out, and it is
+             the setting that changes every count downstream. <b>One row per student</b> is the
+             default: a row is one student in one year, with that student's courses carried nested
+             inside the row, so a student who appears in two years is two rows and each cohort is
+             separately countable. <b>One row per enrolment</b> unfolds those courses into rows of
+             their own, so one student becomes one row per course they took and a Count counts
+             course registrations rather than people.</p>
+          <p class="help-node-desc">Because that difference is easy to read past, a Source set to
+             enrolments says <b>one row per enrolment</b> on the node itself, its panel states the
+             multiplication in this Source's own numbers, and the query log prints the row counts
+             either side of the change. It is the same unfold a <b>Project</b> node performs, and
+             the same rename comes with it: <b>ID</b> arrives as <b>Student</b>, because after the
+             unfold it no longer identifies a row. Use the setting when every branch of the query
+             wants enrolments, and a Project when only one branch does.</p>
 
           <h4 class="help-cat help-cat-filter">Filter</h4>
           <p class="help-node-desc">Keeps the rows that match a condition and discards the rest.
@@ -767,7 +815,7 @@
                     <div class="help-eg-arrow">&rarr;</div>
                     <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Student</th><th>GPA</th></tr><tr><td>Jo</td><td>7.8</td></tr><tr><td>Ana</td><td>6.2</td></tr></table></div>
                   </div>
-                  <p class="help-eg-note">Settings: <b>Keep</b> Student and GPA. Two rows in, two rows out: only the columns change.</p>
+                  <p class="help-eg-note">Settings: <b>Columns to keep</b> Student and GPA. Two rows in, two rows out: only the columns change.</p>
                 </div></dd>
           </dl>
 
@@ -791,6 +839,12 @@
                 ordinary columns.
                 <br><br>
                 To get back to one row per student afterwards, use <b>Unique</b> on Student.
+                <br><br>
+                A <b>Source</b> can do this unfold itself, with its <b>Rows</b> setting. The result
+                is identical; what differs is reach. The setting changes every branch that leaves
+                that Source, which is what you want when the whole query is about courses. This
+                node changes one branch, and shows on the canvas where the change happened, which
+                is what you want when another branch still needs to count people.
                 <div class="help-eg">
                   <div class="help-eg-t">Example</div>
                   <div class="help-eg-io">
@@ -888,7 +942,7 @@
                     <div class="help-eg-arrow">&rarr;</div>
                     <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Branch</th><th>Students</th><th>Avg grade</th></tr><tr><td>Year 2022</td><td>2</td><td>7.00</td></tr><tr><td>Year 2023</td><td>1</td><td>5.10</td></tr></table></div>
                   </div>
-                  <p class="help-eg-note">Two branches wired in, <b>Columns</b> Students and Avg grade ticked. One row per branch, and the ticked boxes are the columns: untick Avg grade and that column goes.</p>
+                  <p class="help-eg-note">Two branches wired in, <b>Columns to show</b> Students and Avg grade ticked. One row per branch, and the ticked boxes are the columns: untick Avg grade and that column goes.</p>
                 </div></dd>
           </dl>
 
@@ -920,6 +974,24 @@
                 before it reaches the port, and a <b>Sort</b> and a <b>Take</b> in front of Labels
                 are how you say "the ten biggest". A <b>Source</b> cannot supply one: it reads the
                 archive files and always produces the archive's columns.
+                <br>Wire in a table of <b>three</b> columns instead and the groups become named
+                bands rather than values. The columns are read in order: the first names the band,
+                the second is its lowest value and the third its highest, so a file reading
+                <b>Fail 0 4 / Pass 4 6 / Merit 6 8 / Excellent 8 9</b> is a grading scheme, and the
+                same four rows are the same scheme next year. That is the difference between this
+                and a <b>Histogram</b>, whose band widths come from the data it is given and so
+                differ between one year and the next. Here you say what the bands are, and
+                <b>Put in bands</b> names the number they apply to.
+                <br>A value sitting on the edge between two bands goes in the higher one, so bands
+                that meet never count it twice and the bands still add up to the rows. The very top
+                of the last band is included, which is what those four rows mean by <b>8 9</b>
+                covering an A+. A row whose value falls in no band at all is left out and counted in
+                the query log, as is a row with no value to compare, so a breakdown that quietly
+                lost a third of its rows says so.
+                <br>The node works out which of the two readings you meant from the shape of the
+                table, and says which one it chose under <b>Read the Labels branch as</b>. Set it
+                there if it guesses wrong, which it can: a <b>Histogram</b> with two measures has
+                three columns and the last two are numbers, and it is not a set of bands.
                 <br>It does not reorder anything. Put a <b>Sort</b> after it, and then a <b>Take</b>
                 after that, if you want the largest few.
                 <div class="help-eg">
@@ -971,16 +1043,20 @@
              them there are. It only displays what arrives, so for an average or any other figure,
              wire an <b>Aggregate</b> in front of it.</p>
           <p class="help-node-desc">When it is showing the rows, it also offers a tick box per
-             column, so you can look at three columns of a wide table without wiring anything up.
-             This changes the view and never the answer: no rows are lost, and Copy and Save write
-             exactly the columns shown. A <b>Select</b> upstream does the same job to the data
-             itself, and the two work together, with Select narrowing what arrives and this
-             narrowing what you see of it.</p>
+             column under <b>Columns to show</b>, so you can look at three columns of a wide table
+             without wiring anything up. This changes the view and never the answer: no rows are
+             lost, Copy and Save write exactly the columns shown, and the block in the panel
+             redraws the moment you tick a box, with no re-run. A <b>Select</b> upstream does the
+             same job to the data itself, and the two work together, with Select narrowing what
+             arrives and this narrowing what you see of it. Select does change the answer, so its
+             boxes are the ones that need a re-run.</p>
           <p class="help-node-desc">An Output can be built on. Wire another node after it and that
              node is handed exactly what the Output is showing, so you can look at an answer and
              then narrow it without rebuilding the query in front of it. What it shows is what it
              passes on: a Count passes its count, and a row view narrowed to three columns passes
-             those three columns.</p>
+             those three columns. That is the one case where the column boxes do need a re-run:
+             this block redraws straight away, but the branch wired after it is still showing the
+             columns it was handed last time, and the panel says so.</p>
           <p class="help-node-desc">An Output used as a step on the way to an answer is often not
              an answer worth the room, so <b>Show in results panel</b> turns its block off. It is
              still run and still feeds whatever is wired after it, and only the block goes. Turning
@@ -1061,10 +1137,10 @@
              the graph only, so opening someone else's query leaves your layout alone.</p>
 
           <div class="help-tip">
-            <b>Check a query rather than trusting it.</b> Every node shows its own row count after
-            a run, and hovering a wire shows the table passing along it. Between them you can follow
-            the data step by step and find the point where a result stopped being what you
-            expected.
+            <b>Check a query rather than trusting it.</b> Hovering a wire shows the rows
+            travelling along it and says how many there are, and each block in this panel carries
+            the row count of what reached its Output. Between them you can follow the data step by
+            step and find the point where a result stopped being what you expected.
           </div>
         </section>
 
@@ -1166,8 +1242,8 @@
           <h3>Keyboard and mouse</h3>
           <table class="help-keys">
             <tr><td>Drag a node near another</td><td>Wire them together</td></tr>
-            <tr><td>Drag a node away</td><td>Break the wire</td></tr>
-            <tr><td>Hover a wire</td><td>Preview the table passing along it</td></tr>
+            <tr><td>Hover a wire</td><td>Preview the table passing along it, and how many rows</td></tr>
+            <tr><td>Click the x on a wire</td><td>Remove that wire</td></tr>
             <tr><td>Drag on empty canvas</td><td>Select everything inside the box</td></tr>
             <tr><td><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>A</kbd></td><td>Select all nodes</td></tr>
             <tr><td><kbd>Delete</kbd> or <kbd>Backspace</kbd></td><td>Delete the selection</td></tr>
@@ -1194,7 +1270,7 @@
      inspected and restyled without reading the script.
 
      The buttons are wired inline like the toolbar's. Dismissing by clicking the
-     backdrop is not, because it carries a condition. See ui.js. -->
+     backdrop is not, because it carries a condition. See js/ui-saveload.js. -->
 <div class="save-dialog" id="saveDialog">
   <div class="save-card" role="dialog" aria-modal="true" aria-labelledby="saveTitle">
     <h2 class="save-title" id="saveTitle">Save query</h2>
@@ -1239,7 +1315,7 @@
      role="alertdialog" rather than "dialog": the screen reader should read the
      question on open, not wait to be asked what the card says.
 
-     The checkbox is answered in ui.js and lasts the session. Nothing about it
+     The checkbox is answered in js/ui-nodes.js and lasts the session. Nothing about it
      is written to disk. -->
 <div class="save-dialog confirm-dialog" id="clearDialog">
   <div class="save-card" role="alertdialog" aria-modal="true"
@@ -1266,7 +1342,7 @@
 
      The pictures on the cards are drawn into #libBody by renderLibrary(), from
      the graphs themselves. There is no <img> anywhere in here and no thumbnail
-     is stored: see libThumb() in ui.js for why a screenshot would have been
+     is stored: see libThumb() in js/ui-library-thumb.js for why a screenshot would have been
      the wrong answer. -->
 <div class="save-dialog lib-dialog" id="libDialog">
   <div class="lib-card-frame" role="dialog" aria-modal="true" aria-labelledby="libTitle">
@@ -1323,14 +1399,47 @@
   </div>
 </div>
 
-<!-- Three classic scripts, in this order and not as modules. The tool is opened
+<!-- The application, as classic scripts and not as modules. The tool is opened
      from Finder at file://, where a module script is fetched with CORS against an
      opaque origin and refused; classic scripts sharing one global scope are what
-     works there. data.js declares the archive and the Table type, engine.js the
-     evaluation, ui.js the canvas, and ui.js last, because it ends by wiring the
-     events and painting the first frame. -->
-<script src="data.js"></script>
-<script src="engine.js"></script>
-<script src="ui.js"></script>
+     works there, which is why a name declared in one file is visible in the next.
+
+     THIS ORDER IS LOAD-BEARING and this list is where it is decided. The data
+     files declare the archive and the Table type, the engine files the evaluation,
+     the ui files the canvas. ui-boot.js is last because it ends by publishing the
+     inline handlers and painting the first frame, which needs everything above it.
+     The test harness reads this list rather than keeping a copy of it. -->
+<script src="js/data-registries.js"></script>
+<script src="js/data-loading.js"></script>
+<script src="js/data-sources.js"></script>
+<script src="js/data-table.js"></script>
+<script src="js/engine-core.js"></script>
+<script src="js/engine-sort-take.js"></script>
+<script src="js/engine-unique-select.js"></script>
+<script src="js/engine-compare.js"></script>
+<script src="js/engine-output.js"></script>
+<script src="js/engine-aggregate.js"></script>
+<script src="js/engine-selectfor.js"></script>
+<script src="js/engine-histogram.js"></script>
+<script src="js/engine-combine.js"></script>
+<script src="js/engine-specs.js"></script>
+<script src="js/ui-state.js"></script>
+<script src="js/ui-nodes.js"></script>
+<script src="js/ui-config-controls.js"></script>
+<script src="js/ui-node-html.js"></script>
+<script src="js/ui-render.js"></script>
+<script src="js/ui-edge-notes.js"></script>
+<script src="js/ui-results.js"></script>
+<script src="js/ui-export.js"></script>
+<script src="js/ui-saveload.js"></script>
+<script src="js/ui-library-store.js"></script>
+<script src="js/ui-library-thumb.js"></script>
+<script src="js/ui-library-dialog.js"></script>
+<script src="js/ui-toolbar-menus.js"></script>
+<script src="js/ui-gestures.js"></script>
+<script src="js/ui-panel-width.js"></script>
+<script src="js/ui-toolbar-height.js"></script>
+<script src="js/ui-events.js"></script>
+<script src="js/ui-boot.js"></script>
 </body>
 </html>

@@ -94,10 +94,16 @@ module.exports = ({ describe, test }) => {
         'three programmes, where the built-in dataset had one');
     });
 
-    test('the column file must now declare deg1, since the tool reads it', () => {
+    /* Was: a header without deg1 is refused. The Source generalisation moved
+       that judgement from admission to routing, so the assertion moves with it.
+       The property being defended is unchanged and is the one that matters: a
+       header that cannot supply Degree must never be read as students, because
+       every row would then carry a Degree the file never held. */
+    test('a column file without deg1 is not read as the archive', () => {
       const p = A.parseHeaderFile('ID gender maj1 Year Crse Grade Pts x y', 'headers.txt');
-      assert.ok(p.error);
-      assert.includes(p.error, 'deg1');
+      assert.notOk(p.error, 'it is a readable header, just not a student one');
+      assert.notOk(A.headerIsArchive(p),
+        'no deg1, so these rows must go down the table path instead');
     });
 
     test('the archive header still passes', function () {

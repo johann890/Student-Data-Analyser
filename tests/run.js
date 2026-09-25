@@ -11,6 +11,7 @@
 const fs = require('fs');
 const path = require('path');
 const { AssertionError, fmt } = require('./lib/assert');
+const { disposeWindows } = require('./lib/harness');
 
 const args = process.argv.slice(2);
 const verbose = args.includes('--verbose') || args.includes('-v');
@@ -91,6 +92,13 @@ async function main() {
         console.log('    ' + C.red + '\u2717 ' + t.name + C.off);
       }
     }
+
+    /* Put down every window the suite booted. See disposeWindows(): each one
+       holds a live animation-frame timer, so without this the run keeps every
+       window it has ever made and eventually dies of heap exhaustion rather
+       than of a failing assertion. Between suites, never within one, because a
+       suite may boot at module scope and use that window throughout. */
+    disposeWindows();
   }
 
   if (failures.length) {

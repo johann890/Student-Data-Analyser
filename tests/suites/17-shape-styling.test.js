@@ -13,15 +13,10 @@
    whatever the base rule gave it, which is how AggregateRows came out violet
    among the teal ones. */
 
-const fs = require('fs');
-const path = require('path');
-const { boot, APP_DIR } = require('../lib/harness');
+const { boot, appStyles } = require('../lib/harness');
 const { assert } = require('../lib/assert');
 
-const CSS = (() => {
-  const f = fs.readdirSync(APP_DIR).filter(x => x.endsWith('.css'))[0];
-  return fs.readFileSync(path.join(APP_DIR, f), 'utf8');
-})();
+const CSS = appStyles();
 
 /* The class each node type renders. Written out rather than derived, because
    deriving it from shapeHTML would make the test agree with the code by

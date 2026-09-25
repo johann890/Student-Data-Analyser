@@ -18,16 +18,10 @@
    a property of the view and of nothing else: it changes no table, and it must
    not invalidate a run. */
 
-const fs = require('fs');
-const path = require('path');
-const { boot, APP_DIR } = require('../lib/harness');
+const { boot, appStyles } = require('../lib/harness');
 const { assert } = require('../lib/assert');
 
-const CSS = (() => {
-  const f = fs.readdirSync(APP_DIR).filter(x => x.endsWith('.css'))[0];
-  if (!f) throw new Error('no stylesheet found in ' + APP_DIR);
-  return fs.readFileSync(path.join(APP_DIR, f), 'utf8');
-})();
+const CSS = appStyles();
 
 module.exports = ({ describe, test }) => {
 

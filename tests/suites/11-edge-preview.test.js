@@ -4,16 +4,10 @@
    cap is paired with a width in the stylesheet, which is the thing most likely
    to drift. These tests hold the two together. */
 
-const fs = require('fs');
-const path = require('path');
-const { boot, APP_DIR } = require('../lib/harness');
+const { boot, appStyles } = require('../lib/harness');
 const { assert } = require('../lib/assert');
 
-const CSS = (() => {
-  const f = fs.readdirSync(APP_DIR).filter(x => x.endsWith('.css'))[0];
-  if (!f) throw new Error('no stylesheet found beside app.js in ' + APP_DIR);
-  return fs.readFileSync(path.join(APP_DIR, f), 'utf8');
-})();
+const CSS = appStyles();
 
 module.exports = ({ describe, test }) => {
 

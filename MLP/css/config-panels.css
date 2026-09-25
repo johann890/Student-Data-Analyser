@@ -1,0 +1,496 @@
+/* config-panels.css: What a config panel looks like: criteria rows, range and list bands,
+   and the data files on a Source.
+   Part of the Student Data Analyser's stylesheet. The files load in the order
+   index.html lists them, and that order is the cascade: it must not change.
+   ========================================================================== */
+/* FILTER CRITERIA ROWS */
+.criteria-list {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.criterion-row {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding-left: 8px;
+  border-left: 2px solid #2a2a2a;
+}
+.criterion-controls {
+  display: grid;
+  gap: 4px;
+  /* field | op | value: Fixed columns so nothing clips */
+  grid-template-columns: 80px 38px 1fr;
+  align-items: center;
+}
+/* two-col variant: field | value (year, gender, subject) */
+.criterion-controls.two-col {
+  grid-template-columns: 80px 1fr;
+}
+/* stacked variant: course pickers carry a code and a full title, which will not
+   survive an 80px column. Each control gets the panel's whole width instead. */
+.criterion-controls.stack {
+  grid-template-columns: 1fr;
+}
+.criterion-controls.stack .cc-pair {
+  display: grid;
+  grid-template-columns: 38px 1fr;
+  gap: 4px;
+  align-items: center;
+}
+.course-sel {
+  font-variant-numeric: tabular-nums;
+}
+/* optgroup headers inherit the page background otherwise, which renders them
+   as unreadable dark-on-dark in most engines */
+select optgroup {
+  background: #141414;
+  color: #9a9a9a;
+  font-style: normal;
+  font-size: 12px;
+}
+select option {
+  background: #141414;
+  color: #c8c8c8;
+}
+/* The one hint on any panel that warns rather than explains, so it is the one
+   hint that is coloured. A Project silently changing what a count counts is the
+   bug this whole node exists to prevent. */
+.cmp-hint.proj-warn {
+  border-left: 2px solid #4a6a1e;
+  padding-left: 6px;
+  color: #93b048;
+}
+.cmp-hint.proj-warn b { color: #a8d050; }
+
+/* ── RANGE BAND ──────────────────────────────────────────── */
+/* Appears under a criterion whose operator is "in range", and only then. It is
+   banded down the left exactly as .criterion-row is, so it reads as belonging
+   to that criterion rather than as a criterion of its own, but in amber rather
+   than the panel's grey, so a filter carrying a range announces itself without
+   the panel having to be read.
+
+   The amber is the one already used by .stale-note for a state worth noticing,
+   rather than a hue invented for one control. */
+.crit-range {
+  margin-top: 4px;
+  padding: 5px 7px;
+  border-left: 2px solid #c9a227;
+  border-radius: 0 4px 4px 0;
+  background: #191305;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.crit-range-tag {
+  font-size: 10px;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: #c9a227;
+  opacity: 0.85;
+}
+/* low | "to" | high. Fixed centre column so the two bounds stay equal width
+   however long their contents, which matters because one is often a dropdown
+   of full specialisation names and the other the same. */
+.crit-range-pair {
+  display: grid;
+  grid-template-columns: 1fr 16px 1fr;
+  gap: 3px;
+  align-items: center;
+}
+.crit-range-to {
+  font-size: 11px;
+  color: #91804e;
+  text-align: center;
+}
+.crit-range-note {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #91804e;
+}
+/* The single-value box is replaced by the band, not joined by it, so its grid
+   cell is held open to stop the operator select stretching across the gap. */
+/* The operator select wears the band's colour once the range is chosen, so the
+   control that opened the band and the band itself read as one thing. */
+.op-wide {
+  border-color: #4a3a10 !important;
+  color: #c9a227;
+}
+/* The band's own controls take the amber treatment rather than the panel's
+   grey, so the grouping survives even when the band wraps. */
+.crit-range input,
+.crit-range select {
+  border-color: #4a3a10;
+  background: #120d04;
+}
+.crit-range input:focus,
+.crit-range select:focus { border-color: #c9a227; }
+
+/* ── LIST BAND ───────────────────────────────────────────── */
+/* The range band's sibling: same placement, same left banding, same tag-and-
+   note structure, so the two read as one idea with two settings. Violet rather
+   than amber because a panel may carry both and a glance should tell them
+   apart; the violet is the accent-color the measure tick boxes already use,
+   which is also where this band borrows its controls from. */
+.crit-list {
+  margin-top: 4px;
+  padding: 5px 7px;
+  border-left: 2px solid #7a5aa8;
+  border-radius: 0 4px 4px 0;
+  background: #140f1c;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  position: relative;
+}
+.crit-list-tag {
+  font-size: 10px;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: #a98ad0;
+  opacity: 0.85;
+}
+/* The count rides on the tag rather than in the note, so "how many have I
+   picked" is answerable without reading a sentence. */
+.crit-list-tag b {
+  margin-left: 4px;
+  padding: 0 4px;
+  border-radius: 6px;
+  background: #3a2a55;
+  color: #d0bcf0;
+  font-size: 10px;
+  font-weight: 600;
+}
+.crit-list-clear {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  padding: 1px 5px;
+  border: 1px solid #3a2a55;
+  border-radius: 3px;
+  background: #1c1428;
+  color: #a98ad0;
+  font-size: 11px;
+  font-family: inherit;
+  cursor: pointer;
+}
+.crit-list-clear:hover { border-color: #7a5aa8; color: #d0bcf0; }
+/* A wrapping row of short chips. Course codes are seven characters and
+   specialisation names are twenty, so the boxes size to their content rather
+   than to a column grid that would have to suit both. */
+.crit-list-picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px 6px;
+  /* Eighty-two courses under thirteen headings is taller than any panel, so the
+     grid scrolls inside the band and the note under it stays reachable. */
+  max-height: 210px;
+  overflow-y: auto;
+}
+.crit-list-group {
+  font-size: 10px;
+  letter-spacing: 0.7px;
+  text-transform: uppercase;
+  color: #8777a3;
+  margin-top: 3px;
+}
+.crit-list-group:first-child { margin-top: 0; }
+.crit-pick {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+  color: #8a8a9a;
+  cursor: pointer;
+  user-select: none;
+  font-variant-numeric: tabular-nums;
+}
+.crit-pick input[type=checkbox] {
+  width: 11px;
+  height: 11px;
+  margin: 0;
+  flex-shrink: 0;
+  accent-color: #7a5aa8;
+  cursor: pointer;
+}
+.crit-pick:hover { color: #c0c0d0; }
+/* A ticked value is legible at a glance without reading its box, which is what
+   makes a grid of eighty scannable. */
+.crit-pick.on { color: #d0bcf0; }
+.crit-list-text {
+  width: 100%;
+  border-color: #3a2a55;
+  background: #0f0b16;
+}
+.crit-list-text:focus { border-color: #7a5aa8; }
+.crit-list-note {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #8578a0;
+}
+
+/* The wildcard legend, sized and coloured as the list band's note is: both are
+   a line of guidance under the control they belong to. No band around it,
+   because a pattern is one box rather than the several a list needs. */
+.crit-pattern-note {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #8578a0;
+  padding-left: 8px;
+}
+.crit-pattern-note b { color: #c2b3e0; font-weight: 600; }
+/* The operator select wears the band's colour once the list is chosen, the same
+   way .op-wide wears the range's. */
+.op-list {
+  border-color: #3a2a55 !important;
+  color: #a98ad0;
+}
+
+
+/* ── THE DATA FILES ON A SOURCE PANEL ─────────────────────────────────────────
+   Two numbered rows, in the order the two steps have to happen in, each showing
+   what the Source is currently holding rather than only offering a button.
+
+   The step numbers are not decoration. A year file cannot be parsed without the
+   column list that names its fields, so the second button is disabled until the
+   first has succeeded, and a numbered pair is the cheapest way to say "these
+   are ordered" before the user discovers it by finding a control greyed out.
+
+   Green when loaded, matching the Source's own colour, so the panel and the
+   circle on the canvas agree at a glance about whether this node can run. */
+.src-files {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.src-file {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 5px;
+  border: 1px solid #242424;
+  border-left: 2px solid #2a2a2a;
+  border-radius: 4px;
+  background: #101010;
+}
+.src-file.done {
+  border-left-color: #2d6640;
+  background: #0a1410;
+}
+
+.src-step {
+  flex-shrink: 0;
+  width: 14px; height: 14px;
+  border-radius: 50%;
+  border: 1px solid #2a2a2a;
+  color: #949494;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex; align-items: center; justify-content: center;
+}
+.src-file.done .src-step {
+  border-color: #2d6640;
+  background: #0f2a1a;
+  color: #5ec87a;
+}
+
+/* min-width:0 so a long list of year names truncates inside the row instead of
+   forcing the panel wider. The same reason every other flexed label in this
+   stylesheet carries it. */
+.src-what {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+  overflow: hidden;
+}
+/* Below the rest of the panel's scale on purpose. The row fits a step chip, this
+   name and the Choose button inside the 220px node width, and the default
+   "mcs-students-YYYY" hint is the longest thing it has to show in full. At the
+   panel's raised size it truncates to an ellipsis on a fresh node, which is the
+   one moment that hint has a job to do. */
+.src-what b {
+  font-size: 10.5px;
+  font-weight: 600;
+  color: #9a9a9a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.src-file.done .src-what b { color: #5ec87a; }
+.src-what small {
+  font-size: 10px;
+  color: #949494;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.src-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: 1px solid #2a2a2a;
+  border-radius: 3px;
+  color: #8a8a8a;
+  font-size: 11px;
+  font-family: inherit;
+  padding: 3px 5px;
+  cursor: pointer;
+}
+.src-btn:hover:not(:disabled) { border-color: #2d6640; color: #5ec87a; }
+/* Not merely faded: the cursor says "unavailable" too, because a control that
+   only looks dim reads as a styling choice rather than as a state. */
+.src-btn:disabled { opacity: 0.35; cursor: not-allowed; }
+
+/* The year files a Source is holding, one per line under step 2. Indented and
+   banded down the left so they read as the contents of that step rather than as
+   steps of their own. The order they were chosen in carries no meaning, and
+   numbering them would claim it did.
+
+   Each row carries its own remove control, because a collection you can only
+   add to is one you have to tear down and rebuild to correct. */
+.src-years {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 3px 0 0 9px;
+  padding-left: 7px;
+  border-left: 1px solid #1e2e24;
+}
+
+.src-year {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 3px;
+  border-radius: 3px;
+}
+.src-year:hover { background: #0e1a14; }
+
+.src-year-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 11px;
+  color: #6f9a7e;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.src-year-count {
+  flex-shrink: 0;
+  font-size: 10.5px;
+  color: #8f8f8f;
+}
+
+/* Present at rest rather than revealed on hover. These sit inside an already
+   busy panel, and a control that appears only under the pointer is a control a
+   keyboard user cannot find. The node's own delete button can be hover-only
+   because the node is the thing under the pointer, which is not true of a row
+   in a list. Dim until hovered, so eight of them do not shout. */
+.src-year-drop {
+  flex-shrink: 0;
+  width: 14px; height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 3px;
+  background: transparent;
+  color: #8a8a8a;
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1;
+  cursor: pointer;
+}
+.src-year-drop:hover { background: #2a0808; color: #e06060; }
+.src-year-drop:focus-visible { outline: 1px solid #2d6640; color: #8a8a8a; }
+
+/* A year the saved query names but which has not been re-loaded. Listed in the
+   panel's ordinary grey, not the green of something held: it is a request, not
+   a possession. */
+.src-year.wanted .src-year-name { color: #949494; }
+.src-year.wanted { opacity: 0.85; }
+
+.src-clear {
+  background: transparent;
+  border: 1px dashed #2a2a2a;
+  border-radius: 4px;
+  color: #8f8f8f;
+  font-size: 12px;
+  font-family: inherit;
+  padding: 3px 7px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+}
+.src-clear:hover { border-color: #7a2a2a; color: #e06060; }
+
+.src-hint {
+  font-size: 11px;
+  color: #949494;
+  line-height: 1.35;
+}
+
+/* The outcome of the last load. Banded down the left in the colour of what
+   happened, which is the treatment .cmp-hint.proj-warn already uses for the one
+   hint that warns. A refusal has to be readable as a refusal without being
+   read. word-break, because a refusal quotes the file name that caused it and
+   those are not guaranteed to have spaces in them. */
+.src-notice {
+  font-size: 11px;
+  line-height: 1.4;
+  padding-left: 6px;
+  border-left: 2px solid #2a2a2a;
+  word-break: break-word;
+}
+.src-notice.ok  { border-left-color: #2d6640; color: #78a888; }
+.src-notice.bad { border-left-color: #7a2a2a; color: #e08080; }
+
+/* A Source holding no files, on the canvas. The circle keeps its shape and its
+   colour (it is still a Source), and states the difference in its outline: a
+   dashed ring in a paler green than the solid one a loaded Source wears.
+
+   Green rather than amber because nothing is wrong. The node is unfinished, and
+   colouring it as a warning would put it in the same register as an error while
+   the graph around it is still perfectly worth drawing. Lighter rather than
+   darker for the same reason: unfinished, not disabled.
+
+   The state is carried by the border alone, with no badge in the corner. A dot
+   there shared the spot with the delete button, which made it read as something
+   to click; the outline says the same thing around the whole shape and leaves
+   that corner to the one control that belongs in it. */
+.shape-source.no-data {
+  border-style: dashed;
+  border-color: #6aa87e;
+  background: #0b1a12;
+  color: #9ad4ac;
+}
+
+.criterion-value-sel { /* full-width, sits in its grid cell */ }
+.add-criterion-btn {
+  background: transparent;
+  border: 1px dashed #2a2a2a;
+  border-radius: 4px;
+  color: #8f8f8f;
+  font-size: 12px;
+  padding: 3px 7px;
+  cursor: pointer;
+  width: 100%;
+  text-align: left;
+  font-family: inherit;
+}
+.add-criterion-btn:hover { border-color: #7a4a18; color: #f0944a; }
+.remove-criterion-btn {
+  background: transparent;
+  border: none;
+  color: #8a8a8a;
+  font-size: 12px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  flex-shrink: 0;
+  align-self: flex-start;
+  margin-top: 2px;
+}
+.remove-criterion-btn:hover { color: #c55f5f; }
+
