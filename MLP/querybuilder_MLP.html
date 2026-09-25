@@ -544,9 +544,10 @@
         <section id="help-connect">
           <h3>Connecting nodes</h3>
           <p>There are no wires to draw by hand. <b>Drag one node near another</b> and a wire
-             appears between them. Drag it away again and the wire goes. The direction is worked out
-             from what the two nodes are, so a Filter dropped beside a Source is always fed by it,
-             never the other way round.</p>
+             appears between them. To take one out, hover over the wire and click the x that appears
+             halfway along it: dragging the two nodes apart again moves them, and leaves the wire
+             where it was. The direction is worked out from what the two nodes are, so a Filter
+             dropped beside a Source is always fed by it, never the other way round.</p>
 
           <figure class="help-fig">
             <svg viewBox="0 0 540 200" xmlns="http://www.w3.org/2000/svg" role="img"
@@ -1125,10 +1126,10 @@
              the graph only, so opening someone else's query leaves your layout alone.</p>
 
           <div class="help-tip">
-            <b>Check a query rather than trusting it.</b> Every node shows its own row count after
-            a run, and hovering a wire shows the table passing along it. Between them you can follow
-            the data step by step and find the point where a result stopped being what you
-            expected.
+            <b>Check a query rather than trusting it.</b> Hovering a wire shows the rows
+            travelling along it and says how many there are, and each block in this panel carries
+            the row count of what reached its Output. Between them you can follow the data step by
+            step and find the point where a result stopped being what you expected.
           </div>
         </section>
 
@@ -1230,8 +1231,8 @@
           <h3>Keyboard and mouse</h3>
           <table class="help-keys">
             <tr><td>Drag a node near another</td><td>Wire them together</td></tr>
-            <tr><td>Drag a node away</td><td>Break the wire</td></tr>
-            <tr><td>Hover a wire</td><td>Preview the table passing along it</td></tr>
+            <tr><td>Hover a wire</td><td>Preview the table passing along it, and how many rows</td></tr>
+            <tr><td>Click the x on a wire</td><td>Remove that wire</td></tr>
             <tr><td>Drag on empty canvas</td><td>Select everything inside the box</td></tr>
             <tr><td><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>A</kbd></td><td>Select all nodes</td></tr>
             <tr><td><kbd>Delete</kbd> or <kbd>Backspace</kbd></td><td>Delete the selection</td></tr>

@@ -240,6 +240,101 @@ module.exports = ({ describe, test }) => {
     });
   });
 
+  /* THE HELP MAY NOT PROMISE BEHAVIOUR THE CODE DOES NOT HAVE
+     -------------------------------------------------------------------------
+     Two claims were found to be false on 2026-09-25, both about things a user
+     would try once and then stop trusting the Help over:
+
+       "Drag it away again and the wire goes", plus a shortcut table row saying
+       a node dragged away breaks the wire. Nothing removes a connection except
+       the x badge, removeNode() and deleteSelection(). The gesture invites the
+       belief (dragging together IS how a wire is made) which is what makes the
+       sentence expensive: a user drags the nodes apart, sees the wire hold, and
+       now has to work out which of the two the tool got wrong.
+
+       "Every node shows its own row count after a run." No node shows one. The
+       count is on the wire preview and on the block in the results panel.
+
+     Each is pinned here as a pair: what the code does, and what the Help says
+     about it. A copy assertion on its own would only pin the words; a behaviour
+     assertion on its own would not notice the words drifting back. */
+  describe('the Help does not promise what the code will not do', () => {
+
+    const helpText = h => h.doc.querySelector('.help-body').textContent;
+
+    const mouse = (h, type, x, y) =>
+      new h.w.MouseEvent(type, { bubbles: true, button: 0, clientX: x, clientY: y });
+
+    // The real gesture, dragging one node a long way from the other.
+    function dragFar(h, node) {
+      const i = h.app.nodes.indexOf(node);
+      const shape = h.qa('#viewport .node')[i].querySelector('.node-shape');
+      shape.dispatchEvent(mouse(h, 'mousedown', 100, 100));
+      h.doc.dispatchEvent(mouse(h, 'mousemove', 900, 700));
+      h.doc.dispatchEvent(mouse(h, 'mouseup', 900, 700));
+    }
+
+    test('dragging a wired node away leaves the wire in place', () => {
+      const h = boot();
+      const [s, o] = h.build('source', 'output');
+      assert.equal(h.app.connections.length, 1, 'arranged: they are wired');
+      dragFar(h, o);
+      assert.ok(Math.abs(o.x - s.x) > 400, 'arranged: it really did move away');
+      assert.equal(h.app.connections.length, 1,
+        'the wire went on its own, so the Help was right and this test is wrong');
+    });
+
+    test('and the Help does not say it goes', () => {
+      const help = helpText(boot());
+      assert.excludes(help, 'Drag it away again and the wire goes');
+      assert.excludes(help, 'Break the wire');
+    });
+
+    test('the x on the wire is what removes it, and the Help says so', () => {
+      const h = boot();
+      const [s, o] = h.build('source', 'output');
+      const c = h.app.connections[0];
+      h.app.removeConnection(c.from, c.to, c.port);
+      assert.equal(h.app.connections.length, 0);
+      assert.includes(helpText(h), 'click the x',
+        'the only way to remove a wire is not written down');
+    });
+
+    test('no node shows a row count after a run, so the Help claims none', () => {
+      const h = boot();
+      const [s, o] = h.build('source', 'output');
+      h.w.runQuery();
+      const rows = h.app.exportData[o.id].table.rows.length;
+      assert.ok(rows > 0, 'arranged: the run produced rows');
+      /* The shapes, not the whole panel. A Source panel legitimately states the
+         row count of the FILES it holds, which is a fact about the data and not
+         about the run, so reading the panels would confuse the two. */
+      const shapes = h.qa('#viewport .node-shape').map(e => e.textContent).join(' ');
+      assert.ok(shapes.length > 0, 'arranged: the shapes are on screen');
+      assert.excludes(shapes, String(rows),
+        'a node does show its count now, so the Help may say so again');
+      assert.excludes(helpText(h), 'Every node shows its own row count');
+    });
+
+    test('the two places a count IS shown are the two the Help names', () => {
+      const h = boot();
+      const [s, o] = h.build('source', 'output');
+      h.w.runQuery();
+      const rows = h.app.exportData[o.id].table.rows.length;
+
+      // On the block in the panel, as a badge beside the table.
+      assert.includes(h.panel(), 'Rows ' + rows);
+
+      // On the wire, which is what the preview counts.
+      const t = h.app.edgeData(h.app.connections[0]).table;
+      assert.equal(t.rows.length, rows, 'the edge carries what the Output received');
+
+      const help = helpText(h);
+      assert.includes(help, 'Hovering a wire shows the rows');
+      assert.includes(help, 'row count of what reached its Output');
+    });
+  });
+
   describe('what came off the panels is in Help, with an example', () => {
 
     const helpText = h => h.doc.querySelector('.help-body').textContent;
