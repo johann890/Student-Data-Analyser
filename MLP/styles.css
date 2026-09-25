@@ -1143,6 +1143,29 @@ body.panel-resizing * { cursor: col-resize !important; }
 .conn-delete:hover circle { fill: #3a0f0f; stroke: #e06060; }
 .conn-delete:hover line { stroke: #ff8a8a; }
 
+/* WHY A DROP DID NOT WIRE
+   Shown at the release, over the gap where the wire would have been. Amber and
+   not red: nothing has gone wrong and nothing has been lost, the tool is
+   declining and saying why, so it borrows the .stale-note swatch rather than
+   the error box's. Outside the scaled layer, so its size is screen size at any
+   zoom, and pointer-events off so it can never take a click meant for the node
+   underneath it. The width keeps the longest of these sentences to three lines
+   at the base font size. */
+.conn-note {
+  position: absolute;
+  z-index: 50;
+  pointer-events: none;
+  max-width: 320px;
+  background: #191305;
+  border: 1px solid #4a3a10;
+  border-radius: 6px;
+  box-shadow: 0 6px 20px rgba(0,0,0,0.6);
+  padding: 7px 10px;
+  font-size: 13px;
+  line-height: 1.45;
+  color: #c9a227;
+}
+
 /* EDGE DATA PREVIEW (hover tooltip over a connection) */
 .edge-preview {
   position: absolute;

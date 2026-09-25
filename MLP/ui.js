@@ -119,6 +119,9 @@ function applyView() {
   }
   var lbl = document.getElementById('zoomLevel');
   if (lbl) lbl.textContent = Math.round(view.z * 100) + '%';
+  /* The refusal note is anchored in world space but drawn outside the scaled
+     layer, so it has to be re-projected whenever the transform moves. */
+  placeConnNote();
 }
 
 /* Zoom about a fixed point: the world position under the cursor stays under the
@@ -274,6 +277,9 @@ function deleteSelection() {
   });
   selection = [];
   cancelPreviewTimer(); hidePreview();
+  /* The note names nodes by number, so it goes when nodes do. A sentence about
+     "Filter #2" outliving Filter #2 is worse than no sentence. */
+  hideConnNote();
   markStale();
   render();
 }
@@ -507,6 +513,105 @@ function resolveDirection(a, b) {
     return { from:a, to:b, port:fwd.port, p0:fwd.p0, tip:fwd.tip };
   }
   return { from:b, to:a, port:rev.port, p0:rev.p0, tip:rev.tip };
+}
+
+/* WHY A DROP DID NOT WIRE
+   ---------------------------------------------------------------------------
+   Refusing in silence was the complaint. Two nodes are dragged together, nothing
+   happens, and the tool gives no account of itself, so the user cannot tell
+   whether they missed, whether the pair is illegal, or whether the thing is
+   broken. The ghost arrow already answers the case that WILL wire, before the
+   drop. The case with no feedback at all was the one that needed it.
+
+   The reasons are ordered by what the user can act on rather than by how the
+   check happens to be written:
+
+     1. Already wired. The wire is on screen saying so, which is a better answer
+        than any sentence, so this one is left unsaid. The exception is Combine
+        and Compare, whose ports accept more wires: there a ghost arrow appears
+        and the drop is still refused as a duplicate, so the preview made a
+        promise that has to be explained. onUp() says that one.
+     2. Every input is taken. The types are compatible, so what the user needs
+        is which input is occupied and how to free it.
+     3. Nothing wires into a Source. The only type rule anyone meets in practice,
+        phrased as what a Source is rather than as a quotation of the rule.
+     4. Anything else, named plainly. A guard for a node type added later.
+
+   Written as a function returning a sentence rather than as branches inside the
+   drop handler, so a test can ask for the reason without simulating a pointer,
+   and so the wording sits beside the rules it is explaining.                 */
+
+/* How far apart the two shapes' wiring points are, ignoring which ports are
+   free. nearestFreePort() cannot answer for a pair that has no free port, and a
+   refusal still has to be aimed at the node the user was reaching for. Both
+   directions are measured because either one could have been the intent. */
+function portGap(from, to) {
+  var ex = shapeExit(from), en = shapeEntry(to, primaryPort(to.type));
+  return Math.sqrt(Math.pow(en.x - ex.x, 2) + Math.pow(en.y - ex.y, 2));
+}
+
+function snapDistance(a, b) { return Math.min(portGap(a, b), portGap(b, a)); }
+
+// Either direction, any port: "are these two already joined at all".
+function wireBetween(a, b) {
+  var found = null;
+  connections.forEach(function(c) {
+    if (found) return;
+    if ((c.from === a.id && c.to === b.id) || (c.from === b.id && c.to === a.id)) found = c;
+  });
+  return found;
+}
+
+/* Naming the way out of it, once, because every refusal about a full input has
+   the same remedy and a note that states a rule without one is half an answer.
+   Dragging the nodes apart does NOT break a wire, whatever the gesture suggests,
+   so the badge is what this points at. */
+var CONN_FREE_FIX = 'To free an input, hover its wire and click the x on it.';
+
+function listWords(xs) {
+  if (xs.length < 2) return xs.join('');
+  return xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1];
+}
+
+function portsTakenText(node) {
+  var labels = portsOf(node.type).map(function(p){ return p.label; });
+  if (labels.length === 1) {
+    return upstreamLabel(node) + ' already has an input wire, and every node but ' +
+      'Combine and Compare takes exactly one.';
+  }
+  return upstreamLabel(node) + ' has a wire on ' + listWords(labels) + ' already.';
+}
+
+/* Null means there is nothing worth saying: the drop wired them, or the pair is
+   connected and can see that for itself. */
+function connectRefusal(a, b) {
+  if (!a || !b || a.id === b.id) return null;
+  if (resolveDirection(a, b)) return null;
+  if (wireBetween(a, b)) return null;
+
+  var fwd = canConnect(a.type, b.type);
+  var rev = canConnect(b.type, a.type);
+  /* One of the two directions is allowed by type, so the block is arithmetic
+     about ports rather than about kinds. The forward reading is preferred when
+     both are open, because `a` is the node in the user's hand and the thing
+     being dropped ONTO is the thing they aimed at. */
+  if (fwd || rev) return portsTakenText(fwd ? b : a) + ' ' + CONN_FREE_FIX;
+
+  if (!portsOf(a.type).length && !portsOf(b.type).length) {
+    return 'Nothing wires into a Source: it reads its rows from a file. Drag a ' +
+      'Filter or an Output here instead and the Source will feed that.';
+  }
+  return upstreamLabel(a) + ' and ' + upstreamLabel(b) +
+    ' cannot be wired together in either direction.';
+}
+
+/* Where to put the note: between the two nodes, which is where the user was
+   looking and where the wire would have been. */
+function midWorld(a, b) {
+  return {
+    x: (a.x + b.x) / 2 + NODE_W / 2,
+    y: (a.y + SHAPE[a.type].h / 2 + b.y + SHAPE[b.type].h / 2) / 2
+  };
 }
 
 /* DEFAULT CONFIG PER NODE TYPE
@@ -909,6 +1014,7 @@ function removeNode(id) {
   selection = selection.filter(function(x){ return x !== id; });
   forgetSourceData(id);
   rebuildRegistries();
+  hideConnNote();
   markStale();
   render();
 }
@@ -924,10 +1030,10 @@ function clearAll() {
   // into the next Save dialog.
   lastQueryName = '';
   selection = [];
-  cancelPreviewTimer(); hidePreview();
+  cancelPreviewTimer(); hidePreview(); hideConnNote();
   view.z = 1; centreView();
   render();
-  setOutput('<div class="placeholder">Run a query to see results</div>');
+  setOutput(panelStartHTML());
 }
 /* CLEAR CONFIRMATION
    ---------------------------------------------------------------------------
@@ -2730,6 +2836,10 @@ function drawArrow(parent, p0, tip, color, opacity, isGhost) {
    rebuild was needed to avoid losing it. With the model authoritative, it is
    not. */
 var ghostTarget = null;
+/* The nearest node the drag came close to and could NOT wire to. Tracked beside
+   the ghost target and in the same sweep, because the refusal has to name a
+   node and the drop handler no longer has the geometry to find one. */
+var missTarget = null;
 
 // Below this many screen pixels a press-and-release is a click, not a drag. It
 // is measured in screen space on purpose: the gesture is about the user's hand,
@@ -2773,7 +2883,8 @@ function startDrag(e, nodeId) {
     moved: false
   };
   ghostTarget = null;
-  cancelPreviewTimer(); hidePreview();
+  missTarget = null;
+  cancelPreviewTimer(); hidePreview(); hideConnNote();
   document.addEventListener('mousemove', onMove);
   document.addEventListener('mouseup', onUp);
 }
@@ -2803,17 +2914,27 @@ function onMove(e) {
      guessing would wire up a connection the user never aimed at. The one kind
      of mistake that is tedious to undo, since it has to be found first. */
   ghostTarget = null;
+  missTarget = null;
   if (drag.group.length === 1) {
     var dn = drag.node, best = null, bestDist = SNAP_DIST;
+    var miss = null, missDist = SNAP_DIST;
     nodes.forEach(function(n) {
       if (n.id === dn.id) return;
       var dir = resolveDirection(dn, n);
-      if (!dir) return;
+      if (!dir) {
+        /* Close enough to have been aimed at, impossible to wire. Remembered so
+           that the release can say why instead of doing nothing at all. */
+        var gap = snapDistance(dn, n);
+        if (gap < missDist) { missDist = gap; miss = n.id; }
+        return;
+      }
       var dx = dir.tip.x - dir.p0.x, dy = dir.tip.y - dir.p0.y;
       var dist = Math.sqrt(dx * dx + dy * dy);
       if (dist < bestDist) { bestDist = dist; best = n; }
     });
     ghostTarget = best ? best.id : null;
+    // A miss only matters when nothing else was going to happen.
+    missTarget = ghostTarget === null ? miss : null;
   }
 
   drawArrows();
@@ -2821,6 +2942,7 @@ function onMove(e) {
 
 function onUp() {
   var wired = false;
+  var refusal = null, refusalAt = null;
   if (drag && drag.moved && ghostTarget !== null) {
     var gt = findNode(ghostTarget);
     var dir = gt ? resolveDirection(drag.node, gt) : null;
@@ -2836,12 +2958,26 @@ function onUp() {
                            color: pickEdgeColor(dir.from) });
         markStale();
         wired = true;
+      } else {
+        /* The ghost arrow appeared and the drop wired nothing. Only reachable on
+           Combine and Compare, whose ports go on accepting wires, and the one
+           refusal in the tool that contradicts something the user was just
+           shown. It is said out loud for that reason. */
+        refusal = upstreamLabel(dir.from) + ' already feeds ' + upstreamLabel(dir.to) +
+          '. A second wire between the same two nodes would carry the same rows twice.';
+        refusalAt = midWorld(dir.from, dir.to);
       }
     }
+  } else if (drag && drag.moved && missTarget !== null) {
+    var mt = findNode(missTarget);
+    refusal = mt ? connectRefusal(drag.node, mt) : null;
+    if (refusal) refusalAt = midWorld(drag.node, mt);
   }
   var moved = drag && drag.moved;
   drag = null;
   ghostTarget = null;
+  missTarget = null;
+  if (refusal) showConnNote(refusal, refusalAt);
   document.removeEventListener('mousemove', onMove);
   document.removeEventListener('mouseup', onUp);
 
@@ -2918,6 +3054,75 @@ function buildDeleteBadge(conn, pathEl) {
     removeConnection(conn.from, conn.to, conn.port);
   });
   return g;
+}
+
+/* THE REFUSAL NOTE
+   ---------------------------------------------------------------------------
+   Shown at the drop, not during the drag. A node being moved around a wired
+   graph passes close to its own neighbours constantly, and a note that appeared
+   on approach would spend most of its life explaining something the user was
+   not asking about. The moment the expectation breaks is the release: that is
+   when a wire was supposed to be there and is not.
+
+   A sibling of the scaled layer rather than a child of it, for the same reason
+   the edge preview is one: it has to stay readable when the canvas is zoomed
+   out, which is exactly when nodes are dropped near each other by accident.
+   role="status" so it is announced rather than only drawn.
+
+   Five seconds, because the longest of these sentences is about twenty five
+   words and a note that leaves before it has been read is the same as no note.
+   It goes early anyway on the next gesture, which is the reading that matters:
+   a user who has moved on does not have to wait for it.                      */
+var CONN_NOTE_MS = 5200;
+var connNoteEl = null, connNoteAnchor = null, connNoteTimer = null;
+
+function ensureConnNoteEl() {
+  if (connNoteEl) return connNoteEl;
+  connNoteEl = document.createElement('div');
+  connNoteEl.className = 'conn-note';
+  connNoteEl.setAttribute('role', 'status');
+  connNoteEl.style.display = 'none';
+  var cv = document.getElementById('canvas');
+  if (cv) cv.appendChild(connNoteEl);
+  return connNoteEl;
+}
+
+function hideConnNote() {
+  if (connNoteTimer) { clearTimeout(connNoteTimer); connNoteTimer = null; }
+  if (connNoteEl) connNoteEl.style.display = 'none';
+  connNoteAnchor = null;
+}
+
+function showConnNote(text, at) {
+  if (!text) return;
+  var el = ensureConnNoteEl();
+  if (connNoteTimer) { clearTimeout(connNoteTimer); connNoteTimer = null; }
+  el.textContent = text;
+  connNoteAnchor = at || null;
+  el.style.display = 'block';
+  placeConnNote();
+  connNoteTimer = setTimeout(hideConnNote, CONN_NOTE_MS);
+}
+
+// What is on screen, for a test and for nothing else in the application.
+function connNoteText() {
+  return (connNoteEl && connNoteEl.style.display !== 'none') ? connNoteEl.textContent : null;
+}
+
+/* Projected from world coordinates on every view change, like the edge preview,
+   so a zoom or a pan while the note is up moves it with the nodes it is about
+   rather than leaving it stranded. */
+function placeConnNote() {
+  if (!connNoteEl || !connNoteAnchor || connNoteEl.style.display === 'none') return;
+  var cv = document.getElementById('canvas');
+  if (!cv) return;
+  var mid = toScreen(connNoteAnchor.x, connNoteAnchor.y);
+  var w = connNoteEl.offsetWidth, h = connNoteEl.offsetHeight;
+  var left = Math.max(6, Math.min(mid.x - w / 2, Math.max(6, cv.clientWidth - w - 6)));
+  var top = mid.y + 26;
+  top = Math.max(6, Math.min(top, Math.max(6, cv.clientHeight - h - 6)));
+  connNoteEl.style.left = Math.round(left) + 'px';
+  connNoteEl.style.top = Math.round(top) + 'px';
 }
 
 /* EDGE DATA PREVIEW
@@ -3517,7 +3722,78 @@ function onExportNameInput(e) {
    EXPORT: One serialiser, because there is one data shape
    ============================================================================ */
 
+/* THE PANEL NEVER OUTLIVES THE GRAPH IT DESCRIBES
+   ---------------------------------------------------------------------------
+   Deleting nodes used to leave whatever was in the results panel exactly where
+   it was. A tester loaded a saved query, deleted every node, and was left with
+   "Loaded 4 nodes and 3 connections. ... Press Run Query to evaluate it."
+   beside a canvas reading "Add nodes using the toolbar above": the two halves
+   of the screen disagreeing about whether there was a query at all, and the
+   half that was wrong being the one holding the instruction.
+
+   markStale() could not catch it. It returns early once the results are already
+   stale, which is the right shortcut for the note it adds and the wrong one for
+   everything else in the panel. A load message was never fresh to begin with,
+   so nothing was watching it.
+
+   Two rules, both about ownership rather than about staleness:
+
+     A block belongs to an Output. When that Output is gone the block is an
+     answer attributed to a node that does not exist, so it goes, and its export
+     entry goes with it: Copy and Save must not write out a table whose node was
+     deleted.
+
+     An empty canvas has no query to be stale about. There is nothing left to
+     re-run, so the panel goes back to the line it opens with rather than asking
+     for a run that cannot happen.
+
+   A graph that still has nodes in it keeps its message. "Loaded 4 nodes" is a
+   statement about something that happened, and deleting one of them afterwards
+   does not make it untrue.                                                   */
+var PANEL_START = 'Run a query to see results';
+
+function panelStartHTML() { return '<div class="placeholder">' + PANEL_START + '</div>'; }
+
+/* Returns whether it emptied the panel, so markStale() knows there is nothing
+   left to mark. Cheap on every other call: a graph whose Outputs are all still
+   on the canvas matches the first block and stops. */
+function panelFollowsGraph() {
+  var pb = document.getElementById('panelBody');
+  if (!pb) return false;
+
+  if (!nodes.length) {
+    exportData = {};
+    resultsFresh = false;
+    setOutput(panelStartHTML());
+    return true;
+  }
+
+  var blocks = pb.querySelectorAll('.result-block');
+  if (!blocks.length) return false;
+
+  var live = 0;
+  [].slice.call(blocks).forEach(function(el) {
+    var id = parseInt(el.getAttribute('data-output'), 10);
+    if (findNode(id)) { live++; return; }
+    delete exportData[id];
+    if (el.parentNode) el.parentNode.removeChild(el);
+  });
+
+  if (!live) {
+    exportData = {};
+    resultsFresh = false;
+    setOutput(panelStartHTML());
+    return true;
+  }
+
+  /* The note about every Output being hidden counts the Outputs still on the
+     canvas, so it has to be re-read whenever one of them is taken away. */
+  applyPanelVisibility();
+  return false;
+}
+
 function markStale() {
+  if (panelFollowsGraph()) return;
   if (!resultsFresh) return;
   resultsFresh = false;
   var pb = document.getElementById('panelBody');
@@ -4183,6 +4459,7 @@ function applyGraph(g) {
   selection = [];
   cancelPreviewTimer();
   hidePreview();
+  hideConnNote();
   render();
   /* Fit after loading rather than restoring a saved zoom. A file carries the
      graph, not the view (which is why the format did not have to change for
@@ -6745,6 +7022,18 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     applyTake: applyTake, takeCount: takeCount,
     TAKE_DEFAULT: TAKE_DEFAULT, TAKE_MIN: TAKE_MIN,
     canConnect: canConnect, CONNECT_RULES: CONNECT_RULES,
+
+    // why a drop did not wire, and the note that says so
+    connectRefusal: connectRefusal, wireBetween: wireBetween,
+    snapDistance: snapDistance, portGap: portGap, midWorld: midWorld,
+    portsTakenText: portsTakenText, listWords: listWords,
+    CONN_FREE_FIX: CONN_FREE_FIX, CONN_NOTE_MS: CONN_NOTE_MS,
+    showConnNote: showConnNote, hideConnNote: hideConnNote,
+    connNoteText: connNoteText, placeConnNote: placeConnNote,
+    NODE_LABELS: NODE_LABELS,
+
+    // the results panel follows the graph: a block whose Output is gone goes
+    PANEL_START: PANEL_START, panelFollowsGraph: panelFollowsGraph,
 
     // edge preview. The column cap is paired with a width in the stylesheet,
     // so it is exported to be asserted on rather than trusted to stay in step.
