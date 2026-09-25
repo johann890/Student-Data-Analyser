@@ -223,12 +223,19 @@
    with dark text on it, which is the one treatment in here that reverses the
    page, so a band is never mistaken for content.
 
+   The band is near white rather than the mid grey it started as. At mid grey
+   the reversal was there but the band still sat in the same tonal region as
+   the card it headed, so the two read as one dim surface and the dark text on
+   the band lost the contrast that was the whole point of reversing it. Taking
+   it up to near white makes the reversal unmistakable and gives the text on
+   it the full range to work in.
+
    The colour is held once, and the three bands and the text on them read it
    from here rather than each repeating the value. */
 :root {
-  --band-bg: #9a9a9a;
-  --band-fg: #101216;
-  --band-sub: #2c2f33;
+  --band-bg: #ececec;
+  --band-fg: #0d0f13;
+  --band-sub: #24272b;
 }
 
 .help-top {
@@ -268,17 +275,21 @@
    reaches for in a hurry was the one that receded. A solid block reads at a
    glance on the band and on a dark card alike, which is why there is one
    treatment here instead of a second set of rules for the band. */
+/* Sized above the other buttons in the application rather than with them. It
+   is the only control in either panel's header, it is the one people reach for
+   when they are done, and at the body text's size it was a small word in a
+   large corner of a panel that fills most of the screen. */
 .panel-close {
   background: #8a2020;
   border-width: 1px;
   border-style: solid;
   border-color: #c04040;
-  border-radius: 5px;
+  border-radius: 6px;
   color: #fff;
   font-family: inherit;
-  font-size: 13px;
+  font-size: 16px;
   font-weight: 600;
-  padding: 5px 13px;
+  padding: 9px 22px;
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.12s;

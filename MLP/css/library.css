@@ -111,14 +111,17 @@
 /* The warning, set apart from the description above it rather than run on from
    it. Same size, because it is the half people most need to read.
 
-   Amber in the darker half of its range, not the light amber a warning wears
-   against a black card: this one stands on the band, so it parts from the
-   description above it by being the darker colour rather than the paler one. */
+   Amber, and read as amber. The colour it wore before was so far down its own
+   range that on the band it was only a darker grey than the paragraph above,
+   which is the one thing a warning cannot afford to be: it parted from the
+   description by weight alone and said nothing by its colour. Against a near
+   white band the hue has room to show, so this is amber held just dark enough
+   to carry the text, with the label darker again so the eye lands on it. */
 .lib-caveat {
   margin-top: 9px;
-  color: #392e08;
+  color: #7a6300;
 }
-.lib-caveat b { color: #2f2504; }
+.lib-caveat b { color: #5c4a00; }
 
 /* ── NOTICE ───────────────────────────────────────────────── */
 /* Collapsed to nothing when empty, so the grid does not shift down by a blank
@@ -204,29 +207,47 @@
   outline: none;
 }
 
+/* Two columns of two, not a wrapping row. As a row the four buttons fell wherever
+   the card's width left room for them, so Delete dropped to a second line on its
+   own while Rename and Export stayed up with Open, and the odd one out was the
+   only one that destroys anything. A fixed pair of columns puts the two that act
+   on this query on the left and the two that produce a copy of it on the right,
+   and it holds that arrangement at every card width instead of rearranging
+   itself as the grid reflows.
+
+   The source order is Open, Rename, Delete, Export, which is this layout read
+   row by row, so tabbing through a card follows what is on the screen rather
+   than an order the CSS invented. */
 .lib-actions {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 4px;
   padding: 0 8px 8px;
-  flex-wrap: wrap;
 }
 .lib-actions .file-btn,
 .lib-actions .lib-go,
 .lib-actions .lib-del {
   font-size: 12px;
-  padding: 3px 7px;
+  /* Even padding, because each button now fills its own cell and the text is
+     centred in it rather than sitting at the start of a shrink-wrapped box. */
+  padding: 4px 6px;
   border-radius: 3px;
   cursor: pointer;
   font-family: inherit;
   border-width: 1px;
   border-style: solid;
+  /* The two confirmation labels are longer than the words they replace, and a
+     card column is narrow. Wrapping keeps them inside their cell; the row grows
+     and its neighbour stretches with it, which is the grid holding the columns
+     together rather than a button spilling over its edge. */
+  white-space: normal;
+  line-height: 1.25;
 }
 .lib-go {
   background: #0f2a44;
   border-color: #1e5f9a;
   color: #7ec4ff;
   font-weight: 600;
-  margin-right: auto;
 }
 .lib-go:hover { background: #14395c; }
 .lib-del {
@@ -282,6 +303,20 @@
   cursor: default;
 }
 .lib-usage { margin-left: auto; font-size: 13px; color: #9a9a9a; }
+
+/* Import and Export library, brighter than the .file-btn they share a class
+   with. That treatment is the toolbar's, where a button is one of a dozen on a
+   strip and stays quiet so the strip does not shout; these two are the only
+   controls in the footer that are not the save row, they sit on the darkest
+   part of the panel under a bright header band, and at toolbar weight they
+   read as disabled rather than as the two ways a library leaves this browser. */
+.lib-foot .file-btn {
+  background: #202020;
+  border-color: #4a4a4a;
+  color: #d8d8d8;
+}
+.lib-foot .file-btn:hover { border-color: #6e6e6e; color: #fff; }
+.lib-foot .file-btn:active { background: #2a2a2a; }
 
 /* ── THE SAVE DIALOG'S SECOND DESTINATION ─────────────────── */
 /* The library button sits between Cancel and the file button: secondary to the

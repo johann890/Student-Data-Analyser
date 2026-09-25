@@ -143,10 +143,10 @@ function libCardHTML(e) {
         'title="Put this query on the canvas">' +
         (pendOpen ? 'Replace canvas?' : 'Open') + '</button>' +
       '<button class="file-btn" onclick="libStartRename(\'' + id + '\')">Rename</button>' +
-      '<button class="file-btn" onclick="libExportEntry(\'' + id + '\', this)" ' +
-        'title="Write this query out as a .json file">Export</button>' +
       '<button class="lib-del" onclick="libDeleteEntry(\'' + id + '\', this)">' +
         (pendDel ? 'Confirm deletion?' : 'Delete') + '</button>' +
+      '<button class="file-btn" onclick="libExportEntry(\'' + id + '\', this)" ' +
+        'title="Write this query out as a .json file">Export</button>' +
     '</div>' +
   '</div>';
 }
