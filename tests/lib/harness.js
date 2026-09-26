@@ -127,6 +127,23 @@ function appStyles() {
    assumptions. Fixtures still have their place (a file has to be malformed
    deliberately to test a refusal), but "does it read the actual export" is a
    question only the actual export answers. */
+/* The application's source, read once rather than once per boot.
+
+   It used to be read inside boot(), which looked harmless: the same thirty-two
+   files, a few hundred kilobytes, and readFileSync is fast. What it actually
+   did was hand every window its own private copy of the text. V8 holds a
+   script's source alongside the code it compiled from it, in the context that
+   compiled it, and a context that has been closed is not a context that has
+   been collected: the copies outlived the windows. A suite that boots forty
+   times was carrying forty copies of the whole application, and the run reached
+   the heap ceiling around the twentieth suite and was saved, or not saved, by
+   whether an emergency mark-compact happened to arrive in time.
+
+   Read once, every window compiles from the same strings, and the cost stops
+   being per-window. The files cannot change mid-run in any case: the harness
+   has already resolved and validated this list before the first test. */
+const APP_SOURCE = APP_PATHS.map(p => fs.readFileSync(p, 'utf8'));
+
 const DATA_DIR = path.resolve(APP_DIR, '..', 'data');
 
 function dataDirFile(name) {
@@ -152,7 +169,12 @@ function shim(qb) {
     exportData:   { get: () => qb.exportData() },
     resultsFresh: { get: () => qb.isFresh() },
     selection:    { get: () => qb.selection() },
-    view:         { get: () => qb.view() }
+    view:         { get: () => qb.view() },
+    /* Reassigned wholesale by applyGraph() and clearVariables(), so it is
+       bridged for the same reason `nodes` is. Without this `app.variables` is
+       the getter FUNCTION, and `.length` silently reads its arity, which is a
+       number and so passes straight through an assertion. */
+    variables:    { get: () => qb.variables() }
   });
   return app;
 }
@@ -300,13 +322,13 @@ function boot() {
 
   // The flag must be set before the app runs: the export block is guarded by it.
   w.__QB_TEST__ = true;
-  APP_PATHS.forEach(p => w.eval(fs.readFileSync(p, 'utf8')));
+  APP_SOURCE.forEach(src => w.eval(src));
 
   const qb = w.__qb;
   if (!qb) {
     throw new Error(
       'window.__QB_TEST__ was set but window.__qb is missing. The last script the ' +
-      'page loads (ui-boot.js) should end with a block guarded by that flag which ' +
+      'page loads (shell/boot.js) should end with a block guarded by that flag which ' +
       'publishes its internals. If that block was removed, restore it rather than ' +
       'going back to source injection.');
   }

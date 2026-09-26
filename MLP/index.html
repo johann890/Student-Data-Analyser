@@ -17,6 +17,7 @@
 <link rel="stylesheet" href="css/node-colours.css">
 <link rel="stylesheet" href="css/dialogs.css">
 <link rel="stylesheet" href="css/library.css">
+<link rel="stylesheet" href="css/variables.css">
 </head>
 <body>
 
@@ -116,6 +117,41 @@
       </button>
     </div>
   </div>
+  <!-- VARIABLES
+       With the node buttons rather than with Save and Load, and last before
+       Output because that is the order a query is built in: the parts, then
+       the values they are parameterised by, then where the answer comes out.
+
+       An .add-btn like its three neighbours, wearing its own colour the way
+       Reshape and Distribution wear theirs, because it is the same control:
+       a coloured button promising the colour behind it. The group's label
+       stays true, since adding a variable is what the menu is for. What it
+       adds is not a node, which is what the yellow says: no other node on the
+       canvas is yellow, and every operand that can take a variable is.
+
+       It reuses .proc-menu, the toolbar's own dropdown: opening one closes the
+       others, a click anywhere else closes them all, and a click INSIDE is
+       stopped here so typing in a field cannot dismiss the menu it is in. The
+       count beside the label is what a closed menu still says, so a query that
+       carries parameters says so without being opened. -->
+  <div class="proc-wrap">
+    <button class="add-btn var-btn" id="varBtn" onclick="toggleVarMenu(event)"
+            aria-haspopup="true" aria-expanded="false" aria-controls="varDock"
+            title="Named values this query can use in several places at once">Variables<span
+            class="var-count" id="varCount"></span> <span class="caret">&#9662;</span></button>
+    <div class="proc-menu var-dock" id="varDock" role="group" aria-label="Variables"
+         onclick="event.stopPropagation()">
+      <div class="var-head">
+        <span class="var-title">Variables</span>
+        <button class="var-add" id="varAddBtn" onclick="addVariable()"
+                title="Add a named value this query can use in several places">+ Add</button>
+      </div>
+      <!-- Carries the line that says what was refused, and nothing else, so a
+           message about the list cannot be mistaken for one about a chip. -->
+      <div class="var-notice" id="varNotice" role="status" aria-live="polite"></div>
+      <div class="var-body" id="varBody"></div>
+    </div>
+  </div>
   <button class="add-btn output" onclick="addNode('output')">Output</button>
   </div>
   <!-- Where the bar breaks when it needs a second row, rather than wherever the
@@ -144,7 +180,7 @@
        `accept` is a courtesy to the dialog and is trusted by nothing. The year
        input carries none at all, because the archive's year files have no
        extension for a filter to match on, which is precisely why the name
-       rules live in js/data-loading.js, where the file is actually taken, rather than in an
+       rules live in js/data/loading.js, where the file is actually taken, rather than in an
        attribute a rename walks straight past. -->
   <input type="file" id="headersFile" accept="text/plain,.txt" hidden>
   <input type="file" id="yearFiles" multiple hidden>
@@ -185,6 +221,12 @@
 
     <div class="sel-bar" id="selBar">
       <span class="sel-count" id="selCount">0 selected</span>
+      <!-- Before Delete, in both source and reading order. They are the two
+           things this bar does to a selection and one of them is reversible;
+           the reversible one is met first, which is the order a user who wants
+           a node out of the way should encounter them in. -->
+      <button class="sel-off" id="selOff" onclick="toggleSelectionOff()"
+              title="Pass data straight through these nodes, without deleting them  ( M )">Switch off</button>
       <button class="sel-del" onclick="deleteSelection()" title="Delete selected nodes  ( Delete )">Delete</button>
     </div>
 
@@ -206,25 +248,43 @@
       <button class="file-btn" onclick="zoomToFit()" title="Fit every node on screen  ( F )">Fit</button>
     </div>
   </div>
-  <!-- The panel is deliberately narrow by default: a wide results column is a
-       narrow canvas, and most of the time the canvas is what is being worked on.
-       Two ways to widen it, because they answer different needs. The handle is
-       for settling on a width and leaving it there. The Wide button is for the
-       one table with too many columns to read at the default width: one click
-       out, one click back, with the chosen handle width remembered underneath so
-       returning does not lose it. The label flips to Thin while the panel is
-       wide, so it always names the press rather than the state. -->
+  <!-- The panel is open by default. It is where the tool's answers appear, and
+       a feature that is not on screen when the application is first opened is a
+       feature someone has to be told about: shut, the panel would rest on a
+       reader noticing a 34px strip and guessing what was behind it. Open, it
+       explains itself, and closing it is then a thing done knowingly.
+
+       Shut is a strip and not nothing, for the same reason: a panel that
+       disappears leaves no way back that does not involve knowing a shortcut or
+       guessing that the window edge can be dragged.
+
+       Open and shut is one control and width is another, and they do not
+       overlap. Hide and Show are the only way in and out by hand. The handle
+       sets a width and stops at the ends of its range: it cannot shut the panel
+       and it is not there to drag one open, because a drag that runs out of
+       room and a drag meaning "close this" look identical while they happen.
+       Run Query opens it, because the panel is where the answer it asks for
+       appears. The reasoning is in results/panel-width.js. -->
   <div class="panel-resize" id="panelResize" role="separator" aria-orientation="vertical"
        tabindex="0" aria-label="Resize the results panel"
        title="Drag to resize the results panel  ( double-click to reset )"></div>
   <div class="output-panel" id="outputPanel">
     <div class="panel-head">
       <span>Results</span>
-      <button class="panel-wide-btn" id="panelWideBtn" onclick="togglePanelWide(this)"
-              aria-pressed="false" title="Widen the panel to see every column  ( W )">Wide</button>
+      <button class="panel-vis-btn" id="panelHideBtn" onclick="toggleResultsPanel()"
+              aria-controls="panelBody" aria-expanded="true"
+              title="Close the panel and give the canvas the room  ( W )">Hide</button>
     </div>
     <div class="panel-body" id="panelBody">
       <div class="placeholder">Run a query to see results</div>
+    </div>
+    <!-- What is left of the panel while it is shut. Only ever one of these two
+         is in the layout: the stylesheet shows the strip and takes the head and
+         the body away under body.panel-hidden, and the other way around. -->
+    <div class="panel-strip">
+      <button class="panel-vis-btn panel-strip-btn" id="panelShowBtn" onclick="toggleResultsPanel()"
+              aria-controls="panelBody" aria-expanded="false"
+              title="Open the results panel  ( W )">Show</button>
     </div>
   </div>
 </div>
@@ -256,6 +316,7 @@
         <button class="help-navitem" data-goto="help-node">Anatomy of a node</button>
         <button class="help-navitem" data-goto="help-connect">Connecting nodes</button>
         <button class="help-navitem" data-goto="help-nodes">Node reference</button>
+        <button class="help-navitem" data-goto="help-vars">Variables</button>
         <button class="help-navitem" data-goto="help-results">Reading results</button>
         <button class="help-navitem" data-goto="help-files">Saving a query</button>
         <button class="help-navitem" data-goto="help-library">The query library</button>
@@ -549,6 +610,21 @@
                   different choices.</li>
             </ol>
           </figure>
+
+          <p><b>Switching a node off.</b> Select a node and press <kbd>M</kbd>, or use
+             <b>Switch off</b> in the bar at the bottom of the canvas. A node that is off goes grey,
+             its border turns dashed, and it says <i>(Off)</i> under its name. It stays wired and
+             keeps every setting; it simply stops doing its job and passes its data straight
+             through, so the rest of the query runs exactly as if that one step were not there.</p>
+
+          <p>This is the quick way to ask what a query looks like without one of its steps. Deleting
+             the node would answer the same question, but it throws away the settings and leaves two
+             loose ends to wire back together. Pressing <kbd>M</kbd> again puts it back. To switch
+             off a whole arm of a query at once, double-click any node in it to select the branch,
+             then press <kbd>M</kbd>.</p>
+
+          <p>A Source cannot be switched off, because it has nothing arriving to pass through.
+             An Output can, and when it is, its block leaves the results panel.</p>
         </section>
 
         <!-- ── CONNECTING ──────────────────────────────────── -->
@@ -1063,6 +1139,141 @@
              it back on does not need another run.</p>
         </section>
 
+        <!-- ── VARIABLES ───────────────────────────────────── -->
+        <section id="help-vars">
+          <h3>Variables</h3>
+          <p>A <b>variable</b> is a value you name once and then use in as many nodes as you like.
+             It is the answer to a query that keeps repeating the same number: a student ID that
+             goes into two Filters, a pass grade that three nodes compare against, a band width
+             that four Histograms have to share to be comparable at all.</p>
+
+          <p>Without one, changing the question means finding every node that holds the old
+             answer. Miss one and the query still runs, quite happily, asking two different
+             questions at the same time. With one, you change the value in one place and every
+             node that uses it follows.</p>
+
+          <p>Variables are <b>not nodes</b> and nothing is wired to them. They live behind the
+             yellow <b>Variables</b> button in the toolbar, above the query that uses them, the way
+             a method's parameters are declared above its body. The number beside that button is
+             how many the query has, so a query you did not write says it is parameterised before
+             you open anything.</p>
+
+          <figure class="help-fig help-fig-narrow">
+            <svg viewBox="0 0 300 236" xmlns="http://www.w3.org/2000/svg" role="img"
+                 aria-label="The variables menu holding two named values, and a filter criterion taking its value from one of them">
+              <!-- the menu, as it hangs under its toolbar button -->
+              <rect x="30" y="4" width="74" height="18" rx="4" fill="none" stroke="#6e6218"/>
+              <text x="38" y="17" fill="#e6d24a" font-size="9" font-family="system-ui, sans-serif">Variables</text>
+              <rect x="86" y="8" width="12" height="10" rx="5" fill="#3a3418"/>
+              <text x="92" y="16" fill="#e6d24a" font-size="7" font-family="system-ui, sans-serif" text-anchor="middle">2</text>
+              <rect x="30" y="28" width="252" height="76" rx="6" fill="#141414" stroke="#3a3626"/>
+              <text x="42" y="44" fill="#e6d24a" font-size="9" letter-spacing="1" font-family="system-ui, sans-serif">VARIABLES</text>
+              <text x="258" y="44" fill="#a0955c" font-size="9" font-family="system-ui, sans-serif" text-anchor="end">+ Add</text>
+
+              <rect x="42" y="50" width="228" height="26" rx="3" fill="#17150a"/>
+              <rect x="42" y="50" width="2"   height="26" fill="#d8c33a"/>
+              <rect x="50" y="55" width="90"  height="16" rx="3" fill="#0f0e06" stroke="#4a4222"/>
+              <text x="56" y="67" fill="#e6d24a" font-size="9" font-family="system-ui, sans-serif">passGrade</text>
+              <text x="146" y="67" fill="#a0955c" font-size="10" font-family="system-ui, sans-serif">=</text>
+              <rect x="156" y="55" width="90" height="16" rx="3" fill="#0f0e06" stroke="#4a4222"/>
+              <text x="162" y="67" fill="#e6d24a" font-size="9" font-family="system-ui, sans-serif">5</text>
+              <text x="256" y="67" fill="#8a8a8a" font-size="9" font-family="system-ui, sans-serif">x</text>
+
+              <rect x="42" y="80" width="228" height="20" rx="3" fill="#17150a"/>
+              <rect x="42" y="80" width="2"   height="20" fill="#d8c33a"/>
+              <rect x="50" y="82" width="90"  height="16" rx="3" fill="#0f0e06" stroke="#4a4222"/>
+              <text x="56" y="94" fill="#e6d24a" font-size="9" font-family="system-ui, sans-serif">cohort</text>
+              <text x="146" y="94" fill="#a0955c" font-size="10" font-family="system-ui, sans-serif">=</text>
+              <rect x="156" y="82" width="90" height="16" rx="3" fill="#0f0e06" stroke="#4a4222"/>
+              <text x="162" y="84" fill="#e6d24a" font-size="9" font-family="system-ui, sans-serif">2024</text>
+              <text x="256" y="94" fill="#8a8a8a" font-size="9" font-family="system-ui, sans-serif">x</text>
+
+              <!-- a filter panel below it, one criterion typed and one bound -->
+              <rect x="30" y="124" width="252" height="104" rx="6" fill="#0c0c0c" stroke="#202020"/>
+              <rect x="42" y="136" width="228" height="34" rx="2" fill="none"/>
+              <rect x="42" y="136" width="2"   height="34" fill="#2a2a2a"/>
+              <rect x="50" y="140" width="74"  height="18" rx="3" fill="#141414" stroke="#282828"/>
+              <text x="56" y="152" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">GPA</text>
+              <rect x="128" y="140" width="34" height="18" rx="3" fill="#141414" stroke="#282828"/>
+              <text x="140" y="152" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">&#8805;</text>
+              <rect x="166" y="140" width="54" height="18" rx="3" fill="#141414" stroke="#282828"/>
+              <text x="172" y="152" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">5</text>
+              <rect x="224" y="140" width="18" height="18" rx="3" fill="#17150a" stroke="#4a4222"/>
+              <text x="233" y="153" fill="#c4b355" font-size="10" font-weight="700" font-family="system-ui, sans-serif" text-anchor="middle">$</text>
+
+              <rect x="42" y="180" width="228" height="40" rx="2" fill="none"/>
+              <rect x="42" y="180" width="2"   height="40" fill="#2a2a2a"/>
+              <rect x="50" y="184" width="74"  height="18" rx="3" fill="#141414" stroke="#282828"/>
+              <text x="56" y="196" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">GPA</text>
+              <rect x="128" y="184" width="34" height="18" rx="3" fill="#141414" stroke="#282828"/>
+              <text x="140" y="196" fill="#c8c8c8" font-size="9" font-family="system-ui, sans-serif">&#8805;</text>
+              <rect x="166" y="184" width="76" height="18" rx="3" fill="#17150a" stroke="#6e6218"/>
+              <text x="172" y="196" fill="#e6d24a" font-size="9" font-family="system-ui, sans-serif">passGrade</text>
+              <text x="172" y="212" fill="#c4b355" font-size="9" font-family="system-ui, sans-serif">5</text>
+
+              <g font-family="system-ui, sans-serif" font-size="10" font-weight="700" text-anchor="middle">
+                <circle cx="30" cy="13"  r="8.5" fill="#e8e8e8"/><text x="30" y="16.5" fill="#111">1</text>
+                <circle cx="233" cy="124" r="8.5" fill="#e8e8e8"/><text x="233" y="127.5" fill="#111">2</text>
+                <circle cx="30" cy="196" r="8.5" fill="#e8e8e8"/><text x="30" y="199.5" fill="#111">3</text>
+              </g>
+            </svg>
+            <ol class="help-key">
+              <li><b>The menu.</b> <b>+ Add</b> makes a variable, and the two boxes are its name
+                  and its value. Under each one is a line saying which nodes are using it. Clicking
+                  anywhere else closes the menu, and nothing you have typed is lost by closing
+                  it.</li>
+              <li><b>The chip.</b> Every value a variable can stand for grows a small yellow
+                  <b>$</b> beside it, and only once a variable exists. Pressing it makes that
+                  setting take its value from a variable.</li>
+              <li><b>A bound setting.</b> The box becomes a yellow list of your variables, with the
+                  value it is currently carrying underneath. Choosing <b>a typed value</b> from that
+                  list hands the setting back, with whatever was typed in it still there.</li>
+            </ol>
+          </figure>
+
+          <h4>Where a variable can be used</h4>
+          <p>Anywhere the tool asks you for <b>one value</b>:</p>
+          <ul class="help-steps">
+            <li>A <b>Filter</b> condition's value, whatever kind of column it is about: a number, a
+                grade, a specialisation, a course code, a pattern.</li>
+            <li><b>Either end</b> of a Filter's <i>in range</i> band, separately. "From
+                <code>floor</code> to 9" is a perfectly good range.</li>
+            <li>A <b>Take</b>'s row count.</li>
+            <li>A <b>Histogram</b>'s band width.</li>
+          </ul>
+          <p>It cannot stand for a <i>list</i> of values (<i>is one of</i> takes several, and a
+             variable holds one), nor for an operator or a column, which are the shape of the
+             query rather than a number in it, nor for a data file, which a Source reads from
+             disk.</p>
+
+          <h4>A worked example</h4>
+          <p><b>The question:</b> of the students who passed every course they took, how do their
+             GPAs spread out? And then: does the answer change if "passed" means a C rather than a
+             C-minus?</p>
+          <ol class="help-steps">
+            <li>Add a variable, name it <code>passGrade</code> and give it the value
+                <code>1</code>, which is a C-minus on the nine point scale.</li>
+            <li>Build <b>Source &rarr; Filter &rarr; Histogram &rarr; Output</b>. In the Filter,
+                set the condition to <b>Lowest grade</b> <b>&#8805;</b> and press the <b>$</b>
+                beside the value. It now reads <code>passGrade</code>.</li>
+            <li>Press <b>Run Query</b> and read the distribution.</li>
+            <li>Change <code>passGrade</code> to <code>3</code> in the menu, press <b>Run
+                Query</b> again, and compare. One edit, in one place, and nothing else about the
+                query moved.</li>
+          </ol>
+          <p>The same shape works for a band width. Point three Histograms at the same
+             <code>width</code> variable and their bands can never drift apart, which is what makes
+             the three answers comparable.</p>
+
+          <div class="help-tip">
+            <b>Saved with the query.</b> A saved query carries its variables and the values they
+             were last set to, so opening one re-opens the question it was actually asking. The
+             load message names them, because they are usually the first thing to change before
+             running somebody else's query. Deleting a variable that nodes are using asks first,
+             and hands each of those settings back the value that was typed in it.
+          </div>
+        </section>
+
         <!-- ── RESULTS ─────────────────────────────────────── -->
         <section id="help-results">
           <h3>Reading results</h3>
@@ -1121,20 +1332,26 @@
             </ol>
           </figure>
 
-          <h4>Making the panel wider</h4>
-          <p>The panel starts narrow so that the canvas has room. When a table has more columns
-             than fit, there are two ways to widen it, and the canvas gives up the space rather
-             than being covered.</p>
+          <h4>Opening, closing and sizing the panel</h4>
+          <p>The panel is open when you first open the tool. Closing it hands its whole column
+             back to the canvas, which is worth doing while a graph is being laid out. Pressing
+             <b>Run Query</b> opens it again, and so does anything else that has something to
+             report, so there is no state in which an answer is written somewhere you cannot see
+             it. Closed, the panel leaves a strip down the right edge with <b>Show</b> on it.</p>
           <ul class="help-steps">
-            <li><b>Wide</b>, at the top of the panel, opens it far enough to read a full row at
-               once. The button then reads <b>Thin</b>, and pressing it puts the panel back.
-               <kbd>W</kbd> does the same.</li>
-            <li><b>The edge between the canvas and the panel</b> can be dragged to any width in
-               between. Double-click it to return to the starting width.</li>
+            <li><b>Hide</b>, at the top of the panel, puts it away. <b>Show</b>, on the strip,
+               brings it back at the width it had. <kbd>W</kbd> does either.</li>
+            <li><b>The edge between the canvas and the panel</b> can be dragged to any width
+               between narrow and most of the window, and the canvas gives up the space rather
+               than being covered. Double-click it to return to the starting width.</li>
+            <li>The edge sets the width and nothing else. It will not close the panel however far
+               you push it, and while the panel is closed there is no edge to pull: <b>Show</b> is
+               the way back, so a drag can never lose you the panel by accident.</li>
           </ul>
-          <p>Whichever width you settle on is remembered the next time you open the tool. It is a
-             setting of your own rather than part of a query: saved <code>.json</code> files carry
-             the graph only, so opening someone else's query leaves your layout alone.</p>
+          <p>Whether you keep it open, and whichever width you settle on, is remembered the next
+             time you open the tool. It is a setting of your own rather than part of a query:
+             saved <code>.json</code> files carry the graph only, so opening someone else's query
+             leaves your layout alone.</p>
 
           <div class="help-tip">
             <b>Check a query rather than trusting it.</b> Hovering a wire shows the rows
@@ -1247,12 +1464,17 @@
             <tr><td>Drag on empty canvas</td><td>Select everything inside the box</td></tr>
             <tr><td><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>A</kbd></td><td>Select all nodes</td></tr>
             <tr><td><kbd>Delete</kbd> or <kbd>Backspace</kbd></td><td>Delete the selection</td></tr>
+            <tr><td><kbd>M</kbd></td><td>Switch the selection off, or back on. A node that is off
+                passes its data straight through instead of doing its job, and keeps its
+                settings</td></tr>
+            <tr><td>Double-click a node</td><td>Select the whole branch it belongs to. Follow it
+                with <kbd>M</kbd> to switch that branch off</td></tr>
             <tr><td><kbd>Esc</kbd></td><td>Clear the selection, or close a dialog</td></tr>
             <tr><td>Hold <kbd>Space</kbd> and drag, or drag with the middle button</td><td>Pan the canvas</td></tr>
             <tr><td>Scroll, or <kbd>+</kbd> and <kbd>&minus;</kbd></td><td>Zoom in and out</td></tr>
             <tr><td><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>0</kbd></td><td>Back to 100%</td></tr>
             <tr><td><kbd>F</kbd></td><td>Fit every node on screen</td></tr>
-            <tr><td><kbd>W</kbd></td><td>Widen the results panel, and back again</td></tr>
+            <tr><td><kbd>W</kbd></td><td>Show or hide the results panel</td></tr>
             <tr><td>Drag the panel's left edge</td><td>Set the results panel to any width</td></tr>
             <tr><td>Drag the toolbar's bottom edge</td><td>Make the toolbar and its buttons bigger</td></tr>
             <tr><td><kbd>?</kbd></td><td>Open this window</td></tr>
@@ -1270,7 +1492,7 @@
      inspected and restyled without reading the script.
 
      The buttons are wired inline like the toolbar's. Dismissing by clicking the
-     backdrop is not, because it carries a condition. See js/ui-saveload.js. -->
+     backdrop is not, because it carries a condition. See js/queries/saveload.js. -->
 <div class="save-dialog" id="saveDialog">
   <div class="save-card" role="dialog" aria-modal="true" aria-labelledby="saveTitle">
     <h2 class="save-title" id="saveTitle">Save query</h2>
@@ -1315,7 +1537,7 @@
      role="alertdialog" rather than "dialog": the screen reader should read the
      question on open, not wait to be asked what the card says.
 
-     The checkbox is answered in js/ui-nodes.js and lasts the session. Nothing about it
+     The checkbox is answered in js/nodes/model.js and lasts the session. Nothing about it
      is written to disk. -->
 <div class="save-dialog confirm-dialog" id="clearDialog">
   <div class="save-card" role="alertdialog" aria-modal="true"
@@ -1342,7 +1564,7 @@
 
      The pictures on the cards are drawn into #libBody by renderLibrary(), from
      the graphs themselves. There is no <img> anywhere in here and no thumbnail
-     is stored: see libThumb() in js/ui-library-thumb.js for why a screenshot would have been
+     is stored: see libThumb() in js/queries/library-thumb.js for why a screenshot would have been
      the wrong answer. -->
 <div class="save-dialog lib-dialog" id="libDialog">
   <div class="lib-card-frame" role="dialog" aria-modal="true" aria-labelledby="libTitle">
@@ -1365,8 +1587,8 @@
       <p class="save-sub lib-sub-note">The Query Library is a way to save and store necessary
          queries built onto this application itself. From here you can save, rename, export, edit,
          open, and delete any queries that you have made. You can also import query
-         <code>.json</code> files from your device into this library, or export the entire library
-         as one <code>.json</code> file containing every query.</p>
+         .json files from your device into this library, or export the entire library
+         as one .json file containing every query.</p>
 
       <p class="save-sub lib-sub-note lib-caveat"><b>Please note:</b> Clearing site data removes the
          library, and it is not private on a shared computer.</p>
@@ -1404,42 +1626,55 @@
      opaque origin and refused; classic scripts sharing one global scope are what
      works there, which is why a name declared in one file is visible in the next.
 
-     THIS ORDER IS LOAD-BEARING and this list is where it is decided. The data
-     files declare the archive and the Table type, the engine files the evaluation,
-     the ui files the canvas. ui-boot.js is last because it ends by publishing the
-     inline handlers and painting the first frame, which needs everything above it.
+     THIS ORDER IS LOAD-BEARING and this list is where it is decided. data/
+     declares the archive and the Table type, engine/ evaluates a query, canvas/
+     and nodes/ draw and hold the graph, results/ renders the answer, queries/
+     saves one, and shell/ is the toolbar and the wiring around all of it.
+     shell/boot.js is last because it ends by publishing the inline handlers and
+     painting the first frame, which needs everything above it.
+
+     The folders group the files; they do not set the order, and the order is not
+     the folders' either. canvas/gestures.js loads below shell/toolbar-menus.js
+     because that is where it has always loaded and there was no reason to find
+     out what moving it would cost. Read this list top to bottom, not folder by
+     folder.
+
      The test harness reads this list rather than keeping a copy of it. -->
-<script src="js/data-registries.js"></script>
-<script src="js/data-loading.js"></script>
-<script src="js/data-sources.js"></script>
-<script src="js/data-table.js"></script>
-<script src="js/engine-core.js"></script>
-<script src="js/engine-sort-take.js"></script>
-<script src="js/engine-unique-select.js"></script>
-<script src="js/engine-compare.js"></script>
-<script src="js/engine-output.js"></script>
-<script src="js/engine-aggregate.js"></script>
-<script src="js/engine-selectfor.js"></script>
-<script src="js/engine-histogram.js"></script>
-<script src="js/engine-combine.js"></script>
-<script src="js/engine-specs.js"></script>
-<script src="js/ui-state.js"></script>
-<script src="js/ui-nodes.js"></script>
-<script src="js/ui-config-controls.js"></script>
-<script src="js/ui-node-html.js"></script>
-<script src="js/ui-render.js"></script>
-<script src="js/ui-edge-notes.js"></script>
-<script src="js/ui-results.js"></script>
-<script src="js/ui-export.js"></script>
-<script src="js/ui-saveload.js"></script>
-<script src="js/ui-library-store.js"></script>
-<script src="js/ui-library-thumb.js"></script>
-<script src="js/ui-library-dialog.js"></script>
-<script src="js/ui-toolbar-menus.js"></script>
-<script src="js/ui-gestures.js"></script>
-<script src="js/ui-panel-width.js"></script>
-<script src="js/ui-toolbar-height.js"></script>
-<script src="js/ui-events.js"></script>
-<script src="js/ui-boot.js"></script>
+<script src="js/data/registries.js"></script>
+<script src="js/data/loading.js"></script>
+<script src="js/data/sources.js"></script>
+<script src="js/data/table.js"></script>
+<script src="js/engine/core.js"></script>
+<script src="js/engine/sort-take.js"></script>
+<script src="js/engine/unique-select.js"></script>
+<script src="js/engine/compare.js"></script>
+<script src="js/engine/output.js"></script>
+<script src="js/engine/aggregate.js"></script>
+<script src="js/engine/selectfor.js"></script>
+<script src="js/engine/histogram.js"></script>
+<script src="js/engine/combine.js"></script>
+<script src="js/engine/specs.js"></script>
+<script src="js/vars/model.js"></script>
+<script src="js/vars/operand.js"></script>
+<script src="js/vars/dock.js"></script>
+<script src="js/canvas/state.js"></script>
+<script src="js/nodes/model.js"></script>
+<script src="js/nodes/controls.js"></script>
+<script src="js/nodes/markup.js"></script>
+<script src="js/canvas/render.js"></script>
+<script src="js/canvas/edge-notes.js"></script>
+<script src="js/canvas/node-tips.js"></script>
+<script src="js/results/panel.js"></script>
+<script src="js/results/export.js"></script>
+<script src="js/queries/saveload.js"></script>
+<script src="js/queries/library-store.js"></script>
+<script src="js/queries/library-thumb.js"></script>
+<script src="js/queries/library-dialog.js"></script>
+<script src="js/shell/toolbar-menus.js"></script>
+<script src="js/canvas/gestures.js"></script>
+<script src="js/results/panel-width.js"></script>
+<script src="js/shell/toolbar-height.js"></script>
+<script src="js/shell/events.js"></script>
+<script src="js/shell/boot.js"></script>
 </body>
 </html>

@@ -111,10 +111,13 @@ module.exports = ({ describe, test }) => {
         'the break is not in front of the Query group');
     });
 
-    test('all three dropdowns are inside the bar and survive its resizing', () => {
+    /* Every dropdown the bar carries, node menus and the variables menu alike.
+       The claim is about the bar rather than about what is behind any one
+       button, so a dropdown added later is covered by being added. */
+    test('every dropdown is inside the bar and survives its resizing', () => {
       const h = boot();
       const ids = h.qa('.proc-menu').map(m => m.id).sort();
-      assert.deepEqual(ids, ['distMenu', 'procMenu', 'reshapeMenu']);
+      assert.deepEqual(ids, ['distMenu', 'procMenu', 'reshapeMenu', 'varDock']);
       h.qa('.proc-menu').forEach(m =>
         assert.ok(m.closest('.toolbar'), m.id + ' is not in the bar'));
       /* Each hangs off its own button rather than off the bar, so a bar that
@@ -252,11 +255,166 @@ module.exports = ({ describe, test }) => {
       assert.equal(A.clampPanelWidth(10), A.PANEL_MIN, 'and it has a floor of its own');
     });
 
-    test('Wide still fits under the ceiling on an ordinary window', () => {
-      // Otherwise the button would silently do less than it says.
+    /* The Wide preset this used to pin is gone with the Wide button. What is
+       left in its place is the shut strip, which has a floor of its own to
+       answer for: it is the only thing on that edge saying the panel exists,
+       and a strip that has been rounded away is a panel with no way back. */
+    test('the shut strip is wide enough to hold the button that reopens it', () => {
       const A = atWidth(1280).app;
-      assert.ok(A.PANEL_WIDE <= A.panelMaxWidth(),
-        'Wide asks for more than the panel is allowed to be');
+      assert.ok(A.PANEL_STRIP >= 24, 'the strip is too thin to put a control in');
+      assert.ok(A.PANEL_STRIP < A.PANEL_MIN, 'the strip is not a narrow panel, it is a strip');
+    });
+
+  });
+
+  /* ------------------------------------------------- the panel's two states */
+
+  describe('the results panel opens and shuts', () => {
+    test('a first run starts it open, because that is where the answers appear', () => {
+      /* Shut by default the panel rests on someone noticing a 34px strip and
+         guessing what is behind it. Open, it explains itself. */
+      const h = boot();
+      assert.notOk(h.app.panelHiddenNow(), 'the panel is shut before anyone asked for that');
+      assert.notOk(h.doc.body.classList.contains('panel-hidden'),
+        'the document says shut while the script says open');
+    });
+
+    test('and the strip is what is left after closing it, not what it opens as', () => {
+      const h = boot();
+      h.app.hideResultsPanel();
+      assert.ok(h.doc.body.classList.contains('panel-hidden'),
+        'the state never reached the document, so only the script believes it');
+    });
+
+    test('shut leaves a strip, and the strip holds the way back', () => {
+      const h = boot();
+      h.app.hideResultsPanel();
+      const show = h.doc.getElementById('panelShowBtn');
+      assert.ok(show, 'nothing is left to reopen the panel with');
+      assert.ok(show.closest('.panel-strip'), 'Show is not on the strip');
+      assert.equal(show.textContent.trim(), 'Show');
+    });
+
+    test('Show and Hide are one control, and each names its own press', () => {
+      const h = boot();
+      const show = h.doc.getElementById('panelShowBtn');
+      const hide = h.doc.getElementById('panelHideBtn');
+      assert.equal(hide.textContent.trim(), 'Hide');
+      [show, hide].forEach(b => assert.equal(b.getAttribute('onclick'), 'toggleResultsPanel()'));
+
+      h.app.toggleResultsPanel();
+      assert.ok(h.app.panelHiddenNow(), 'the toggle did not shut it');
+      assert.ok(h.doc.body.classList.contains('panel-hidden'));
+      assert.equal(show.getAttribute('aria-expanded'), 'false',
+        'the state is announced on whichever button a reader is sitting on');
+      assert.equal(hide.getAttribute('aria-expanded'), 'false');
+
+      h.app.toggleResultsPanel();
+      assert.notOk(h.app.panelHiddenNow(), 'the toggle does not open it again');
+      assert.equal(hide.getAttribute('aria-expanded'), 'true');
+    });
+
+    test('shutting keeps the width, so opening comes back to it', () => {
+      /* The whole reason the shut state is a class and not a width of zero.
+         Someone who has sized the panel to suit their screen should not have to
+         do it again every time they put it away. */
+      const h = boot();
+      h.app.showResultsPanel();
+      h.app.applyPanelWidth(420, false);
+      h.app.hideResultsPanel();
+      assert.equal(h.app.panelWidthNow(), 420, 'shutting the panel cost the width');
+      h.app.showResultsPanel();
+      assert.equal(h.app.panelWidthNow(), 420, 'it came back at a width nobody chose');
+    });
+
+    test('opening an open panel is not a toggle in disguise', () => {
+      // showResultsPanel() is called on every Run Query, including the ones
+      // pressed while the panel is already open.
+      const h = boot();
+      h.app.showResultsPanel();
+      h.app.showResultsPanel();
+      assert.notOk(h.app.panelHiddenNow(), 'the second call shut it');
+    });
+
+    test('Run Query opens it, including when it refuses to run', () => {
+      /* The refusal is the case that matters: it is written to the panel and
+         then returns, so if the panel were still shut the button would look
+         like it did nothing at all. An empty canvas takes the first refusal. */
+      const h = boot();
+      h.app.hideResultsPanel();
+      h.w.runQuery();
+      assert.notOk(h.app.panelHiddenNow(), 'Run Query left the panel shut');
+      assert.includes(h.doc.getElementById('panelBody').innerHTML, 'Source',
+        'the refusal did not reach the panel it just opened');
+    });
+
+    test('an error from anywhere else opens it too', () => {
+      // A file that will not load reports itself through showError(), nowhere
+      // near runQuery(), and the panel may well be shut when it does.
+      const h = boot();
+      h.app.hideResultsPanel();
+      h.app.showError('Could not read that file.');
+      assert.notOk(h.app.panelHiddenNow(), 'the error went into a panel nobody can see');
+    });
+
+    /* The handle sets a width and nothing else. Dragging it is the one gesture
+       here nobody aims, so it must not be able to destroy what it is dragging:
+       pushed past the end of its range the panel sits at the end of its range. */
+    test('the handle cannot shut the panel, however far it is pushed', () => {
+      const h = boot();
+      h.app.showResultsPanel();
+      h.app.applyPanelWidth(-9999, false);
+      assert.notOk(h.app.panelHiddenNow(), 'a resize closed the panel');
+      assert.equal(h.app.panelWidthNow(), h.app.PANEL_MIN, 'it stopped somewhere other than the floor');
+    });
+
+    test('and it is not there to drag a shut panel open', () => {
+      /* Belt and braces: the stylesheet takes the handle out of the layout while
+         the panel is shut, and the handler refuses anyway, so a drag already in
+         flight when the state changed cannot finish as an open. */
+      const h = boot();
+      h.app.hideResultsPanel();
+      const handle = h.doc.getElementById('panelResize');
+      handle.dispatchEvent(new h.w.MouseEvent('mousedown', { button: 0, clientX: 900, bubbles: true }));
+      h.doc.dispatchEvent(new h.w.MouseEvent('mousemove', { clientX: 400, bubbles: true }));
+      h.doc.dispatchEvent(new h.w.MouseEvent('mouseup', { bubbles: true }));
+      assert.ok(h.app.panelHiddenNow(), 'the panel was dragged open');
+    });
+
+    test('a placeholder is not news, and does not open anything', () => {
+      // Clear writes through setOutput(). Someone who has just cleared the
+      // canvas is not asking to be shown an empty panel.
+      const h = boot();
+      h.app.hideResultsPanel();
+      h.app.setOutput('<div class="placeholder">Run a query to see results</div>');
+      assert.ok(h.app.panelHiddenNow(), 'a placeholder opened the panel');
+    });
+
+    test('the state is remembered, and an old record opens at the new default', () => {
+      const h = boot();
+      h.app.hideResultsPanel();
+      h.app.savePanelPrefs();
+      const saved = JSON.parse(h.w.localStorage.getItem('sda.resultsPanel.v1'));
+      assert.equal(saved.hidden, true, 'the panel state was not written down');
+      assert.equal(typeof saved.w, 'number');
+
+      /* A record written by the Wide button has a width and a `wide` flag and
+         no `hidden`. The width is still meaningful and is kept; the flag names
+         a button that no longer exists and is ignored, which leaves the panel
+         at its new starting state rather than at a guess.
+
+         Since the new default is open and the old panel was always open, such a
+         user notices nothing but their own width coming back.
+
+         The record goes in after the panel is moved, not before: every state
+         change writes one of its own, so planting it first would only mean
+         reading back what hideResultsPanel() had just saved over it. */
+      h.app.hideResultsPanel();
+      h.w.localStorage.setItem('sda.resultsPanel.v1',
+        JSON.stringify({ w: 480, base: 300, wide: true }));
+      h.app.loadPanelPrefs();
+      assert.equal(h.app.panelWidthNow(), 480, 'the width someone chose was thrown away');
+      assert.notOk(h.app.panelHiddenNow(), 'a flag for a removed button decided the new state');
     });
   });
 

@@ -130,7 +130,7 @@ module.exports = ({ describe, test }) => {
   });
 
   /* ══ 2. THE TWO PICKERS, IN ORDER ══════════════════════════════════════════ */
-  describe('the column file comes first, and the panel says why', () => {
+  describe('the column file comes first, and the panel says so', () => {
     test('a year file offered before a header is refused with the reason', async () => {
       if (!hasDataDir()) return;
       const s = src();
@@ -146,7 +146,20 @@ module.exports = ({ describe, test }) => {
       const btns = () => [...doc.querySelectorAll('.node .src-btn')];
       assert.equal(btns().length, 2, 'one button per step');
       assert.ok(btns()[1].disabled, 'step 2 is unavailable');
-      assert.includes(panelOf(s.id), 'has to come first', 'and the panel says why');
+      /* The panel names what step 1 wants rather than arguing for the ordering.
+         The argument (a year file carries no column names, so nothing can be
+         read out of one until the tool knows what each position holds) moved to
+         Help, which is where the longer explanations go: the panel is read
+         while standing in front of a file picker and needs to say what to pick.
+         Asserted as a MOVE rather than a deletion, so the reasoning cannot go
+         missing from both places at once. */
+      assert.includes(panelOf(s.id), 'headers.txt', 'the panel says what step 1 wants');
+
+      // Collapsed, because the source is wrapped for reading and a sentence
+      // that spans two lines is still one sentence.
+      const help = doc.getElementById('help-data').textContent.replace(/\s+/g, ' ');
+      assert.includes(help, 'has to come first', 'and Help still says why');
+      assert.includes(help, 'no names on it');
 
       await t.loadHeaders(s.id, t.archiveFile('headers.txt'));
       assert.notOk(btns()[1].disabled, 'and available once step 1 is done');
@@ -1139,8 +1152,14 @@ module.exports = ({ describe, test }) => {
 
   /* ══ 7. SAVE AND LOAD: THE POINT OF ALL OF IT ═════════════════════════════ */
   describe('a saved query holds the graph and not the records', () => {
-    test('the file format says which version it is', () => {
-      assert.equal(app.FILE_VERSION, 3, 'the dataset descriptor is version 3');
+    /* A floor rather than an exact number. What this suite is entitled to
+       assume is that the dataset descriptor exists, which it does from version 3
+       onwards; pinning the exact version here made every later addition to the
+       format fail a test about loading source files. The exact number is pinned
+       by the suite that owns the newest addition to it — see 39-variables. */
+    test('the file format says which version it is, and it is at least the one that added descriptors', () => {
+      assert.equal(typeof app.FILE_VERSION, 'number');
+      assert.ok(app.FILE_VERSION >= 3, 'the dataset descriptor arrived in version 3');
     });
 
     test('a Source records the NAMES of its files', async () => {
@@ -1363,8 +1382,11 @@ module.exports = ({ describe, test }) => {
     });
 
     test('a file from a newer tool is still refused', () => {
+      // One past whatever this tool writes, so the test asks the question it
+      // means ("newer than me") rather than naming a version that stops being
+      // newer the next time the format widens.
       const g = app.deserialiseGraph(JSON.stringify({
-        kind: app.FILE_KIND, version: 4, nodes: [], connections: []
+        kind: app.FILE_KIND, version: app.FILE_VERSION + 1, nodes: [], connections: []
       }));
       assert.ok(g.error);
       assert.includes(g.error, 'newer version');

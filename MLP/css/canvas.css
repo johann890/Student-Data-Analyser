@@ -35,8 +35,8 @@
   display: flex;
   flex-direction: column;
   align-items: center;
-  width: 220px; /* matches config panel width so shape centering is predictable */
-  /* The wrapper is 220px wide but the shape inside is only ~100px, leaving wide
+  width: 250px; /* matches config panel width so shape centering is predictable */
+  /* The wrapper is 250px wide but the shape inside is only ~110px, leaving wide
      transparent gutters. Without this those gutters swallow pointer events meant
      for the connection arrows painted underneath. Only the visible children
      (the shape and the config panel) capture input. */
@@ -45,9 +45,12 @@
 .node > * { pointer-events: auto; }
 
 /* SHAPES */
-/* Source Circle */
+/* Source Circle. Kept in step with SHAPE.source in canvas/state.js, which
+   17-shape-styling asserts: the model places the arrows and the stylesheet
+   draws the shape, and an arrow landing beside its node is what disagreement
+   looks like. */
 .shape-source {
-  width: 100px; height: 100px;
+  width: 120px; height: 120px;
   border-radius: 50%;
   border: 2.5px solid #2d6640;
   background: #071510;
@@ -76,7 +79,7 @@
   line-height: 1.25;
   color: #8fd8a6;
   text-align: center;
-  max-width: 84px;
+  max-width: 100px;
 }
 
 /* Filter: tall sharp rectangle, distinct from output's rounded rect */
@@ -149,7 +152,7 @@
   border: 1px solid #202020;
   border-radius: 7px;
   padding: 7px 8px;
-  width: 220px;
+  width: 250px;
   display: flex;
   flex-direction: column;
   gap: 5px;

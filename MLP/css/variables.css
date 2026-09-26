@@ -1,0 +1,328 @@
+/* variables.css: The variables menu in the toolbar, and the operand slot a
+   variable is chosen in.
+   Part of the Student Data Analyser's stylesheet. The files load in the order
+   index.html lists them, and that order is the cascade: it must not change.
+   Last, so it can rely on the panel and control rules above it.
+   ========================================================================== */
+/* ═══════════════════════════════════════════════════════════
+   YELLOW
+   ═══════════════════════════════════════════════════════════
+   One hue for one idea, used everywhere a variable appears: the toolbar button,
+   the chips behind it, the chip on an operand, and the select that operand
+   becomes.
+   Learning it once is the whole of learning where variables are, which matters
+   because the button on an operand is small enough to be a glyph.
+
+   It is a true yellow and not the amber the range band and the stale notice
+   already wear. Those two mean "look at this", which is a different message,
+   and a panel can carry a range band and a bound operand at the same time: if
+   they were the same colour the band would look as though it were the variable.
+   Held a shade greener and brighter than the amber for exactly that reason.
+
+     #e6d24a   bright, for text and glyphs on the dark panel
+     #c4b355   quieter, for the value a bound operand is carrying
+     #a0955c   dimmest, for the line saying what a variable is used by
+     #6e6218   a border a control can wear without shouting
+     #d8c33a   the band down the left of a chip
+     #17150a   the background inside one                                       */
+
+/* ── THE BUTTON AND ITS MENU ─────────────────────────────── */
+/* An .add-btn beside Reshape, Processing and Distribution, laid out the way
+   those three are: inline-flex so the caret centres on the label's optical
+   midline rather than sitting on its baseline.
+
+   It wears the hue rather than the neutral grey, which is the one thing tying
+   it to the $ chips and the yellow selects out on the panels. A user who has
+   bound an operand and then goes looking for where that value is set has only
+   the colour to go on.
+
+   Quiet until the query actually has variables, and brighter once it does. Not
+   a decoration: the bar is read at a glance, and "this query is parameterised"
+   is worth a glance's worth of difference. */
+.add-btn.var-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border-color: #4a4222;
+  color: #a0955c;
+}
+.add-btn.var-btn:hover { border-color: #8a7a1e; color: #e6d24a; background: #16140a; }
+.add-btn.var-btn.has-vars { border-color: #8a7a1e; color: #e6d24a; }
+
+/* How many, on the button, so a closed menu still says the query carries them.
+   Empty when there are none, and hidden outright then, so the button is exactly
+   the width it would have been without it. */
+.var-count:empty { display: none; }
+.var-count {
+  display: inline-block;
+  min-width: 15px;
+  padding: 0 4px;
+  border-radius: 7px;
+  background: #3a3418;
+  color: #e6d24a;
+  font-size: 11px;
+  line-height: 15px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+}
+
+/* The menu itself is one of the toolbar's dropdowns and takes .proc-menu's
+   position, shadow and open/close. What is redefined here is only what a list
+   of editable rows needs and a list of buttons does not: a column layout, a
+   width the two fields fit in, and a ceiling with a scroll under it so twelve
+   chips cannot run off the bottom of the screen.
+
+   After .proc-menu.open in the cascade, which is how `display: flex` wins: the
+   two selectors weigh the same, and this file is linked last. */
+.var-dock.open {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.var-dock {
+  width: 264px;
+  max-height: 60vh;
+  overflow-y: auto;
+  padding: 8px;
+  border-color: #3a3626;
+}
+
+.var-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.var-title {
+  font-size: 11px;
+  letter-spacing: 0.9px;
+  text-transform: uppercase;
+  color: #e6d24a;
+}
+/* THE ONE THING TO DO IN AN EMPTY MENU
+   Pushed to the right edge by its own auto margin rather than by a spacer, and
+   sized like a primary action rather than like the dashed "+ add condition"
+   affordances on the node panels. Those sit under a list they extend and can
+   afford to be quiet; this one is the only control in a menu that is otherwise
+   a paragraph of explanation, and a reader who has just found the feature has
+   nothing else to press. Filled rather than outlined for the same reason Clear
+   is filled: the shape carries the weight, not the colour alone. */
+.var-add {
+  margin-left: auto;
+  flex-shrink: 0;
+  background: #3a3418;
+  border: 1px solid #8a7a1e;
+  border-radius: 6px;
+  color: #e6d24a;
+  font-size: 14px;
+  font-weight: 600;
+  font-family: inherit;
+  padding: 9px 20px;
+  cursor: pointer;
+  transition: background 0.12s;
+}
+.var-add:hover:not(:disabled) {
+  background: #4d451d;
+  border-color: #d8c33a;
+  color: #f4e488;
+}
+/* Disabled at the ceiling rather than hidden. A button that has gone away
+   leaves the user wondering whether they imagined it; one that is plainly
+   unavailable, with the notice underneath saying why, does not. */
+.var-add:disabled { opacity: 0.4; cursor: default; }
+
+/* What the menu refuses, on its own line. Cleared by the next repaint, so it
+   never outlives the state it described. */
+.var-notice {
+  display: none;
+  font-size: 11px;
+  line-height: 1.35;
+  color: #d9a24a;
+}
+.var-notice.show { display: block; }
+
+.var-body {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* The empty state, which is the only thing a first-time reader sees. It still
+   has to say what a variable is FOR, since a dropdown holding a + and nothing
+   else is a dropdown to be guessed at, but it is now the quiet half of the
+   menu: Add is what the eye should land on, so this is two lines rather than
+   four and names the three nodes without explaining them. */
+.var-empty {
+  font-size: 11.5px;
+  line-height: 1.45;
+  color: #8f8f8f;
+}
+
+/* ── ONE CHIP ────────────────────────────────────────────── */
+/* Banded down the left the way a criterion and a range band are, so a chip
+   reads as one row of a list rather than as a card of its own. */
+.var-chip {
+  padding: 5px 7px;
+  border-left: 2px solid #d8c33a;
+  border-radius: 0 4px 4px 0;
+  background: #17150a;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+/* name = value | x. The equals sign has a column of its own so the two fields
+   stay the same width whatever is typed in them, which is what makes a stack of
+   chips read as a list of equations instead of a ragged form. */
+.var-line {
+  display: grid;
+  grid-template-columns: 1fr 10px 1fr 14px;
+  gap: 4px;
+  align-items: center;
+}
+.var-eq {
+  font-size: 12px;
+  color: #a0955c;
+  text-align: center;
+}
+.var-chip input[type=text] {
+  background: #0f0e06;
+  border: 1px solid #4a4222;
+  color: #e6d24a;
+  padding: 3px 5px;
+  font-size: 12px;
+}
+.var-chip input[type=text]:focus { border-color: #d8c33a; }
+.var-chip input[type=text]::placeholder { color: #6b6440; }
+/* The name is the label and the value is the data, so the value is set in the
+   figure face the rest of the tool uses for numbers. A student ID and a GPA are
+   both easier to check against a file when the digits line up. */
+.var-chip .var-value { font-variant-numeric: tabular-nums; }
+
+.var-del {
+  background: transparent;
+  border: none;
+  color: #8a8a8a;
+  font-size: 12px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  font-family: inherit;
+}
+.var-del:hover { color: #c55f5f; }
+
+/* What this variable is holding together, which is the reason to have one. */
+.var-note {
+  font-size: 11px;
+  line-height: 1.35;
+  color: #a0955c;
+}
+
+/* Waiting for the second press. The band goes red rather than the note alone,
+   because the question is about destroying something and the chip is what would
+   go. Nothing else in the menu changes colour, so there is never a doubt about
+   which chip the question is about. */
+.var-chip.asking { border-left-color: #c55f5f; }
+.var-chip.asking .var-note { color: #d98a8a; }
+.var-chip.asking .var-del { color: #c55f5f; }
+
+/* Two chips with one name. Legal in the model, because a binding names the id,
+   and worth saying because a panel printing that name twice is ambiguous to
+   read even though it is not ambiguous to the tool. */
+.var-chip.clash .var-note { color: #d9a24a; }
+
+/* ── AN OPERAND THAT CAN TAKE A VARIABLE ─────────────────── */
+/* The slot holds the panel's own control and a chip beside it. The control keeps
+   the whole of the remaining width: min-width:0 is what lets it shrink into the
+   column rather than spilling past the panel edge, which is the same reason the
+   global control rule sets it. */
+.var-slot {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+}
+.var-slot > :first-child {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+/* The chip. A dollar sign, which is the sigil a variable wears nearly
+   everywhere it has one, in the yellow that means variable in this tool. Small
+   because it appears beside a control on a narrow panel and the control needs
+   the room; the tooltip and the Help carry the words.
+
+   It exists only while there is a variable to bind, so a query that uses none
+   has the panels it always had. */
+.var-use {
+  flex: 0 0 18px;
+  width: 18px; height: 22px;
+  padding: 0;
+  background: #17150a;
+  border: 1px solid #4a4222;
+  border-radius: 4px;
+  color: #c4b355;
+  font-size: 12px;
+  font-weight: 700;
+  font-family: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+.var-use:hover { border-color: #d8c33a; color: #e6d24a; background: #201d0b; }
+.var-use:focus { outline: none; border-color: #d8c33a; }
+
+/* Bound: the select sits where the control was and the value it carries is
+   printed under it. Stacked rather than side by side because the cell is often
+   under 80px wide and a name and a number cannot share that; stacked, each gets
+   the full width and neither is clipped. */
+.var-slot.bound {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 2px;
+}
+/* Named a second time inside the range band, which styles `.crit-range select`
+   in its own amber: that selector outranks a plain class, so a bound operand
+   there would wear the band's colour rather than the variables' and read as
+   part of the band. Two selectors rather than !important, because the reason is
+   a specific rule and not a general one. */
+.var-pick,
+.crit-range .var-pick {
+  background: #17150a;
+  border-color: #6e6218;
+  color: #e6d24a;
+  font-size: 12px;
+  padding: 3px 5px;
+}
+.var-pick:focus,
+.crit-range .var-pick:focus { border-color: #d8c33a; }
+/* The value, quieter than the name above it: the name is what was chosen and
+   the value is what follows from it. Clipped rather than wrapped, with the
+   whole of it on the select's title, because a long value must not make one
+   criterion twice the height of its neighbours. */
+.var-shown {
+  font-style: normal;
+  font-size: 11px;
+  color: #c4b355;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* An empty variable is the reason a query will refuse to run, so it is said
+   rather than shown as a gap. */
+.var-shown.none { color: #d9a24a; }
+
+/* WHERE THE CHIP'S WIDTH COMES FROM
+   The three-column criterion row (field | operator | value) is the tightest
+   place a chip appears, and 18px had to come from somewhere. It comes from the
+   first two columns, which have slack: both hold selects whose full text is on
+   the option list anyway, and the value box is the one the user types into.
+
+   Only while a variable exists, so a query that uses none is laid out exactly as
+   it was, and only for the three-column row: the two-column and stacked
+   variants have room already and set their own columns. They are excluded BY
+   NAME rather than left to the cascade, because this file loads last and
+   `body.has-vars .criterion-controls` outweighs `.criterion-controls.two-col`
+   on specificity. Without the exclusions a range's "in range" operator loses
+   the width that variant exists to give it and reads as "in r". */
+body.has-vars .criterion-controls:not(.two-col):not(.stack) {
+  grid-template-columns: 72px 34px 1fr;
+}

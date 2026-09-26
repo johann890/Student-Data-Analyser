@@ -102,11 +102,11 @@ The application is a set of classic scripts (`js/data-*.js`, `js/engine-*.js`,
 the tool has to run from a `file://` URL with no build step, where a module script
 is fetched with CORS against an opaque origin and refused outright. The harness
 reads the script list out of the page and loads them in that order, which is
-load-bearing — `js/ui-boot.js` ends by wiring the inline handlers and painting the
+load-bearing — `js/shell/boot.js` ends by wiring the inline handlers and painting the
 first frame, and needs everything above it parsed. The list is not copied into the
 harness: a script added to the page joins the suite by being added to the page.
 
-`js/ui-boot.js` solves the access question itself. Setting `window.__QB_TEST__ = true` **before** it
+`js/shell/boot.js` solves the access question itself. Setting `window.__QB_TEST__ = true` **before** it
 loads makes it publish the application's internals on `window.__qb`. In normal use the flag is
 undefined, nothing is exported, and the cost is one branch at start-up.
 
@@ -182,14 +182,20 @@ having nowhere to save says so instead of inheriting jsdom's silence.
 ### Adding to the hook
 
 If a test needs something `__qb` does not expose, add it to the export block at
-the bottom of `js/ui-boot.js` rather than reaching around it. The block is grouped by
+the bottom of `js/shell/boot.js` rather than reaching around it. The block is grouped by
 subject; put the new entry with its neighbours.
 
-Live state (`nodes`, `connections`, `exportData`, `selection`, `view`) is
-exported as *functions*, because those bindings are reassigned wholesale by
-`clearAll()` and `applyGraph()` and a captured value would go stale. The harness
-bridges them back to getters so tests can write `app.nodes`, in one place —
-`shim()` in `lib/harness.js`.
+Live state (`nodes`, `connections`, `exportData`, `selection`, `view`,
+`variables`) is exported as *functions*, because those bindings are reassigned
+wholesale by `clearAll()` and `applyGraph()` and a captured value would go stale.
+The harness bridges them back to getters so tests can write `app.nodes`, in one
+place — `shim()` in `lib/harness.js`.
+
+**A reassigned binding that is not bridged fails silently**, which is worth
+knowing before it costs an afternoon. `app.variables` without the bridge is the
+getter *function*, and `app.variables.length` then reads its arity: a number,
+which sails straight through `assert.equal(..., 0)`. If a new live binding is
+added to the hook, add it to `shim()` in the same commit.
 
 ## The suites
 
@@ -218,6 +224,7 @@ bridges them back to getters so tests can write `app.nodes`, in one place —
 | `22-archive-patterns` | The patterns `../data` claims to carry, read through the shipped parser: three linked years, the BEHONS CYBR → BSC COMP migration, a course improving every year, courses growing and shrinking every year, the reliably hard and reliably easy ones measured against the cohort, and the student-level claims — progression, own-subject advantage, who leaves and why |
 | `23-selectfor` | The SelectFor node: grouping as filtering once per label, the predicates that are not columns, the Labels port and the zero-count group only it can produce, share measured against the input rather than the sum of the groups, the registry invariant across five configurations, and the same claims once more against the real archive |
 | `20-source-loading` | The Source from the picker to the answer: the two ordered pickers driven through the real hidden inputs, year files accumulating across picks and coming back off one at a time, all-or-nothing within a pick, one Source per dataset, and that a saved query carries the graph and not one byte of the records |
+| `39-variables` | Variables: named values declared in the dock and referenced by the nodes that use them. That a query using none is byte-for-byte the query it was before they existed; that nothing is wired to one (no node type, no port, and a dock outside the scaled world layer); the dock itself, including that typing in it never takes the field away; binding a filter operand, either end of a range, a Take's count and a Histogram's width; the boundary that was a judgement call, so lists, operators, columns and files are asserted to offer none; that no binding can outlive the variable it named, in the tool or through a file; and that a saved query carries the variables *and their current values*, which is what the supervisor asked for |
 | `31-library` | The query library: the round trip through browser storage, that an entry is the file format unchanged and loads through the same door a file does, the no-student-records guarantee asserted a second time, every shape hostile storage can take, the refusals that protect a library from being clobbered, quota, two windows sharing one store — and the dialog: that a card's picture is drawn from the graph and carries nothing out of the entry, that names and ids cannot become markup, the two-step questions in front of Open and Delete, the save dialog's two destinations, and export/import — that a merge never replaces, that every imported entry is given a fresh id, and that a merge which will not fit leaves the library exactly as it was |
 
 ### What was removed, and why
@@ -337,7 +344,7 @@ confirming the suite caught it:
   fail.
 
 - **`31-library` › the store's guards.** Five, each checked by writing the bug
-  back into `js/ui-library-store.js` and confirming the named test went red:
+  back into `js/queries/library-store.js` and confirming the named test went red:
 
   | Break | What fails |
   |---|---|
