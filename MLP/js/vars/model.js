@@ -59,7 +59,7 @@ var varIdCtr = 0;
    to search, which is the thing variables were meant to spare the user. */
 var VAR_MAX = 12;
 /* Long enough for a descriptive name, short enough to fit the chip and the
-   operand select that has to print it inside a 220px config panel. */
+   operand select that has to print it inside a narrow config panel. */
 var VAR_NAME_MAX = 24;
 /* A variable holds one scalar: a student ID, a threshold, a course code, a row
    count. The cap is far above any of those and far below anything that could

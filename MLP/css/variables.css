@@ -247,7 +247,7 @@
 
 /* The chip. A dollar sign, which is the sigil a variable wears nearly
    everywhere it has one, in the yellow that means variable in this tool. Small
-   because it appears beside a control on a 220px panel and the control needs
+   because it appears beside a control on a narrow panel and the control needs
    the room; the tooltip and the Help carry the words.
 
    It exists only while there is a variable to bind, so a query that uses none

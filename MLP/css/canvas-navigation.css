@@ -191,3 +191,34 @@
 .canvas.selecting,
 .canvas.selecting * { user-select: none; -webkit-user-select: none; }
 
+/* ── WHAT THIS NODE DOES ─────────────────────────────────
+   The panel that appears after a rest on a node's shape. Its two closest
+   relatives are .conn-note and .edge-preview, which are filed with the results
+   panel; this one is canvas furniture like the docks above, and all three are
+   absolutely positioned siblings of the scaled layer for the same reason: they
+   have to stay readable when the canvas is zoomed out.
+
+   Neutral, and the only overlay on the canvas that is. The refusal note is
+   amber because something did not happen, and every node shape wears its
+   family's colour; this serves all sixteen of them and picking one family's
+   hue would say the wrong thing about the other fifteen.
+
+   Above the arrows and the shapes, below the docks: it is transient and must
+   never cover a control that is permanently there. */
+.node-tip {
+  position: absolute;
+  z-index: 55;
+  /* Never a pointer target. It appears directly over the shape the pointer is
+     resting on, and swallowing that press would break the drag it is sitting
+     on top of. */
+  pointer-events: none;
+  max-width: 262px;
+  background: #16161a;
+  border: 1px solid #34343c;
+  border-radius: 7px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.7);
+  padding: 8px 11px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: #d2d2d6;
+}

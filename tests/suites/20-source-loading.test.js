@@ -130,7 +130,7 @@ module.exports = ({ describe, test }) => {
   });
 
   /* ══ 2. THE TWO PICKERS, IN ORDER ══════════════════════════════════════════ */
-  describe('the column file comes first, and the panel says why', () => {
+  describe('the column file comes first, and the panel says so', () => {
     test('a year file offered before a header is refused with the reason', async () => {
       if (!hasDataDir()) return;
       const s = src();
@@ -146,7 +146,20 @@ module.exports = ({ describe, test }) => {
       const btns = () => [...doc.querySelectorAll('.node .src-btn')];
       assert.equal(btns().length, 2, 'one button per step');
       assert.ok(btns()[1].disabled, 'step 2 is unavailable');
-      assert.includes(panelOf(s.id), 'has to come first', 'and the panel says why');
+      /* The panel names what step 1 wants rather than arguing for the ordering.
+         The argument (a year file carries no column names, so nothing can be
+         read out of one until the tool knows what each position holds) moved to
+         Help, which is where the longer explanations go: the panel is read
+         while standing in front of a file picker and needs to say what to pick.
+         Asserted as a MOVE rather than a deletion, so the reasoning cannot go
+         missing from both places at once. */
+      assert.includes(panelOf(s.id), 'headers.txt', 'the panel says what step 1 wants');
+
+      // Collapsed, because the source is wrapped for reading and a sentence
+      // that spans two lines is still one sentence.
+      const help = doc.getElementById('help-data').textContent.replace(/\s+/g, ' ');
+      assert.includes(help, 'has to come first', 'and Help still says why');
+      assert.includes(help, 'no names on it');
 
       await t.loadHeaders(s.id, t.archiveFile('headers.txt'));
       assert.notOk(btns()[1].disabled, 'and available once step 1 is done');

@@ -3,6 +3,10 @@
    these load in is set by the list at the foot of index.html and is load-bearing.
    ========================================================================== */
 function render() {
+  /* Every shape element is about to be thrown away, and a tip armed against
+     one of them would fire against something detached. Cleared before the
+     rebuild rather than after, so nothing can arrive in between. */
+  hideNodeTip();
   var vp = document.getElementById('viewport');
   var old = vp.querySelectorAll('.node');
   for (var i = 0; i < old.length; i++) old[i].parentNode.removeChild(old[i]);
@@ -167,6 +171,8 @@ function startDrag(e, nodeId) {
   if (e.button !== 0) return;          // middle-drag over a node is a pan, handled upstream
   if (spaceDown) return;               // ditto space-drag
   e.preventDefault();
+  // The press that starts a drag ends any hover the pointer was resting in.
+  hideNodeTip();
   var node = findNode(nodeId);
   if (!node) return;
 

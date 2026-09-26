@@ -79,7 +79,7 @@ function opSelect(nodeId, key, ops, cur) {
 /* THE RANGE BAND
    A range is the one criterion that needs a second value, and squeezing it into
    the same row as the first would leave three controls and two numbers fighting
-   over 220px. It gets its own strip below the row instead, banded down the left
+   over one panel's width. It gets its own strip below the row instead, banded down the left
    the way a criterion is banded, so it reads as part of that criterion rather
    than as a new one, and coloured, so a filter carrying a band is visibly
    doing something different from one that is not.
@@ -492,9 +492,7 @@ function sourceGrainHint(node, data) {
 
   if (sourceGrain(node).key === SOURCE_GRAINS[0].key) {
     return students === null
-      ? 'A row is one student in one year, with their courses nested inside it. ' +
-        'A student who appears in two years is two rows, which is what makes each ' +
-        'cohort separately countable.'
+      ? 'A row is one student in one year, with their courses nested inside it.'
       : 'A row is one student in one year, so this Source emits <b>' + students +
         '</b> rows. Counting them counts people.';
   }
@@ -643,8 +641,10 @@ function sourceFilesHTML(node) {
   html += '</div>';
 
   if (!header) {
-    html += '<div class="src-hint">A data file carries no column names in it, so ' +
-      'the column file has to come first. Name it ' + esc(DATA_HEADERS_NAME) +
+    /* The naming rule and nothing else. Why the column file has to come first
+       is explained in Help, under Loading the data; a panel states what to do,
+       and this one is read while standing in front of a file picker. */
+    html += '<div class="src-hint">Name it ' + esc(DATA_HEADERS_NAME) +
       ', or "headers-" then the data file\u2019s name and ".txt".</div>';
   } else if (!archive && !files.length) {
     /* Said only in the state where it explains something: a header that is not

@@ -280,6 +280,12 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
        setOutput() does not. See the pair in panel-width.js. */
     setOutput: setOutput, showError: showError,
 
+    // what a node does, after a rest on its shape
+    NODE_TIPS: NODE_TIPS, nodeTipText: nodeTipText, NODE_TIP_DELAY: NODE_TIP_DELAY,
+    armNodeTip: armNodeTip, showNodeTip: showNodeTip, hideNodeTip: hideNodeTip,
+    cancelNodeTip: cancelNodeTip, nodeTipShown: nodeTipShown,
+    placeNodeTip: placeNodeTip, onNodeHover: onNodeHover,
+
     // edge preview. The column cap is paired with a width in the stylesheet,
     // so it is exported to be asserted on rather than trusted to stay in step.
     PREVIEW_COLS: PREVIEW_COLS, PREVIEW_ROWS: PREVIEW_ROWS,

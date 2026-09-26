@@ -39,9 +39,21 @@ var nodeEls = {};       // nodeId -> DOM element, for the drag fast path
 
 function uid() { return ++idCtr; }
 
-var NODE_W = 220;
+/* The width of a node's slot, which is the width of its config panel: the shape
+   is centred inside it and the panel fills it. Widened from 220 because the
+   panels are grids of small controls and the value column was the one paying
+   for every other column's minimum, which showed first on a criterion row
+   carrying a variable chip. Every geometry that places a shape or an arrow
+   reads this rather than a literal, so the stylesheet is the only other place
+   the number appears. */
+var NODE_W = 250;
 var SHAPE = {
-  source:  { w:100, h:100 },
+  /* The circle every query starts with, and the one shape a first-time reader
+     looks for. Larger than the rest on purpose: it is the only node that can be
+     in a state the canvas has to announce (no files loaded, drawn as a dashed
+     ring), and that ring has to be legible at the zoom a whole graph is read
+     at. Kept in step with .shape-source by 17-shape-styling. */
+  source:  { w:120, h:120 },
   filter:  { w:106, h:84 },
   compare: { w:112, h:78 },
   // Taller than every other processing node because it is the only one with
@@ -123,9 +135,11 @@ function applyView() {
   }
   var lbl = document.getElementById('zoomLevel');
   if (lbl) lbl.textContent = Math.round(view.z * 100) + '%';
-  /* The refusal note is anchored in world space but drawn outside the scaled
-     layer, so it has to be re-projected whenever the transform moves. */
+  /* The refusal note and the node tip are anchored in world space but drawn
+     outside the scaled layer, so both have to be re-projected whenever the
+     transform moves. */
   placeConnNote();
+  placeNodeTip();
 }
 
 /* Zoom about a fixed point: the world position under the cursor stays under the

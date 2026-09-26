@@ -42,6 +42,8 @@ function endConnHover() {
   hoverConn = null;
   cancelPreviewTimer();
   hidePreview();
+  // Marquee and pan both come through here, and neither is a rest on a shape.
+  hideNodeTip();
   drawArrows();
 }
 
@@ -182,6 +184,13 @@ canvasEl.addEventListener('input', onConfigInput);
 // The one control on a panel that is pressed rather than typed in or chosen
 // from, so it needs the event the other two do not carry.
 canvasEl.addEventListener('click', onVarChipClick);
+/* What a node is, after a rest on its shape. Delegated like the config listener
+   above, because render() replaces every shape and a listener bound to one goes
+   with it. mouseleave as well as mouseover: leaving the canvas for the toolbar
+   or the results panel fires no mouseover here, and an armed tip would still be
+   waiting. */
+canvasEl.addEventListener('mouseover', onNodeHover);
+canvasEl.addEventListener('mouseleave', hideNodeTip);
 canvasEl.addEventListener('mousedown', onCanvasMouseDown);
 canvasEl.addEventListener('wheel', onCanvasWheel, { passive: false });
 document.addEventListener('mousemove', onCanvasMouseMove);

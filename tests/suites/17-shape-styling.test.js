@@ -97,6 +97,99 @@ module.exports = ({ describe, test }) => {
     });
   });
 
+  /* WHAT A NODE SAYS ABOUT ITSELF
+     The shape carries one word, and one word does not separate Aggregate
+     Columns from Aggregate Rows or Select from Select For on a canvas somebody
+     else built. The tip is where the rest of that sentence went, so the claims
+     worth holding still are that every type has one, that it is short enough to
+     read at a glance, and that it takes a deliberate rest to summon. */
+  describe('every node says what it does, after a rest on it', () => {
+
+    test('there is a tip for every type, and none for anything else', () => {
+      TYPES.forEach(t => assert.ok(A.nodeTipText(t), t + ' has no tip'));
+      assert.deepEqual(Object.keys(A.NODE_TIPS).slice().sort(), TYPES.slice().sort(),
+        'a tip for a type that does not exist, or a type with no tip');
+      assert.equal(A.nodeTipText('nonesuch'), '', 'and an unknown type asks for nothing');
+    });
+
+    test('each one is a line or two, not a paragraph', () => {
+      // The budget the node panels are held to, for the same reason: this is
+      // read hovering over a canvas, not sat reading Help.
+      TYPES.forEach(t => assert.ok(A.nodeTipText(t).length <= 140,
+        t + ' spends ' + A.nodeTipText(t).length + ' characters, over the 140 a tip is allowed'));
+    });
+
+    test('the pairs that are easy to confuse are written against each other', () => {
+      assert.includes(A.nodeTipText('aggregateColumns'), 'down each column');
+      assert.includes(A.nodeTipText('aggregateRows'), 'across each row');
+      assert.includes(A.nodeTipText('select'), 'columns');
+      assert.includes(A.nodeTipText('selectFor'), 'group');
+    });
+
+    /* Three seconds, and much longer than the 450ms the edge preview waits on.
+       A shape is dragged, double-clicked and crossed constantly, so a short
+       delay would put a panel over the canvas during ordinary work. */
+    test('it takes a rest, not a pass: three seconds, and nothing before that', () => {
+      assert.ok(A.NODE_TIP_DELAY >= 3000,
+        'the request was for more than three seconds');
+      assert.ok(A.NODE_TIP_DELAY > 450,
+        'and longer than the edge preview, which is aimed at deliberately');
+
+      const h = boot();
+      h.w.addNode('filter');
+      const shape = h.q('.node-shape');
+      shape.dispatchEvent(new h.w.MouseEvent('mouseover', { bubbles: true }));
+      assert.equal(h.app.nodeTipShown(), null, 'nothing appears on arrival');
+    });
+
+    test('a rest on a shape shows that shape\u2019s tip', () => {
+      const h = boot();
+      const n = h.add('histogram');
+      h.w.render();
+      h.q('.node-shape').dispatchEvent(new h.w.MouseEvent('mouseover', { bubbles: true }));
+      h.app.showNodeTip(n.id);
+      assert.equal(h.app.nodeTipShown(), A.nodeTipText('histogram'));
+      assert.ok(h.q('.node-tip'), 'and it is drawn');
+    });
+
+    test('it is a sibling of the scaled layer, so zoom cannot shrink it', () => {
+      const h = boot();
+      const n = h.add('filter');
+      h.w.render();
+      h.app.showNodeTip(n.id);
+      const tip = h.q('.node-tip');
+      assert.equal(tip.parentNode.id, 'canvas');
+      assert.ok(!h.doc.getElementById('viewport').contains(tip),
+        'a child of the viewport would be unreadable at the zoom the question is asked at');
+    });
+
+    test('it never swallows a press meant for the shape underneath it', () => {
+      const rule = /\.node-tip\s*\{[^}]*\}/.exec(CSS);
+      assert.ok(rule, '.node-tip has no rule of its own');
+      assert.includes(rule[0], 'pointer-events: none');
+      assert.includes(rule[0], 'position: absolute');
+    });
+
+    test('a repaint takes it away, since every shape it could be about is rebuilt', () => {
+      const h = boot();
+      const n = h.add('take');
+      h.w.render();
+      h.app.showNodeTip(n.id);
+      assert.ok(h.app.nodeTipShown());
+      h.w.render();
+      assert.equal(h.app.nodeTipShown(), null);
+    });
+
+    test('a deleted node cannot still explain itself', () => {
+      const h = boot();
+      const n = h.add('unique');
+      h.w.render();
+      h.w.removeNode(n.id);
+      h.app.showNodeTip(n.id);
+      assert.equal(h.app.nodeTipShown(), null);
+    });
+  });
+
   describe('processing nodes wear their family colour', () => {
     Object.keys(FAMILY).forEach(fam => {
       const { colour, types } = FAMILY[fam];

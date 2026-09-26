@@ -307,7 +307,7 @@ select option {
   overflow: hidden;
 }
 /* Below the rest of the panel's scale on purpose. The row fits a step chip, this
-   name and the Choose button inside the 220px node width, and the default
+   name and the Choose button inside the node's width, and the default
    "mcs-students-YYYY" hint is the longest thing it has to show in full. At the
    panel's raised size it truncates to an ellipsis on a fresh node, which is the
    one moment that hint has a job to do. */
