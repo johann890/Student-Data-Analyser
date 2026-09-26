@@ -102,11 +102,11 @@ The application is a set of classic scripts (`js/data-*.js`, `js/engine-*.js`,
 the tool has to run from a `file://` URL with no build step, where a module script
 is fetched with CORS against an opaque origin and refused outright. The harness
 reads the script list out of the page and loads them in that order, which is
-load-bearing — `js/ui-boot.js` ends by wiring the inline handlers and painting the
+load-bearing — `js/shell/boot.js` ends by wiring the inline handlers and painting the
 first frame, and needs everything above it parsed. The list is not copied into the
 harness: a script added to the page joins the suite by being added to the page.
 
-`js/ui-boot.js` solves the access question itself. Setting `window.__QB_TEST__ = true` **before** it
+`js/shell/boot.js` solves the access question itself. Setting `window.__QB_TEST__ = true` **before** it
 loads makes it publish the application's internals on `window.__qb`. In normal use the flag is
 undefined, nothing is exported, and the cost is one branch at start-up.
 
@@ -182,7 +182,7 @@ having nowhere to save says so instead of inheriting jsdom's silence.
 ### Adding to the hook
 
 If a test needs something `__qb` does not expose, add it to the export block at
-the bottom of `js/ui-boot.js` rather than reaching around it. The block is grouped by
+the bottom of `js/shell/boot.js` rather than reaching around it. The block is grouped by
 subject; put the new entry with its neighbours.
 
 Live state (`nodes`, `connections`, `exportData`, `selection`, `view`) is
@@ -337,7 +337,7 @@ confirming the suite caught it:
   fail.
 
 - **`31-library` › the store's guards.** Five, each checked by writing the bug
-  back into `js/ui-library-store.js` and confirming the named test went red:
+  back into `js/queries/library-store.js` and confirming the named test went red:
 
   | Break | What fails |
   |---|---|

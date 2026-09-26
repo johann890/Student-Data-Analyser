@@ -306,7 +306,7 @@ function boot() {
   if (!qb) {
     throw new Error(
       'window.__QB_TEST__ was set but window.__qb is missing. The last script the ' +
-      'page loads (ui-boot.js) should end with a block guarded by that flag which ' +
+      'page loads (shell/boot.js) should end with a block guarded by that flag which ' +
       'publishes its internals. If that block was removed, restore it rather than ' +
       'going back to source injection.');
   }
