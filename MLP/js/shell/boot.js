@@ -36,7 +36,7 @@ window.zoomIn = zoomIn;
 window.zoomOut = zoomOut;
 window.zoomReset = zoomReset;
 window.zoomToFit = zoomToFit;
-window.togglePanelWide = togglePanelWide;
+window.toggleResultsPanel = toggleResultsPanel;
 window.deleteSelection = deleteSelection;
 window.clearSelection = clearSelection;
 
@@ -233,10 +233,17 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     // canvas gestures
     isCanvasBackground: isCanvasBackground,
 
-    // results panel width
-    PANEL_MIN: PANEL_MIN, PANEL_DEFAULT: PANEL_DEFAULT, PANEL_WIDE: PANEL_WIDE,
+    // results panel width and visibility
+    PANEL_MIN: PANEL_MIN, PANEL_DEFAULT: PANEL_DEFAULT, PANEL_STRIP: PANEL_STRIP,
+    PANEL_OPEN_AT_FIRST: PANEL_OPEN_AT_FIRST,
     CANVAS_MIN: CANVAS_MIN, HANDLE_W: HANDLE_W,
     panelMaxWidth: panelMaxWidth, clampPanelWidth: clampPanelWidth,
+    applyPanelWidth: applyPanelWidth,
+    showResultsPanel: showResultsPanel, hideResultsPanel: hideResultsPanel,
+    toggleResultsPanel: toggleResultsPanel,
+    panelHiddenNow: function(){ return panelHidden; },
+    panelWidthNow: function(){ return panelWidth; },
+    savePanelPrefs: savePanelPrefs, loadPanelPrefs: loadPanelPrefs,
 
     // unique
     uniqueCols: uniqueCols, uniqueCol: uniqueCol, uniqueCellKey: uniqueCellKey,
@@ -263,6 +270,10 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
 
     // the results panel follows the graph: a block whose Output is gone goes
     PANEL_START: PANEL_START, panelFollowsGraph: panelFollowsGraph,
+    /* The two ways text reaches the panel. Exported apart because they differ
+       in exactly one way that matters here: showError() opens a shut panel and
+       setOutput() does not. See the pair in panel-width.js. */
+    setOutput: setOutput, showError: showError,
 
     // edge preview. The column cap is paired with a width in the stylesheet,
     // so it is exported to be asserted on rather than trusted to stay in step.

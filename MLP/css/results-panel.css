@@ -4,9 +4,18 @@
    ========================================================================== */
 /* OUTPUT PANEL */
 /* The width is a custom property rather than a fixed value so the drag handle
-   and the Wide button can both drive it by writing one number, and so the
-   default lives here in the stylesheet instead of being hard-coded in script. */
-:root { --panel-w: 300px; }
+   and the arrow keys can both drive it by writing one number, and so the
+   default lives here in the stylesheet instead of being hard-coded in script.
+
+   The shut width is the second property, and it is a width rather than none at
+   all: what is left when the panel closes is a strip holding the Show button,
+   because a panel that disappears completely leaves no way back. Script keeps
+   its own copy of both numbers and says in results/panel-width.js that these
+   are the real ones. */
+:root {
+  --panel-w: 300px;
+  --panel-strip-w: 34px;
+}
 .output-panel {
   width: var(--panel-w);
   background: #0e0e0e;
@@ -15,6 +24,36 @@
   flex-direction: column;
   flex-shrink: 0;
   min-width: 0;
+}
+
+/* SHUT.
+   One class on <body>, not on the panel, because closing it changes how much
+   canvas there is and the canvas is the panel's sibling rather than its child.
+
+   The head and the body are taken out of the layout rather than hidden inside
+   it: display:none also takes them out of the accessibility tree and out of
+   the tab order, which is what stops the shut panel's Hide button being a
+   thing a keyboard can reach and press. The strip's own button is the one
+   that answers in this state, and it is display:none the rest of the time for
+   the same reason. */
+.panel-strip { display: none; }
+
+body.panel-hidden .output-panel { width: var(--panel-strip-w); }
+body.panel-hidden .panel-head,
+body.panel-hidden .panel-body { display: none; }
+/* The handle goes with them. It sets a width and nothing else, and a shut panel
+   has no width to set: left in place it would be a col-resize cursor on a strip
+   that does not resize, which is an offer the panel cannot keep. Taken out of
+   the layout rather than merely made inert, so it leaves the tab order too and
+   there is no focusable separator separating nothing. Show is the way back. */
+body.panel-hidden .panel-resize { display: none; }
+body.panel-hidden .panel-strip {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  align-items: center;
+  padding: 10px 0;
 }
 
 /* The grab strip sits in the flex row between canvas and panel, so widening the
@@ -59,7 +98,10 @@ body.panel-resizing * { cursor: col-resize !important; }
   gap: 8px;
   min-height: 37px;  /* holds the original head height now that a button lives in it */
 }
-.panel-wide-btn {
+/* Hide and Show are one control in two places, so they are one rule. Each
+   sits in the state its own label is true in and neither ever has to be read
+   twice to work out which way it goes. */
+.panel-vis-btn {
   background: transparent;
   border: 1px solid #242424;
   border-radius: 3px;
@@ -73,10 +115,27 @@ body.panel-resizing * { cursor: col-resize !important; }
   flex-shrink: 0;
   transition: background 0.12s, border-color 0.12s, color 0.12s;
 }
-.panel-wide-btn:hover { border-color: #1e7fff; color: #3db8ff; background: #051830; }
-.panel-wide-btn[aria-pressed="true"] {
-  border-color: #1e7fff; color: #3db8ff; background: #051830;
+.panel-vis-btn:hover,
+.panel-vis-btn:focus-visible {
+  border-color: #1e7fff; color: #3db8ff; background: #051830; outline: none;
 }
+
+/* Show reads down the strip rather than across it. A 34px column cannot hold a
+   horizontal word, and turning the type is what keeps the strip narrow enough
+   to be worth closing the panel for.
+
+   Brighter than Hide, and blue rather than grey. Hide sits in a header beside
+   the word Results and is found by looking at the panel; Show is the whole of
+   what is left when the panel is gone, and it is the only thing on this edge of
+   the window that says the panel is still there. */
+.panel-strip-btn {
+  writing-mode: vertical-rl;
+  padding: 10px 3px;
+  border-color: #1e3a5c;
+  color: #6fb2ee;
+}
+.panel-strip-btn:hover,
+.panel-strip-btn:focus-visible { border-color: #1e7fff; color: #3db8ff; background: #051830; }
 .panel-body {
   flex: 1; overflow-y: auto;
   padding: 12px 14px;

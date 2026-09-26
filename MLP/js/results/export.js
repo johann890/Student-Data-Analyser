@@ -299,10 +299,16 @@ function saveOutput(id, btn) {
     ? 'Saved ✓' : 'Save failed');
 }
 
+/* Opens the panel, because an error is the one thing here that is written
+   without having been asked for: a file that would not load reports itself
+   through this, and the panel may well be shut. setOutput() deliberately does
+   not do the same. Clear and a canvas emptied of its Outputs both write their
+   placeholder through it, and neither is news worth opening a panel for. */
 function showError(msg) {
   exportData = {};
   resultsFresh = false;
   setOutput('<div class="error-box">' + esc(msg) + '</div>');
+  showResultsPanel();
 }
 function setOutput(html) {
   var pb = document.getElementById('panelBody');

@@ -234,6 +234,12 @@ function refreshOutputView(node) {
 }
 
 function runQuery() {
+  /* Before anything is worked out, including before the checks below refuse to
+     work anything out. Every path from here writes to the panel, an error as
+     readily as a table, and a refusal written into a panel nobody can see is a
+     button that does nothing when pressed. */
+  showResultsPanel();
+
   var srcNodes = nodes.filter(function(n){ return n.type === 'source'; });
   var outNodes = nodes.filter(function(n){ return n.type === 'output'; });
 

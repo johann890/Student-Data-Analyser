@@ -4,8 +4,8 @@
   "private": true,
   "description": "Test suite for the node-based student data analyser",
   "scripts": {
-    "test": "node run.js",
-    "test:verbose": "node run.js --verbose"
+    "test": "node --expose-gc --max-old-space-size=6144 run.js",
+    "test:verbose": "node --expose-gc --max-old-space-size=6144 run.js --verbose"
   },
   "devDependencies": {
     "jsdom": "^24.0.0"

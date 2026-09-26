@@ -206,25 +206,43 @@
       <button class="file-btn" onclick="zoomToFit()" title="Fit every node on screen  ( F )">Fit</button>
     </div>
   </div>
-  <!-- The panel is deliberately narrow by default: a wide results column is a
-       narrow canvas, and most of the time the canvas is what is being worked on.
-       Two ways to widen it, because they answer different needs. The handle is
-       for settling on a width and leaving it there. The Wide button is for the
-       one table with too many columns to read at the default width: one click
-       out, one click back, with the chosen handle width remembered underneath so
-       returning does not lose it. The label flips to Thin while the panel is
-       wide, so it always names the press rather than the state. -->
+  <!-- The panel is open by default. It is where the tool's answers appear, and
+       a feature that is not on screen when the application is first opened is a
+       feature someone has to be told about: shut, the panel would rest on a
+       reader noticing a 34px strip and guessing what was behind it. Open, it
+       explains itself, and closing it is then a thing done knowingly.
+
+       Shut is a strip and not nothing, for the same reason: a panel that
+       disappears leaves no way back that does not involve knowing a shortcut or
+       guessing that the window edge can be dragged.
+
+       Open and shut is one control and width is another, and they do not
+       overlap. Hide and Show are the only way in and out by hand. The handle
+       sets a width and stops at the ends of its range: it cannot shut the panel
+       and it is not there to drag one open, because a drag that runs out of
+       room and a drag meaning "close this" look identical while they happen.
+       Run Query opens it, because the panel is where the answer it asks for
+       appears. The reasoning is in results/panel-width.js. -->
   <div class="panel-resize" id="panelResize" role="separator" aria-orientation="vertical"
        tabindex="0" aria-label="Resize the results panel"
        title="Drag to resize the results panel  ( double-click to reset )"></div>
   <div class="output-panel" id="outputPanel">
     <div class="panel-head">
       <span>Results</span>
-      <button class="panel-wide-btn" id="panelWideBtn" onclick="togglePanelWide(this)"
-              aria-pressed="false" title="Widen the panel to see every column  ( W )">Wide</button>
+      <button class="panel-vis-btn" id="panelHideBtn" onclick="toggleResultsPanel()"
+              aria-controls="panelBody" aria-expanded="true"
+              title="Close the panel and give the canvas the room  ( W )">Hide</button>
     </div>
     <div class="panel-body" id="panelBody">
       <div class="placeholder">Run a query to see results</div>
+    </div>
+    <!-- What is left of the panel while it is shut. Only ever one of these two
+         is in the layout: the stylesheet shows the strip and takes the head and
+         the body away under body.panel-hidden, and the other way around. -->
+    <div class="panel-strip">
+      <button class="panel-vis-btn panel-strip-btn" id="panelShowBtn" onclick="toggleResultsPanel()"
+              aria-controls="panelBody" aria-expanded="false"
+              title="Open the results panel  ( W )">Show</button>
     </div>
   </div>
 </div>
@@ -1121,20 +1139,26 @@
             </ol>
           </figure>
 
-          <h4>Making the panel wider</h4>
-          <p>The panel starts narrow so that the canvas has room. When a table has more columns
-             than fit, there are two ways to widen it, and the canvas gives up the space rather
-             than being covered.</p>
+          <h4>Opening, closing and sizing the panel</h4>
+          <p>The panel is open when you first open the tool. Closing it hands its whole column
+             back to the canvas, which is worth doing while a graph is being laid out. Pressing
+             <b>Run Query</b> opens it again, and so does anything else that has something to
+             report, so there is no state in which an answer is written somewhere you cannot see
+             it. Closed, the panel leaves a strip down the right edge with <b>Show</b> on it.</p>
           <ul class="help-steps">
-            <li><b>Wide</b>, at the top of the panel, opens it far enough to read a full row at
-               once. The button then reads <b>Thin</b>, and pressing it puts the panel back.
-               <kbd>W</kbd> does the same.</li>
-            <li><b>The edge between the canvas and the panel</b> can be dragged to any width in
-               between. Double-click it to return to the starting width.</li>
+            <li><b>Hide</b>, at the top of the panel, puts it away. <b>Show</b>, on the strip,
+               brings it back at the width it had. <kbd>W</kbd> does either.</li>
+            <li><b>The edge between the canvas and the panel</b> can be dragged to any width
+               between narrow and most of the window, and the canvas gives up the space rather
+               than being covered. Double-click it to return to the starting width.</li>
+            <li>The edge sets the width and nothing else. It will not close the panel however far
+               you push it, and while the panel is closed there is no edge to pull: <b>Show</b> is
+               the way back, so a drag can never lose you the panel by accident.</li>
           </ul>
-          <p>Whichever width you settle on is remembered the next time you open the tool. It is a
-             setting of your own rather than part of a query: saved <code>.json</code> files carry
-             the graph only, so opening someone else's query leaves your layout alone.</p>
+          <p>Whether you keep it open, and whichever width you settle on, is remembered the next
+             time you open the tool. It is a setting of your own rather than part of a query:
+             saved <code>.json</code> files carry the graph only, so opening someone else's query
+             leaves your layout alone.</p>
 
           <div class="help-tip">
             <b>Check a query rather than trusting it.</b> Hovering a wire shows the rows
@@ -1252,7 +1276,7 @@
             <tr><td>Scroll, or <kbd>+</kbd> and <kbd>&minus;</kbd></td><td>Zoom in and out</td></tr>
             <tr><td><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>0</kbd></td><td>Back to 100%</td></tr>
             <tr><td><kbd>F</kbd></td><td>Fit every node on screen</td></tr>
-            <tr><td><kbd>W</kbd></td><td>Widen the results panel, and back again</td></tr>
+            <tr><td><kbd>W</kbd></td><td>Show or hide the results panel</td></tr>
             <tr><td>Drag the panel's left edge</td><td>Set the results panel to any width</td></tr>
             <tr><td>Drag the toolbar's bottom edge</td><td>Make the toolbar and its buttons bigger</td></tr>
             <tr><td><kbd>?</kbd></td><td>Open this window</td></tr>

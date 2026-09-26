@@ -322,7 +322,7 @@ document.addEventListener('keydown', function(e) {
   if (e.key === '-' || e.key === '_') { e.preventDefault(); zoomOut(); return; }
   if (e.key === '0' && mod)           { e.preventDefault(); zoomReset(); return; }
   if (e.key === 'f' || e.key === 'F') { if (!mod) { e.preventDefault(); zoomToFit(); } return; }
-  if (e.key === 'w' || e.key === 'W') { if (!mod) { e.preventDefault(); togglePanelWide(); } return; }
+  if (e.key === 'w' || e.key === 'W') { if (!mod) { e.preventDefault(); toggleResultsPanel(); } return; }
   // Shift-slash on most layouts, so no modifier check: '?' is already shifted.
   if (e.key === '?') { e.preventDefault(); openHelp(); return; }
 });
