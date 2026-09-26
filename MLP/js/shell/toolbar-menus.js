@@ -14,8 +14,28 @@
 function procMenus() {
   return Array.prototype.slice.call(document.querySelectorAll('.proc-menu'));
 }
+
+/* Tell the button whether its menu is open, for any button that says it wants
+   to be told. A menu closes down four different paths (its own button, another
+   menu opening, Escape, a click anywhere else) and only one of them ran through
+   the button, so the attribute went stale on the other three and a screen
+   reader was told the menu was open while it was not.
+
+   Written against whatever declares `aria-controls` and already carries
+   `aria-expanded`, rather than against a named button, so it is inert for the
+   three node buttons (which declare neither) and correct for any button added
+   later that does. */
+function syncMenuButtons() {
+  procMenus().forEach(function(m) {
+    var btn = m.id && document.querySelector('[aria-controls="' + m.id + '"]');
+    if (!btn || !btn.hasAttribute('aria-expanded')) return;
+    btn.setAttribute('aria-expanded', m.classList.contains('open') ? 'true' : 'false');
+  });
+}
+
 function closeProcMenu() {
   procMenus().forEach(function(m){ m.classList.remove('open'); });
+  syncMenuButtons();
 }
 function toggleProcMenu(e, id) {
   // Without this the document listener below sees the same click and closes the
@@ -26,6 +46,7 @@ function toggleProcMenu(e, id) {
     if (m === wanted) m.classList.toggle('open');
     else m.classList.remove('open');
   });
+  syncMenuButtons();
 }
 function addProcNode(type) {
   closeProcMenu();

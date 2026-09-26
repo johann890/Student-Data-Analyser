@@ -91,15 +91,22 @@ function opSelect(nodeId, key, ops, cur) {
    The colour is the one this interface already uses for a state worth noticing
    (the amber of the stale-results notice), rather than a new hue invented for
    one control. */
+/* Each end of the band is an operand in its own right, so a range can read
+   "from v1 to 9" with one end bound and the other typed. The two bind under
+   different keys (the field key and its range key), which is what lets them
+   differ at all. */
 function rangeBandHTML(nid, ci, cur, c, renderBound) {
   var rng = critRange(c, cur.key, cur.column);
+  var loKey = 'crit.' + ci + '.value:' + cur.key;
   var hiKey = 'crit.' + ci + '.value:' + rangeKey(cur.key);
   return '<div class="crit-range">' +
     '<span class="crit-range-tag">range</span>' +
     '<div class="crit-range-pair">' +
-      renderBound('crit.' + ci + '.value:' + cur.key, rng.loRaw) +
+      operandHTML(nid, c, cur.key, critBindKey(ci, cur.key),
+                  renderBound(loKey, rng.loRaw)) +
       '<span class="crit-range-to">to</span>' +
-      renderBound(hiKey, rng.hiRaw) +
+      operandHTML(nid, c, rangeKey(cur.key), critBindKey(ci, rangeKey(cur.key)),
+                  renderBound(hiKey, rng.hiRaw)) +
     '</div>' +
     '<div class="crit-range-note">' +
       (rng.lo === null || rng.hi === null
@@ -278,6 +285,14 @@ function criterionHTML(node, ci, c, schema) {
 
   var vKey = 'crit.' + ci + '.value:' + cur.key;
   var oKey = 'crit.' + ci + '.op:' + cur.key;
+  /* The single operand, wherever this criterion's shape happens to put it. Every
+     branch below draws its own control (a number, a course picker, a pattern
+     box) and hands it here, so all of them offer a variable in the same place
+     and by the same gesture without any of them knowing how that works. The
+     range band does the same for its two ends. */
+  var vSlot = function(literal) {
+    return operandHTML(nid, c, cur.key, critBindKey(ci, cur.key), literal);
+  };
   var body;
 
   /* The two nested-column fields gained an operator select when the list
@@ -293,14 +308,14 @@ function criterionHTML(node, ci, c, schema) {
       : sOp === 'matches'
       ? '<div class="criterion-controls">' + fieldSel +
           opSelect(nid, oKey, CODE_OPS, sOp) +
-          '<input type="text" placeholder="SW*" spellcheck="false" ' +
-            'value="' + esc(critValue(c, cur.key, null) || '') + '"' + ctl(nid, vKey) + '>' +
+          vSlot('<input type="text" placeholder="SW*" spellcheck="false" ' +
+            'value="' + esc(critValue(c, cur.key, null) || '') + '"' + ctl(nid, vKey) + '>') +
         '</div>' + patternNoteHTML(cur.kind)
       : '<div class="criterion-controls">' + fieldSel +
           opSelect(nid, oKey, CODE_OPS, sOp) +
-          '<select' + ctl(nid, vKey) + '>' +
+          vSlot('<select' + ctl(nid, vKey) + '>' +
             SUBJECTS.map(function(s){ return opt(s, critValue(c, cur.key, null) || defaultSubject()); }).join('') +
-          '</select></div>');
+          '</select>') + '</div>');
 
   } else if (cur.kind === 'courseCode') {
     var cOp = critOp(c, cur.key, 'eq');
@@ -312,12 +327,12 @@ function criterionHTML(node, ci, c, schema) {
       : cOp === 'matches'
       ? '<div class="criterion-controls stack">' + fieldSel +
           '<div class="cc-pair">' + opSelect(nid, oKey, CODE_OPS, cOp) +
-            '<input type="text" placeholder="SWEN*" spellcheck="false" ' +
-              'value="' + esc(critValue(c, cur.key, null) || '') + '"' + ctl(nid, vKey) + '>' +
+            vSlot('<input type="text" placeholder="SWEN*" spellcheck="false" ' +
+              'value="' + esc(critValue(c, cur.key, null) || '') + '"' + ctl(nid, vKey) + '>') +
           '</div></div>' + patternNoteHTML(cur.kind)
       : '<div class="criterion-controls stack">' + fieldSel +
           '<div class="cc-pair">' + opSelect(nid, oKey, CODE_OPS, cOp) +
-            courseSelect(nid, vKey, critValue(c, cur.key, null) || defaultCourse()) +
+            vSlot(courseSelect(nid, vKey, critValue(c, cur.key, null) || defaultCourse())) +
           '</div></div>');
 
   } else if (cur.kind === 'courseLevel') {
@@ -340,7 +355,7 @@ function criterionHTML(node, ci, c, schema) {
           : rangeBandHTML(nid, ci, { key: cur.key, column: lvlDef }, c, lvlBox))
       : '<div class="criterion-controls">' + fieldSel +
           opSelect(nid, oKey, NUM_OPS, lOp) +
-          lvlBox(vKey, critValue(c, cur.key, lvlDef)) +
+          vSlot(lvlBox(vKey, critValue(c, cur.key, lvlDef))) +
         '</div>');
 
   } else if (cur.kind === 'courseGrade') {
@@ -356,7 +371,7 @@ function criterionHTML(node, ci, c, schema) {
       (mOp === 'between'
         ? opSelect(nid, oKey, MARK_OPS, mOp)
         : '<div class="cc-pair">' + opSelect(nid, oKey, MARK_OPS, mOp) +
-            markBox(vKey, critValue(c, cur.key, { def:'5' })) + '</div>') +
+            vSlot(markBox(vKey, critValue(c, cur.key, { def:'5' }))) + '</div>') +
       '</div>' +
       (mOp === 'between'
         ? rangeBandHTML(nid, ci, { key: cur.key, column: { def:'5' } }, c, markBox)
@@ -378,7 +393,7 @@ function criterionHTML(node, ci, c, schema) {
           : rangeBandHTML(nid, ci, cur, c, numBox))
       : '<div class="criterion-controls">' + fieldSel +
           opSelect(nid, oKey, NUM_OPS, nOp) +
-          numBox(vKey, critValue(c, cur.key, cur.column)) +
+          vSlot(numBox(vKey, critValue(c, cur.key, cur.column))) +
         '</div>');
 
   } else if (cur.kind === COLTYPE.ENUM || isRangeable(cur.column)) {
@@ -394,7 +409,7 @@ function criterionHTML(node, ci, c, schema) {
       return '<select' + ctl(nid, key) + '>' +
         vals.map(function(v){ return opt(v, String(val)); }).join('') + '</select>';
     };
-    var valSel = pick(vKey, critValue(c, cur.key, cur.column));
+    var valSel = vSlot(pick(vKey, critValue(c, cur.key, cur.column)));
     // Long option text (specialisations, course names) will not survive the
     // 80px field column, so those wrap onto their own row.
     var wide = vals.some(function(v){ return String(v).length > 8; });
@@ -423,7 +438,7 @@ function criterionHTML(node, ci, c, schema) {
         listBandHTML(nid, ci, cur, c)
       : '<div class="criterion-controls">' + fieldSel +
           opSelect(nid, oKey, ENUM_OPS, tOp) +
-          '<input type="text" value="' + esc(critValue(c, cur.key, cur.column)) + '"' + ctl(nid, vKey) + '>' +
+          vSlot('<input type="text" value="' + esc(critValue(c, cur.key, cur.column)) + '"' + ctl(nid, vKey) + '>') +
         '</div>');
   }
 

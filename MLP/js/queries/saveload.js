@@ -24,7 +24,12 @@
    no dataset key gets the empty one from defaultCfg() and simply asks for its
    files without being able to name them. The guard below still only refuses
    files from a newer tool. */
-var FILE_VERSION = 3;
+/* Version 4 adds a top-level `variables` list and the `vars` maps that point at
+   it. Files from every earlier version still load: no variables is the ordinary
+   state, so an absent list is the empty one and every operand reads the literal
+   beside it, which is exactly what those files meant. The guard below still only
+   refuses files from a NEWER tool. */
+var FILE_VERSION = 4;
 var FILE_KIND = 'student-data-analyser-query';
 
 function serialiseGraph() {
@@ -39,6 +44,14 @@ function serialiseGraph() {
     }),
     connections: connections.map(function(c) {
       return { from:c.from, to:c.to, port:c.port, color:c.color };
+    }),
+    /* Name AND current value, which is what the supervisor asked for when the
+       question was put to him: a saved query carries the values its variables
+       were last set to, so re-opening it re-opens the question it was actually
+       asking rather than a blank form. The bindings that point at these live in
+       the nodes' own cfg, so they are already inside `nodes` above. */
+    variables: variables.map(function(v) {
+      return { id:v.id, name:v.name, value:v.value };
     })
   };
 }
@@ -258,6 +271,8 @@ function deserialiseGraph(raw) {
   var warnings = [];
   var seen = {};
   var loadedNodes = [];
+  // Read before the nodes, because the nodes' bindings are checked against it.
+  var loadedVars = readVariables(d.variables, warnings);
 
   d.nodes.forEach(function(n) {
     if (!n || !CONNECT_RULES[n.type]) { warnings.push('unknown node type'); return; }
@@ -316,7 +331,10 @@ function deserialiseGraph(raw) {
     loadedConns.push({ from:from, to:to, port:port, color: c.color || EDGE_PALETTE[0] });
   });
 
-  return { nodes: loadedNodes, connections: loadedConns, warnings: warnings };
+  pruneVarBindings(loadedNodes, loadedVars, warnings);
+
+  return { nodes: loadedNodes, connections: loadedConns,
+           variables: loadedVars, warnings: warnings };
 }
 
 // Shallow merge is enough: cfg is one level deep apart from criteria and labels,
@@ -384,6 +402,16 @@ function mergeCfg(base, saved) {
     };
   }
 
+  /* The bindings map, whose values are variable ids. Only the SHAPE is fixed
+     here: which ids are real is decided by pruneVarBindings once the file's
+     variable list has been read, because this function does not have it. An
+     array or a null where an object belongs becomes an empty map, which means
+     "every operand reads its own literal". */
+  if (Object.prototype.hasOwnProperty.call(base, 'vars')) {
+    var bv = base.vars;
+    base.vars = (bv && typeof bv === 'object' && !Array.isArray(bv)) ? bv : {};
+  }
+
   /* null is the meaningful default ("keep everything"), so only a value that is
      neither null nor an array of keys is rejected. Non-string entries are
      dropped rather than coerced: a column key is compared against real header
@@ -405,12 +433,81 @@ function mergeCfg(base, saved) {
         if (c.course) n.course = c.course;
         if (c.values && typeof c.values === 'object') n.values = c.values;
         if (c.ops && typeof c.ops === 'object') n.ops = c.ops;
+        /* The criterion's own bindings, admitted on the same terms as its values
+           and its operators: an object, contents unexamined. pruneVarBindings
+           drops any id the file does not declare. */
+        if (c.vars && typeof c.vars === 'object' && !Array.isArray(c.vars)) n.vars = c.vars;
       }
       return n;
     });
     if (!base.criteria.length) base.criteria = [newCriterion()];
   }
   return base;
+}
+
+/* THE VARIABLES A FILE DECLARES
+   ---------------------------------------------------------------------------
+   Validated to the shape, not to the content. Both fields are read straight
+   back into an input's value attribute and into sentences on the panels, so an
+   object where a string belongs is coerced here rather than trusted; the caps
+   are the ones the editing functions apply, so a hand-written file cannot get
+   past them by not going through the dock.
+
+   An id has to be a positive integer because bindings are integers, and a
+   duplicate id would make one binding ambiguous, so the later of the pair is
+   dropped rather than renumbered: renumbering would silently re-point whatever
+   was bound to it. */
+function readVariables(raw, warnings) {
+  var out = [], seen = {};
+  (Array.isArray(raw) ? raw : []).forEach(function(v) {
+    if (out.length >= VAR_MAX) { warnings.push('more variables than one query holds'); return; }
+    if (!v || typeof v !== 'object' || Array.isArray(v)) { warnings.push('a variable that is not a variable'); return; }
+    var id = parseInt(v.id, 10);
+    if (isNaN(id) || id < 1) { warnings.push('a variable with no usable id'); return; }
+    if (seen[id]) { warnings.push('two variables with one id'); return; }
+    seen[id] = true;
+    out.push({
+      id: id,
+      name: typeof v.name === 'string' ? v.name.slice(0, VAR_NAME_MAX) : '',
+      value: typeof v.value === 'string' ? v.value.slice(0, VAR_VALUE_MAX)
+           : (typeof v.value === 'number' && isFinite(v.value) ? String(v.value) : '')
+    });
+  });
+  return out;
+}
+
+/* NO BINDING SURVIVES THE VARIABLE IT NAMED
+   ---------------------------------------------------------------------------
+   A file can name a variable it does not declare: hand-edited, or assembled
+   from two queries. Rather than leave the reference dangling and make every
+   reader decide what that means, it is dropped here and the operand goes back
+   to the literal it was already carrying. The same repair the loader makes for
+   an edge to a node that is not in the file, and for the same reason. */
+function pruneVarBindings(loadedNodes, vars, warnings) {
+  var live = {};
+  vars.forEach(function(v){ live[v.id] = true; });
+
+  function clean(holder) {
+    if (!holder || !holder.vars || typeof holder.vars !== 'object' ||
+        Array.isArray(holder.vars)) {
+      if (holder && Object.prototype.hasOwnProperty.call(holder, 'vars')) holder.vars = {};
+      return;
+    }
+    Object.keys(holder.vars).forEach(function(k) {
+      var id = parseInt(holder.vars[k], 10);
+      if (isNaN(id) || !live[id]) {
+        delete holder.vars[k];
+        warnings.push('a reference to a variable the file does not declare');
+      } else {
+        holder.vars[k] = id;
+      }
+    });
+  }
+
+  loadedNodes.forEach(function(n) {
+    clean(n.cfg);
+    ((n.cfg && n.cfg.criteria) || []).forEach(clean);
+  });
 }
 
 function applyGraph(g) {
@@ -426,9 +523,22 @@ function applyGraph(g) {
 
   nodes = g.nodes;
   connections = g.connections;
+  /* The variables arrive with the graph, values and all. A file written before
+     they existed declares none, which is the empty list and leaves every
+     operand reading its own literal. */
+  variables = Array.isArray(g.variables) ? g.variables : [];
+  varPending = null;
+  /* The menu is NOT opened, even though these are the first thing to check
+     before pressing Run. A dropdown that opens itself covers the canvas the
+     user has just been shown, and the two quieter signals say the same thing
+     without taking the screen: the count appears on the toolbar button, and the
+     load message below names each variable and its value. */
   // Keep the counter clear of every id in the file, so a node added after a
   // load cannot collide with one that came from it.
   idCtr = nodes.reduce(function(m, n){ return Math.max(m, n.id); }, 0);
+  // The same rule for variable ids, and for the same reason: one added after a
+  // load must not collide with one the file brought.
+  varIdCtr = variables.reduce(function(m, v){ return Math.max(m, v.id); }, 0);
   edgeColorIndex = nodes.length;
   exportData = {};
   resultsFresh = false;
@@ -436,6 +546,7 @@ function applyGraph(g) {
   cancelPreviewTimer();
   hidePreview();
   hideConnNote();
+  renderVariables();
   render();
   /* Fit after loading rather than restoring a saved zoom. A file carries the
      graph, not the view (which is why the format did not have to change for
@@ -469,6 +580,15 @@ function loadGraphFromText(raw, btn) {
     msg += ' The data is not saved with a query, so load the files again on ' +
       (srcs.length === 1 ? 'the Source' : 'each Source') + '.';
     if (names.length) msg += ' This one was built against ' + names.join(', ') + '.';
+  }
+  /* Named, because a variable is a question the query is asking and the values
+     it arrived with are last month's answers. This is the one line that tells a
+     user who opened somebody else's query where to change it. */
+  if (g.variables && g.variables.length) {
+    msg += ' It has ' + g.variables.length + ' variable' +
+      (g.variables.length === 1 ? '' : 's') + ' under the Variables button (' +
+      g.variables.map(function(v){ return varLabel(v); }).join(', ') +
+      '), which you can change before running it.';
   }
   if (g.warnings.length) {
     msg += ' Skipped ' + g.warnings.length + ' item' + (g.warnings.length === 1 ? '' : 's') +

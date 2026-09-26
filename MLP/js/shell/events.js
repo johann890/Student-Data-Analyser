@@ -5,6 +5,12 @@
 var panelEl = document.getElementById('panelBody');
 if (panelEl) panelEl.addEventListener('input', onExportNameInput);
 
+/* The variables dock, delegated the same way the config panels are: one
+   listener on the dock rather than one per field, so rebuilding the chips
+   cannot leave a stale listener behind. */
+var varDockListenEl = document.getElementById('varDock');
+if (varDockListenEl) varDockListenEl.addEventListener('input', onVarInput);
+
 var loadInput = document.getElementById('loadFile');
 if (loadInput) loadInput.addEventListener('change', onGraphFileChosen);
 
@@ -230,7 +236,13 @@ function isTypingTarget(t) {
   // an INPUT already caught above, because the guard is also asked about
   // document.activeElement, and a click on the dialog's own chrome moves focus
   // off the input while the dialog is still open.
-  return !!(t.closest && t.closest('.node-config, .output-panel, .save-dialog'));
+  /* The variables dock is listed for the same reason the panels are. Its fields
+     are INPUTs and are caught above, but this guard is also asked about
+     document.activeElement, and a press on the dock's own chrome (Add, the fold
+     caret, a chip's x) moves focus onto a button inside it while the user is
+     plainly still working there. Without this a Backspace afterwards would be
+     read as a canvas shortcut and delete the selected nodes. */
+  return !!(t.closest && t.closest('.node-config, .output-panel, .save-dialog, .var-dock'));
 }
 
 /* 'canvas' while the user is working on the graph, 'panel' while they are
@@ -245,7 +257,7 @@ document.addEventListener('mousedown', function(e) {
   // The toolbar is deliberately not a panel: adding a node selects it, and
   // Backspace immediately afterwards to undo a mis-click is a reasonable thing
   // to want.
-  keyboardContext = t.closest('.node-config, .output-panel') ? 'panel' : 'canvas';
+  keyboardContext = t.closest('.node-config, .output-panel, .var-dock') ? 'panel' : 'canvas';
 }, true);
 
 function safeToDelete(e) {

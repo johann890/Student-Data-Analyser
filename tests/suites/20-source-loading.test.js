@@ -1139,8 +1139,14 @@ module.exports = ({ describe, test }) => {
 
   /* ══ 7. SAVE AND LOAD: THE POINT OF ALL OF IT ═════════════════════════════ */
   describe('a saved query holds the graph and not the records', () => {
-    test('the file format says which version it is', () => {
-      assert.equal(app.FILE_VERSION, 3, 'the dataset descriptor is version 3');
+    /* A floor rather than an exact number. What this suite is entitled to
+       assume is that the dataset descriptor exists, which it does from version 3
+       onwards; pinning the exact version here made every later addition to the
+       format fail a test about loading source files. The exact number is pinned
+       by the suite that owns the newest addition to it — see 39-variables. */
+    test('the file format says which version it is, and it is at least the one that added descriptors', () => {
+      assert.equal(typeof app.FILE_VERSION, 'number');
+      assert.ok(app.FILE_VERSION >= 3, 'the dataset descriptor arrived in version 3');
     });
 
     test('a Source records the NAMES of its files', async () => {
@@ -1363,8 +1369,11 @@ module.exports = ({ describe, test }) => {
     });
 
     test('a file from a newer tool is still refused', () => {
+      // One past whatever this tool writes, so the test asks the question it
+      // means ("newer than me") rather than naming a version that stops being
+      // newer the next time the format widens.
       const g = app.deserialiseGraph(JSON.stringify({
-        kind: app.FILE_KIND, version: 4, nodes: [], connections: []
+        kind: app.FILE_KIND, version: app.FILE_VERSION + 1, nodes: [], connections: []
       }));
       assert.ok(g.error);
       assert.includes(g.error, 'newer version');

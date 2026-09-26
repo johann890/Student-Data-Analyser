@@ -7,6 +7,7 @@
 window.addNode = addNode;
 window.addProcNode = addProcNode;
 window.toggleProcMenu = toggleProcMenu;
+window.closeProcMenu = closeProcMenu;
 window.removeNode = removeNode;
 window.addCriterion = addCriterion;
 window.addSortKey = addSortKey;
@@ -39,6 +40,10 @@ window.zoomToFit = zoomToFit;
 window.toggleResultsPanel = toggleResultsPanel;
 window.deleteSelection = deleteSelection;
 window.clearSelection = clearSelection;
+window.addVariable = addVariable;
+window.requestRemoveVariable = requestRemoveVariable;
+window.toggleVarMenu = toggleVarMenu;
+window.useVariableAt = useVariableAt;
 
 /* TEST HOOK
    Set window.__QB_TEST__ = true *before* loading these scripts to expose internals to
@@ -356,7 +361,30 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
 
     // the save dialog's second destination
     confirmSaveToLibrary: confirmSaveToLibrary, saveHintSay: saveHintSay,
-    saveLibPendingNow: function(){ return saveLibPending; }
+    saveLibPendingNow: function(){ return saveLibPending; },
+
+    /* VARIABLES
+       `variables` is reassigned wholesale by applyGraph() and clearVariables(),
+       so it is handed back through a function for the reason `nodes` is. */
+    variables: function(){ return variables; },
+    VAR_MAX: VAR_MAX, VAR_NAME_MAX: VAR_NAME_MAX, VAR_VALUE_MAX: VAR_VALUE_MAX,
+    VAR_OPERANDS: VAR_OPERANDS, nodeTakesVars: nodeTakesVars,
+    varById: varById, varName: varName, varLabel: varLabel,
+    varNameClashes: varNameClashes, nextVarName: nextVarName,
+    addVariable: addVariable, removeVariable: removeVariable,
+    requestRemoveVariable: requestRemoveVariable,
+    setVarName: setVarName, setVarValue: setVarValue, clearVariables: clearVariables,
+    varUsage: varUsage, varUsedCount: varUsedCount,
+    boundVar: boundVar, isBoundTo: isBoundTo, setBinding: setBinding,
+    operandHTML: operandHTML, useVariableAt: useVariableAt,
+    onVarChipClick: onVarChipClick, onVarInput: onVarInput,
+    critBindKey: critBindKey, cfgBindKey: cfgBindKey,
+    renderVariables: renderVariables, syncVarUsage: syncVarUsage,
+    toggleVarMenu: toggleVarMenu, varMenuOpen: varMenuOpen, varDockSay: varDockSay,
+    syncMenuButtons: syncMenuButtons,
+    varUseWords: varUseWords, varChipHTML: varChipHTML,
+    varPendingNow: function(){ return varPending; },
+    readVariables: readVariables, pruneVarBindings: pruneVarBindings
   };
 }
 
@@ -364,4 +392,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
 // first frame shows an unsized viewport and the nodes jump when it settles.
 applyView();
 centreView();
+/* Before render(), because render() only syncs the lines inside the chips and
+   there are none until the dock has drawn its empty state. */
+renderVariables();
 render();

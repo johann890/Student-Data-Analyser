@@ -38,6 +38,11 @@ function render() {
   });
 
   syncSelectionUI();
+  /* The dock's chips are not rebuilt here, only the lines saying what each
+     variable is used by: deleting a node changes that without changing the
+     variable. A rebuild would take away the field the user may be typing in,
+     which is the same reason selection is synced rather than re-rendered. */
+  syncVarUsage();
   drawArrows();
 }
 

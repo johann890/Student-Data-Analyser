@@ -85,7 +85,11 @@ function binField(node, t) {
    histogram, they are no histogram. All of those mean "decide for me", which is
    null here and a width chosen from the data at evaluation time. */
 function binWidth(node) {
-  var n = Number(node && node.cfg ? node.cfg.width : undefined);
+  // Read through any binding first, then coerced by the rule above. A variable
+  // holding nothing therefore means "decide for me", exactly as an empty box does.
+  var bound = node && node.cfg ? boundVar(node.cfg, 'width') : null;
+  var raw = bound ? bound.value : (node && node.cfg ? node.cfg.width : undefined);
+  var n = Number(raw);
   return (isFinite(n) && n > 0) ? n : null;
 }
 

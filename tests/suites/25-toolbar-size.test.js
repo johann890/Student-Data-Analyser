@@ -111,10 +111,13 @@ module.exports = ({ describe, test }) => {
         'the break is not in front of the Query group');
     });
 
-    test('all three dropdowns are inside the bar and survive its resizing', () => {
+    /* Every dropdown the bar carries, node menus and the variables menu alike.
+       The claim is about the bar rather than about what is behind any one
+       button, so a dropdown added later is covered by being added. */
+    test('every dropdown is inside the bar and survives its resizing', () => {
       const h = boot();
       const ids = h.qa('.proc-menu').map(m => m.id).sort();
-      assert.deepEqual(ids, ['distMenu', 'procMenu', 'reshapeMenu']);
+      assert.deepEqual(ids, ['distMenu', 'procMenu', 'reshapeMenu', 'varDock']);
       h.qa('.proc-menu').forEach(m =>
         assert.ok(m.closest('.toolbar'), m.id + ' is not in the bar'));
       /* Each hangs off its own button rather than off the bar, so a bar that

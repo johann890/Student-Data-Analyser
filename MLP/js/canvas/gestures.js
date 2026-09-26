@@ -179,6 +179,9 @@ function onCanvasWheel(e) {
 var canvasEl = document.getElementById('canvas');
 canvasEl.addEventListener('change', onConfigInput);
 canvasEl.addEventListener('input', onConfigInput);
+// The one control on a panel that is pressed rather than typed in or chosen
+// from, so it needs the event the other two do not carry.
+canvasEl.addEventListener('click', onVarChipClick);
 canvasEl.addEventListener('mousedown', onCanvasMouseDown);
 canvasEl.addEventListener('wheel', onCanvasWheel, { passive: false });
 document.addEventListener('mousemove', onCanvasMouseMove);

@@ -169,7 +169,12 @@ function shim(qb) {
     exportData:   { get: () => qb.exportData() },
     resultsFresh: { get: () => qb.isFresh() },
     selection:    { get: () => qb.selection() },
-    view:         { get: () => qb.view() }
+    view:         { get: () => qb.view() },
+    /* Reassigned wholesale by applyGraph() and clearVariables(), so it is
+       bridged for the same reason `nodes` is. Without this `app.variables` is
+       the getter FUNCTION, and `.length` silently reads its arity, which is a
+       number and so passes straight through an assertion. */
+    variables:    { get: () => qb.variables() }
   });
   return app;
 }

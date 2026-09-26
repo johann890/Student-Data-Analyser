@@ -271,8 +271,14 @@ function configHTML(node, schemas) {
         '<div class="cfg-label">In bands of</div>' +
         // Left empty it says "auto", because empty is a real setting here: the
         // width is then chosen from the data, which the panel cannot see.
-        '<input type="number" min="0" step="any" placeholder="auto" ' +
-          'value="' + esc(cfg.width === undefined ? '' : cfg.width) + '"' + ctl(id, 'width') + '>';
+        /* Through the operand slot, so the width can come from a variable. It is
+           one of the two settings the supervisor named when he asked which
+           controls would take one, and it is the case that shows why: a set of
+           histograms only compare with each other if they share a band width,
+           and one variable is how that is said once. */
+        operandHTML(id, cfg, 'width', cfgBindKey('width'),
+          '<input type="number" min="0" step="any" placeholder="auto" ' +
+            'value="' + esc(cfg.width === undefined ? '' : cfg.width) + '"' + ctl(id, 'width') + '>');
 
       /* Shown only while the width is the one thing still undecided. Once a
          number is typed the control states itself. The boundary rule (which
@@ -372,9 +378,14 @@ function configHTML(node, schemas) {
   if (node.type === 'take') {
     // Bound to cfg.n verbatim, so a partially typed value is preserved between
     // renders. The engine's fallback is what protects the Run, not the control.
+    /* The row count through the operand slot: the other setting named in the
+       question about which controls take a variable. The hint below is built
+       from takeCount(), which reads the binding, so it states the number that
+       will actually be used rather than the one in the box. */
     html += '<div class="cfg-label">Keep first</div>' +
-      '<input type="number" min="' + TAKE_MIN + '" step="1" ' +
-        'value="' + esc(cfg.n === undefined ? '' : cfg.n) + '"' + ctl(id, 'n') + '>' +
+      operandHTML(id, cfg, 'n', cfgBindKey('n'),
+        '<input type="number" min="' + TAKE_MIN + '" step="1" ' +
+          'value="' + esc(cfg.n === undefined ? '' : cfg.n) + '"' + ctl(id, 'n') + '>') +
       '<div class="cmp-hint">Out: the first ' + takeCount(node) +
         ' rows as they arrive. Put a <b>Sort</b> in front to rank them.</div>';
   }

@@ -209,7 +209,12 @@ var TAKE_DEFAULT = 10;
 var TAKE_MIN = 1;
 
 function takeCount(node) {
-  var raw = node && node.cfg ? node.cfg.n : undefined;
+  /* A variable bound to this count is read first and coerced by exactly the
+     same rules, so a variable holding "abc" falls back to the default the way a
+     typed "abc" does. The binding decides where the text comes from and nothing
+     else: there is no second notion of a valid N. */
+  var bound = node && node.cfg ? boundVar(node.cfg, 'n') : null;
+  var raw = bound ? bound.value : (node && node.cfg ? node.cfg.n : undefined);
   var n = parseInt(raw, 10);
   // Blank, non-numeric or out of range all fall back rather than throwing: a
   // half-typed field must not break a Run, and a saved file written by hand

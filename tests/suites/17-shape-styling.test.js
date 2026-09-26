@@ -222,10 +222,22 @@ module.exports = ({ describe, test }) => {
     const menuOf = b => b.closest('.proc-menu').id;
     const typeOf = b => (b.getAttribute('onclick').match(/addProcNode\('([^']+)'\)/) || [])[1];
 
-    test('there are exactly three, and all are dropdowns of the same kind', () => {
+    /* Counted by what a menu OFFERS rather than by the class it wears. The
+       toolbar's dropdown is now shared with the variables menu, which is the
+       same kind of control and holds no nodes at all; asking for every
+       `.proc-menu` would make this test fail every time the bar gained a
+       dropdown of any sort, which is not what it is about. */
+    test('exactly three of the bar\u2019s dropdowns offer nodes, and they are these', () => {
       const h = boot();
-      const ids = h.qa('.proc-menu').map(m => m.id).sort();
-      assert.deepEqual(ids, ['distMenu', 'procMenu', 'reshapeMenu']);
+      const nodeMenus = h.qa('.proc-menu').filter(m => m.querySelector('.proc-item'));
+      assert.deepEqual(nodeMenus.map(m => m.id).sort(),
+        ['distMenu', 'procMenu', 'reshapeMenu'],
+        'a fourth menu of nodes needs a family and a colour before it needs a button');
+
+      // And the one that is not a node menu is not one by accident.
+      const others = h.qa('.proc-menu').filter(m => !m.querySelector('.proc-item'));
+      others.forEach(m => assert.equal(m.querySelectorAll('[onclick^="addProcNode"]').length, 0,
+        m.id + ' adds nodes but is not counted as a node menu'));
     });
 
     test('Distribution holds every indigo node and nothing else', () => {

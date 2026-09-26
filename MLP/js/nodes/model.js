@@ -280,7 +280,7 @@ function defaultCfg(type) {
   if (type === 'filter')  return { criteria:[newCriterion()] };
   if (type === 'compare') return { measures:DEFAULT_MEASURES.slice(), sort:'wired', labels:{} };
   if (type === 'sort')    return { keys: [newSortKey()] };
-  if (type === 'take')    return { n: String(TAKE_DEFAULT) };
+  if (type === 'take')    return { n: String(TAKE_DEFAULT), vars:{} };
   // Reverse has nothing to configure: it takes no column, no direction and no
   // count. An empty cfg is the honest answer, not a placeholder key.
   if (type === 'reverse') return {};
@@ -330,7 +330,10 @@ function defaultCfg(type) {
      the arriving table the way SelectFor resolves its own. `width` is stored as
      typed and coerced on read, exactly as Take stores N. `stats` is the same
      key and the same shape SelectFor uses, because it is the same machinery. */
-  if (type === 'histogram') return { by:'', width:'', stats:[newStat()] };
+  /* `vars` holds a binding for `width` when the band width is taken from a
+     variable instead of typed. Empty on a fresh node, and the only key on any
+     node's cfg whose value names something outside the node. */
+  if (type === 'histogram') return { by:'', width:'', stats:[newStat()], vars:{} };
   // cols:null means "every column", the same convention Select uses, so the
   // validator mergeCfg already applies to that key covers this one too.
   /* `panel` is whether this Output draws a block in the results panel. It is
@@ -348,11 +351,23 @@ function defaultCfg(type) {
    threshold instead of a default, and the same criterion object works against
    any table schema, including ones with columns that did not exist when it was
    created. */
+/* `vars` is where a variable binding lives when one of this criterion's
+   operands is taking its value from the top of the screen rather than from the
+   box beside it. Keyed by the same key the literal is under, so the two sit
+   side by side and the literal survives being shadowed. Declared here rather
+   than filled in lazily, for the reason defaultCfg gives: a saved file then
+   always carries every key a criterion uses. */
 function newCriterion() {
-  return { field:'gpa', values:{}, ops:{}, course:defaultCourse() };
+  return { field:'gpa', values:{}, ops:{}, course:defaultCourse(), vars:{} };
 }
 
 function critValue(c, field, col) {
+  /* A bound variable shadows everything below, including the column's own
+     default: the user has said where this value comes from. Resolved here
+     rather than at each of the dozen call sites in the evaluator, which is the
+     whole reason this function existed before variables did. */
+  var bound = boundVar(c, field);
+  if (bound) return bound.value;
   if (c.values && c.values[field] !== undefined) return c.values[field];
   if (col && col.def !== undefined) return col.def;
   if (col && col.values && col.values.length) return String(col.values[0]);
@@ -465,6 +480,10 @@ function fieldColumnFor(node, fieldKey) {
    the hint, so neither default is a surprise the user discovers from an empty
    result. */
 function critHigh(c, field, col) {
+  // The high bound binds under its own key, so the two ends of a range can take
+  // their values from different variables, or one from a variable and one typed.
+  var bound = boundVar(c, rangeKey(field));
+  if (bound) return bound.value;
   if (c.values && c.values[rangeKey(field)] !== undefined) return c.values[rangeKey(field)];
   if (col && col.order && col.order.length) return String(col.order[col.order.length - 1]);
   if (col && col.values && col.values.length) return String(col.values[col.values.length - 1]);
@@ -520,6 +539,11 @@ function setCfg(nodeId, key, value) {
       c.values = c.values || {};
       c.values[listKey(fk)] = orderList(cur, fcol);
     }
+    /* Which variable one of this criterion's operands is taking its value
+       from, or none. The key after the prefix is the key the literal is stored
+       under, so `var:gpa` shadows `values.gpa` and `var:gpa:max` shadows the
+       high bound, with no second spelling to keep in step. */
+    else if (sub.indexOf('var:') === 0)   { setBinding(c, sub.slice(4), value); }
     else if (sub.indexOf('value:') === 0) { c.values = c.values || {}; c.values[sub.slice(6)] = value; }
     else if (sub.indexOf('op:') === 0)    { c.ops = c.ops || {};       c.ops[sub.slice(3)] = value; }
     return;
@@ -566,6 +590,14 @@ function setCfg(nodeId, key, value) {
     // Stored in header order, not tick order, so unticking and re-ticking a box
     // puts the column back where it was rather than at the end.
     n.cfg.cols = all.filter(function(k){ return cur.indexOf(k) !== -1; });
+    return;
+  }
+  /* A binding on the node's own settings rather than on a criterion: Take's
+     row count, Histogram's band width. Same prefix, same meaning, one level up,
+     and ahead of the generic write below so a binding can never be stored as
+     though it were a setting called "var:n". */
+  if (key.indexOf('var:') === 0) {
+    setBinding(n.cfg, key.slice(4), value);
     return;
   }
   if (key.indexOf('measure:') === 0) {
@@ -673,6 +705,12 @@ function clearAll() {
   // registries with no node on screen accounting for it.
   clearAllSourceData();
   nodes = []; connections = []; edgeColorIndex = 0;
+  /* The variables go with the graph. They are part of the query, not of the
+     session: a fresh canvas that kept the last query's parameters would offer
+     values nothing on screen accounts for. The fold state is left alone, being
+     a view preference rather than part of the query. */
+  clearVariables();
+  renderVariables();
   exportData = {}; resultsFresh = false;
   // Clear starts a new query, so the name of the old one should not follow it
   // into the next Save dialog.
