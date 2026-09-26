@@ -102,6 +102,66 @@
   box-shadow: 0 0 10px rgba(30, 127, 255, 0.18);
 }
 
+/* ── SWITCHED-OFF NODE ───────────────────────────────────── */
+/* Three signals, because one is not enough for a state that changes what the
+   query answers while saying nothing when it is wrong.
+
+   Colour is drained rather than replaced. The shape keeps its own hue coding,
+   which is how node type is read at a glance, and loses the saturation that
+   makes it a live part of the graph; a switched-off Filter still reads as a
+   Filter. Dimming alone was not enough on a dark canvas, where a node a third
+   of the way down its brightness is simply a node further from the light.
+
+   So the border goes dashed as well, the same language the empty Source wears,
+   and for the same reason: the shape says its own state rather than carrying a
+   badge in a corner that reads as something to click. Between them the node is
+   legible as off when zoomed out, in a screenshot, and to someone who did not
+   press the key themselves.
+
+   The config panel is dimmed further than the shape and left readable. Its
+   settings are exactly what the switch preserves, and a panel blanked out would
+   suggest they had been lost, which is the thing the user is being promised
+   has not happened. */
+.node-off .node-shape { border-style: dashed !important; }
+
+/* The drain is scoped away from a selected node, and has to be. A CSS filter
+   repaints everything the element draws, including its own box-shadow, so a
+   desaturated shape desaturates the blue selection ring with it: pressing the
+   key appeared to deselect the very node it had just acted on. Selection is
+   momentary and the other two signals are not, so while a node is selected it
+   keeps its colour and says it is off with the dashed border and the word. */
+.node-off:not(.selected) .node-shape {
+  filter: saturate(0.18) brightness(0.72);
+  opacity: 0.85;
+}
+.node-off:not(.selected) .node-config {
+  filter: saturate(0.3);
+  opacity: 0.55;
+}
+.node-off.selected .node-config { opacity: 0.75; }
+/* Italic and faded, which is the typographic voice for a word that is about the
+   thing rather than part of its name. The Source's grain label set the pattern
+   for a qualifier on a shape and this follows it: smaller, not uppercase, not
+   letter-spaced, so it reads as a note and never as a second name.
+
+   Out of the flow, at the foot of the shape. In the flow it would push a
+   centred name upward and split a glyph from its label, which would mean every
+   shape changed size and arrangement at the moment it was switched off. Its
+   pointer events go to the shape beneath it so the word is not a small dead
+   patch in the middle of something you drag by. */
+.node-off-tag {
+  position: absolute;
+  left: 0; right: 0; bottom: 5px;
+  text-align: center;
+  font-size: 8.5px;
+  font-style: italic;
+  font-weight: 600;
+  letter-spacing: 0.2px;
+  text-transform: none;
+  line-height: 1;
+  opacity: 0.65;
+  pointer-events: none;
+}
 /* ── SELECTION ACTION BAR ────────────────────────────────── */
 /* ── VIEW DOCK ───────────────────────────────────────────
    Zoom and Fit, docked on the canvas rather than filed in the toolbar. Same
@@ -161,6 +221,35 @@
   .sel-bar { bottom: 66px; }
 }
 .sel-count { color: #9dd0ff; font-weight: 600; letter-spacing: 0.02em; }
+/* Amber, between the bar's blue count and Delete's red. It is the reversible
+   one of the two actions and should not be wearing the colour the app uses for
+   things that cannot be taken back, nor the blue that reads as ordinary. When
+   it offers the way back it goes quiet: "Switch on" undoes what the user just
+   did and does not need to attract the eye a second time. */
+.sel-off {
+  background: #2a2208;
+  border: 1px solid #6e5a14;
+  color: #e8c84a;
+  border-radius: 4px;
+  padding: 3px 9px;
+  font-family: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.sel-off:hover { background: #3a2f0a; border-color: #8a7020; }
+.sel-off.is-on {
+  background: #17181b;
+  border-color: #3a3a42;
+  color: #b8b8c0;
+}
+.sel-off.is-on:hover { background: #1f2024; border-color: #4a4a54; }
+.sel-off:disabled {
+  opacity: 0.4;
+  cursor: default;
+  background: #17181b;
+  border-color: #2e2e34;
+  color: #8f8f8f;
+}
 .sel-hint { color: #8f8f8f; font-size: 12px; }
 /* Clear was removed from the bar: deselecting already has two ways to happen
    that need no button (Esc, and a click on empty canvas), and a destructive

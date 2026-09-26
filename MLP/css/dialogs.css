@@ -158,20 +158,25 @@
 
 /* No auto margin here: help packs left with Clear, and the gap that pushes the
    bar apart is opened by Run Query instead. */
+/* Filled rather than outlined, for the same reason Clear is: an outline made it
+   read as one more thing to add to the canvas, and it is the one control people
+   look for when they are already lost. Solid amber against the bar, white glyph
+   on top, built to Clear's pattern of a filled block inside a lighter border. */
 .help-btn {
   width: 24px; height: 24px;
   border-radius: 50%;
-  background: transparent;
-  border: 1px solid #7a6418;
-  color: #e8c84a;
+  background: #8a6a10;
+  border: 1px solid #c0a040;
+  color: #fff;
   font-family: inherit;
+  font-weight: 600;
   font-size: 14px;
   line-height: 1;
   cursor: pointer;
   flex-shrink: 0;
   transition: background 0.12s;
 }
-.help-btn:hover { background: #221c08; }
+.help-btn:hover { background: #a07e18; }
 
 /* Same backdrop treatment as the save dialog, one layer below it: help can be
    open when nothing else is, and should never sit over a dialog awaiting an

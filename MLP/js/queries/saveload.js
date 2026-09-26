@@ -40,7 +40,11 @@ function serialiseGraph() {
     // Positions are part of the query: a saved graph should open looking like
     // the one that was saved, not re-scattered at random.
     nodes: nodes.map(function(n) {
-      return { id:n.id, type:n.type, x:n.x, y:n.y, color:n.color, cfg:n.cfg };
+      var out = { id:n.id, type:n.type, x:n.x, y:n.y, color:n.color, cfg:n.cfg };
+      // Written only when set, so a file full of running nodes is the file it
+      // has always been and an older reader ignores a key it never sees.
+      if (isNodeOff(n)) out.off = true;
+      return out;
     }),
     connections: connections.map(function(c) {
       return { from:c.from, to:c.to, port:c.port, color:c.color };
@@ -287,7 +291,11 @@ function deserialiseGraph(raw) {
       color: n.color || EDGE_PALETTE[0],
       // Merge over the defaults so a file written before a config key existed
       // still loads, with the new key at its default rather than undefined.
-      cfg: mergeCfg(defaultCfg(n.type), n.cfg)
+      cfg: mergeCfg(defaultCfg(n.type), n.cfg),
+      // Absent means on, which is what every query saved before the switch
+      // existed means. Read through nodeCanBeOff so a hand-edited file cannot
+      // switch off a Source and hand back a graph that emits nothing.
+      off: n.off === true && n.type !== 'source'
     });
   });
 

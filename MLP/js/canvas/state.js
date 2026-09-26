@@ -258,9 +258,25 @@ function syncSelectionUI() {
   if (selection.length) {
     cnt.textContent = selection.length + ' node' + (selection.length === 1 ? '' : 's') + ' selected';
     bar.classList.add('show');
+    syncSelOffButton();
   } else {
     bar.classList.remove('show');
   }
+}
+
+/* The button reads the selection it is about to act on, because "Switch off" on
+   a selection that is already off is a button that appears to do nothing. It
+   says the same thing the key does, and it is disabled outright when the
+   selection holds nothing that can be switched: a selection of one Source. A
+   label that changes is better than a button that argues after the fact. */
+function syncSelOffButton() {
+  var btn = document.getElementById('selOff');
+  if (!btn) return;
+  var targets = selection.map(findNode).filter(nodeCanBeOff);
+  btn.disabled = targets.length === 0;
+  var allOff = targets.length > 0 && targets.every(function(n){ return !!n.off; });
+  btn.textContent = allOff ? 'Switch on' : 'Switch off';
+  btn.classList.toggle('is-on', allOff);
 }
 
 /* Every node reachable from a start node, following edges in either direction.

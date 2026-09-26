@@ -39,6 +39,7 @@ window.zoomReset = zoomReset;
 window.zoomToFit = zoomToFit;
 window.toggleResultsPanel = toggleResultsPanel;
 window.deleteSelection = deleteSelection;
+window.toggleSelectionOff = toggleSelectionOff;
 window.clearSelection = clearSelection;
 window.addVariable = addVariable;
 window.requestRemoveVariable = requestRemoveVariable;
@@ -304,6 +305,12 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     setSelection: setSelection, selectOnly: selectOnly, clearSelection: clearSelection,
     selectAll: selectAll, toggleSelected: toggleSelected, isSelected: isSelected,
     deleteSelection: deleteSelection, selectBranch: selectBranch,
+
+    // the off switch
+    isNodeOff: isNodeOff, nodeCanBeOff: nodeCanBeOff,
+    toggleNodesOff: toggleNodesOff, toggleSelectionOff: toggleSelectionOff,
+    EDGE_PALETTE: EDGE_PALETTE, EDGE_OFF_COLOR: EDGE_OFF_COLOR,
+
     connectedComponent: connectedComponent, nodesInWorldRect: nodesInWorldRect,
 
     // export + persistence

@@ -19,6 +19,11 @@
 
 /* PALETTE OF EDGE COLOURS (one per source/path) */
 var EDGE_PALETTE = ['#ffffff','#30d87a','#4aaff0','#e060b0','#a0d040','#9080e0'];
+/* The one colour no wire is ever assigned, so "switched off" cannot be mistaken
+   for a wire that happens to be that colour. Every entry above is a saturated
+   hue; this is the only grey, which is what makes it read as an absence rather
+   than as another choice from the same set. */
+var EDGE_OFF_COLOR = '#6a6a72';
 var edgeColorIndex = 0;
 
 /* ============================================================================

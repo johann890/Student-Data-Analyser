@@ -605,7 +605,7 @@ module.exports = ({ describe, test }) => {
       h.w.libOpenEntry(id, null);
       assert.ok(h.app.libPendingNow(), 'it opened without asking');
       assert.ok(h.app.libraryOpen(), 'and it should still be on screen to ask from');
-      assert.includes(h.doc.getElementById('libBody').textContent, 'Replace canvas?');
+      assert.includes(h.doc.getElementById('libBody').textContent, 'Replace?');
 
       // The second press does it.
       h.w.libOpenEntry(id, null);
@@ -630,7 +630,7 @@ module.exports = ({ describe, test }) => {
       h.w.libDeleteEntry(id, null);
       assert.ok(h.app.libGet(id), 'one click deleted it');
       const body = h.doc.getElementById('libBody');
-      assert.includes(body.textContent, 'Confirm deletion?');
+      assert.includes(body.textContent, 'Confirm?');
       assert.ok(body.querySelector('.lib-card.danger'), 'the card should say so as well as the button');
 
       h.w.libDeleteEntry(id, null);

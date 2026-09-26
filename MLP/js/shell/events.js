@@ -323,6 +323,16 @@ document.addEventListener('keydown', function(e) {
   }
   if (mod && (e.key === 'a' || e.key === 'A')) { e.preventDefault(); selectAll(); return; }
 
+  /* M for mute, the same key the node editors people have met before use for
+     this. Guarded by safeToDelete for the same reason Delete is: it acts on the
+     selection without asking, and a keystroke meant for a field that has just
+     lost focus should not quietly rewire the query behind it. No modifier, so
+     ctrl-M and cmd-M are left to the browser and the window manager. */
+  if (!mod && (e.key === 'm' || e.key === 'M')) {
+    if (selection.length && safeToDelete(e)) { e.preventDefault(); toggleSelectionOff(); }
+    return;
+  }
+
   if (e.key === ' ' && !spaceDown) {
     spaceDown = true;
     document.getElementById('canvas').classList.add('pan-ready');

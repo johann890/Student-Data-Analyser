@@ -21,7 +21,8 @@ function render() {
 
   nodes.forEach(function(node) {
     var el = document.createElement('div');
-    el.className = 'node' + (isSelected(node.id) ? ' selected' : '');
+    el.className = 'node' + (isSelected(node.id) ? ' selected' : '') +
+                   (isNodeOff(node) ? ' node-off' : '');
     el.style.left = node.x + 'px';
     el.style.top  = node.y + 'px';
     el.innerHTML = shapeHTML(node) + configHTML(node, schemas);
@@ -29,6 +30,25 @@ function render() {
     nodeEls[node.id] = el;
 
     var shape = el.querySelector('.node-shape');
+    /* The word, under the name, on the shape itself.
+
+       The drained colour and the dashed border say "off" to someone who already
+       knows the switch exists. This says it to everyone else, and it is the one
+       signal that survives being described: a user pointing at a screenshot can
+       say which node is off, and a marker can read the query without being told
+       the convention.
+
+       Appended here rather than written into each shape's markup because there
+       are eighteen of those and they differ in what they already hold. It is
+       positioned out of the flow, so a shape that stacks a glyph above its name
+       is not re-laid-out by gaining a second line, and a shape that centres one
+       word does not shuffle it upwards to make room. */
+    if (shape && isNodeOff(node)) {
+      var offTag = document.createElement('span');
+      offTag.className = 'node-off-tag';
+      offTag.textContent = '(Off)';
+      shape.appendChild(offTag);
+    }
     if (shape) {
       shape.addEventListener('mousedown', function(e){ startDrag(e, node.id); });
       // Double-click selects the whole connected branch. The cheapest route to

@@ -21,10 +21,15 @@
    The usual answer is a confirmation dialog, and it is the wrong one here: it
    would be a modal over a modal, with its own focus to trap and return, over a
    grid that is itself scrollable. So the button asks instead. The first click
-   turns Open into "Replace canvas?" and Delete into "Confirm deletion?", and the
-   second does it. The question names what happens rather than asking whether
-   the user is sure, and it is on the control they pressed, where they are
-   already looking.
+   turns Open into "Replace?" and Delete into "Confirm?", and the second does
+   it. The question is on the control they pressed, where they are already
+   looking, and the colour switch underneath it carries the warning.
+
+   Both questions are one short word because they have to fit the button on one
+   line. A label that wraps makes its row taller, and in a grid a taller row
+   takes the card beside it with it: arming one card visibly resized its
+   neighbour, which reads as a bug in the grid rather than as a question being
+   asked. The cards now hold still.
 
    Opening skips the question when the canvas is empty, because there is then
    nothing to replace and a question with only one sensible answer teaches
@@ -141,10 +146,10 @@ function libCardHTML(e) {
     '<div class="lib-actions">' +
       '<button class="lib-go" onclick="libOpenEntry(\'' + id + '\', this)" ' +
         'title="Put this query on the canvas">' +
-        (pendOpen ? 'Replace canvas?' : 'Open') + '</button>' +
+        (pendOpen ? 'Replace?' : 'Open') + '</button>' +
       '<button class="file-btn" onclick="libStartRename(\'' + id + '\')">Rename</button>' +
       '<button class="lib-del" onclick="libDeleteEntry(\'' + id + '\', this)">' +
-        (pendDel ? 'Confirm deletion?' : 'Delete') + '</button>' +
+        (pendDel ? 'Confirm?' : 'Delete') + '</button>' +
       '<button class="file-btn" onclick="libExportEntry(\'' + id + '\', this)" ' +
         'title="Write this query out as a .json file">Export</button>' +
     '</div>' +

@@ -237,7 +237,22 @@ function drawArrows() {
 
     var g = svgEl('g');
     svg.appendChild(g);
-    var pathEl = drawArrow(g, p0, tip, conn.color, '0.9', false);
+    /* An edge touching a switched-off node is drawn as a switched-off edge. The
+       flag is on the node, but what the user is reading is a branch, and a grey
+       shape sitting between two ordinary coloured arrows does not read as one.
+       Dashing the wires either side of it carries the off state along the path
+       the data takes, which is the shape of the thing being described.
+
+       The dash is divided by the zoom for the same reason the hit stroke is
+       multiplied by it: a pattern fixed in world units turns into a solid line
+       when the view is pulled back, which is exactly when a user is looking at
+       the whole graph and most wants to see which arm of it is off. */
+    var muted = isNodeOff(a) || isNodeOff(b);
+    var pathEl = drawArrow(g, p0, tip, muted ? EDGE_OFF_COLOR : conn.color,
+                           muted ? '0.55' : '0.9', false);
+    if (muted) {
+      pathEl.setAttribute('stroke-dasharray', (6 / view.z) + ' ' + (5 / view.z));
+    }
 
     if (gestureActive()) return; // no hover affordances mid-gesture
 

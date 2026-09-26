@@ -96,32 +96,31 @@
   line-height: 1.55;
   color: var(--band-sub);
 }
-/* A tint of the band rather than the black chip this wore on a black card.
-   Kept in the same blue, because a file extension should still read as quoted
-   material, but at the weight the surface around it now calls for: three
-   black rectangles set into a light paragraph are read as the thing the
-   paragraph is about, and the paragraph is not about .json. */
-.lib-sub-note code {
-  background: rgba(0, 0, 0, 0.11);
-  padding: 1px 5px;
-  border-radius: 3px;
-  font-size: 14px;
-  color: #152d63;
-}
 /* The warning, set apart from the description above it rather than run on from
    it. Same size, because it is the half people most need to read.
 
-   Amber, and read as amber. The colour it wore before was so far down its own
-   range that on the band it was only a darker grey than the paragraph above,
-   which is the one thing a warning cannot afford to be: it parted from the
-   description by weight alone and said nothing by its colour. Against a near
-   white band the hue has room to show, so this is amber held just dark enough
-   to carry the text, with the label darker again so the eye lands on it. */
+   Amber text alone was not enough. On a near white band a dark amber is close
+   enough to the paragraph above it that the warning read as one more sentence
+   of description, and the one thing a warning cannot be is another paragraph.
+   So the colour is carried by the surface instead of the letters: a block of
+   highlighter yellow the eye lands on before it reads a word of it, with the
+   text set dark enough on that surface to stay comfortable to read. The bar
+   down the left edge gives the block a side to start from, which is what keeps
+   it looking marked up rather than merely shaded.
+
+   The block shrink-wraps the sentence rather than running the panel's full
+   width: a highlight that reached both edges would read as a section of the
+   dialog, and this is a remark about the one above it. */
 .lib-caveat {
-  margin-top: 9px;
-  color: #7a6300;
+  width: fit-content;
+  margin-top: 11px;
+  padding: 8px 12px;
+  background: #ffe9a3;
+  border-left: 3px solid #d9a400;
+  border-radius: 0 3px 3px 0;
+  color: #4a3800;
 }
-.lib-caveat b { color: #5c4a00; }
+.lib-caveat b { color: #382a00; }
 
 /* ── NOTICE ───────────────────────────────────────────────── */
 /* Collapsed to nothing when empty, so the grid does not shift down by a blank
@@ -236,11 +235,12 @@
   font-family: inherit;
   border-width: 1px;
   border-style: solid;
-  /* The two confirmation labels are longer than the words they replace, and a
-     card column is narrow. Wrapping keeps them inside their cell; the row grows
-     and its neighbour stretches with it, which is the grid holding the columns
-     together rather than a button spilling over its edge. */
-  white-space: normal;
+  /* Never wrap. A card column is narrow and the confirmation labels are longer
+     than the words they replace, so a wrapped label would make its row taller
+     and drag the neighbouring card's height up with it. The labels are kept
+     short enough to fit on one line instead, which leaves the grid still while
+     a question is being asked. */
+  white-space: nowrap;
   line-height: 1.25;
 }
 .lib-go {

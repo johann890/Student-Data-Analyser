@@ -301,6 +301,27 @@ function evaluateGraph() {
       at: portContext(node, function(id){ return res[id]; })
     };
 
+    /* A node that is switched off is not skipped, it is made transparent: it
+       emits its primary input exactly as it arrived. That is the whole point of
+       the switch. Deleting a Filter from a chain leaves a gap to rewire, while
+       switching it off leaves the chain intact and the query still running, so
+       the comparison being asked for ("what does this look like without the
+       filter") costs one keystroke each way rather than a rebuild.
+
+       Source is the one type this cannot apply to and nodeCanBeOff() refuses it
+       there, because a Source has no input to pass through and "off" could only
+       mean "emit nothing", which is the broken state the switch exists to avoid.
+
+       The log passes through with the table. A switched-off node contributes no
+       line of its own, which is correct: nothing happened at it. */
+    if (isNodeOff(node)) {
+      var through = ctx.at(primaryPort(node.type))[0];
+      table = through ? through.table : makeTable([], []);
+      hasSource = !!(through && through.hasSource);
+      res[node.id] = { table: table, log: log, hasSource: hasSource };
+      continue;
+    }
+
     if (spec.evaluate) {
       var ev = spec.evaluate(node, ctx);
       // A node that reads its inputs itself can fail the same way a row
@@ -343,6 +364,15 @@ function computeSchemas() {
     if (!spec) { out[node.id] = makeTable([], []); return; }
     var at = portContext(node, function(id){ return out[id]; });
     var head = at(primaryPort(node.type))[0];
+    /* The same bypass as evaluateGraph, and it has to be here too. These two
+       walks are required to agree: if a switched-off Aggregate still described
+       its aggregated headers here while passing its input through there, every
+       panel downstream would offer field names that no longer exist in the data
+       flowing past it. */
+    if (isNodeOff(node)) {
+      out[node.id] = headerOnly(head || makeTable([], []));
+      return;
+    }
     out[node.id] = headerOnly(spec.schema(node, head || makeTable([], []), { at: at }));
   });
   return out;

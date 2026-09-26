@@ -152,7 +152,13 @@ function resultHTML(node, r) {
    dressed out of sight, so turning one back on is a class on an element that is
    already there rather than another walk of the graph. */
 function hiddenInPanel(node) {
-  return !!(node.cfg && node.cfg.panel === false);
+  /* Two ways to be absent from the panel, and they are kept as one test here
+     because the panel's job is the same either way: draw the block, dress it
+     out of sight. They are told apart only in the note below, which has to name
+     the right switch to un-press. A switched-off Output is the end of a branch
+     that has been switched off, and a branch that is off should not be filling
+     the panel with an answer nobody asked for. */
+  return !!(node.cfg && node.cfg.panel === false) || isNodeOff(node);
 }
 
 function outputNodes() {
@@ -165,8 +171,28 @@ function outputNodes() {
 function allHiddenNoteHTML(outs) {
   var allHidden = outs.length > 0 && outs.every(hiddenInPanel);
   return '<div class="all-hidden-note' + (allHidden ? '' : ' result-hidden') + '">' +
-    'Every Output is hidden from this panel. Tick "Show in results panel" on an ' +
-    'Output node to see its answer here.</div>';
+    allHiddenNoteText(outs) + '</div>';
+}
+
+/* Which switch emptied the panel, rather than one sentence covering both. Being
+   told to tick a box that is already ticked, because the real reason was that
+   the Output is switched off, is worse than being told nothing: it sends the
+   user to the wrong control and makes the tool look broken. When the two causes
+   are mixed the sentence names both, because fixing one and re-running to be
+   told about the other is the same poor trade. */
+function allHiddenNoteText(outs) {
+  var off = outs.filter(isNodeOff).length;
+  if (off === outs.length) {
+    return 'Every Output is switched off. Select one and press M to switch it ' +
+           'back on.';
+  }
+  if (off === 0) {
+    return 'Every Output is hidden from this panel. Tick "Show in results ' +
+           'panel" on an Output node to see its answer here.';
+  }
+  return 'Every Output is either switched off or hidden from this panel. ' +
+         'Press M on a switched-off Output, or tick "Show in results panel" on ' +
+         'a hidden one, to see its answer here.';
 }
 
 function applyPanelVisibility() {

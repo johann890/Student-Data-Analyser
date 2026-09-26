@@ -221,6 +221,12 @@
 
     <div class="sel-bar" id="selBar">
       <span class="sel-count" id="selCount">0 selected</span>
+      <!-- Before Delete, in both source and reading order. They are the two
+           things this bar does to a selection and one of them is reversible;
+           the reversible one is met first, which is the order a user who wants
+           a node out of the way should encounter them in. -->
+      <button class="sel-off" id="selOff" onclick="toggleSelectionOff()"
+              title="Pass data straight through these nodes, without deleting them  ( M )">Switch off</button>
       <button class="sel-del" onclick="deleteSelection()" title="Delete selected nodes  ( Delete )">Delete</button>
     </div>
 
@@ -604,6 +610,21 @@
                   different choices.</li>
             </ol>
           </figure>
+
+          <p><b>Switching a node off.</b> Select a node and press <kbd>M</kbd>, or use
+             <b>Switch off</b> in the bar at the bottom of the canvas. A node that is off goes grey,
+             its border turns dashed, and it says <i>(Off)</i> under its name. It stays wired and
+             keeps every setting; it simply stops doing its job and passes its data straight
+             through, so the rest of the query runs exactly as if that one step were not there.</p>
+
+          <p>This is the quick way to ask what a query looks like without one of its steps. Deleting
+             the node would answer the same question, but it throws away the settings and leaves two
+             loose ends to wire back together. Pressing <kbd>M</kbd> again puts it back. To switch
+             off a whole arm of a query at once, double-click any node in it to select the branch,
+             then press <kbd>M</kbd>.</p>
+
+          <p>A Source cannot be switched off, because it has nothing arriving to pass through.
+             An Output can, and when it is, its block leaves the results panel.</p>
         </section>
 
         <!-- ── CONNECTING ──────────────────────────────────── -->
@@ -1443,6 +1464,11 @@
             <tr><td>Drag on empty canvas</td><td>Select everything inside the box</td></tr>
             <tr><td><kbd>Ctrl</kbd>/<kbd>Cmd</kbd> + <kbd>A</kbd></td><td>Select all nodes</td></tr>
             <tr><td><kbd>Delete</kbd> or <kbd>Backspace</kbd></td><td>Delete the selection</td></tr>
+            <tr><td><kbd>M</kbd></td><td>Switch the selection off, or back on. A node that is off
+                passes its data straight through instead of doing its job, and keeps its
+                settings</td></tr>
+            <tr><td>Double-click a node</td><td>Select the whole branch it belongs to. Follow it
+                with <kbd>M</kbd> to switch that branch off</td></tr>
             <tr><td><kbd>Esc</kbd></td><td>Clear the selection, or close a dialog</td></tr>
             <tr><td>Hold <kbd>Space</kbd> and drag, or drag with the middle button</td><td>Pan the canvas</td></tr>
             <tr><td>Scroll, or <kbd>+</kbd> and <kbd>&minus;</kbd></td><td>Zoom in and out</td></tr>
@@ -1561,8 +1587,8 @@
       <p class="save-sub lib-sub-note">The Query Library is a way to save and store necessary
          queries built onto this application itself. From here you can save, rename, export, edit,
          open, and delete any queries that you have made. You can also import query
-         <code>.json</code> files from your device into this library, or export the entire library
-         as one <code>.json</code> file containing every query.</p>
+         .json files from your device into this library, or export the entire library
+         as one .json file containing every query.</p>
 
       <p class="save-sub lib-sub-note lib-caveat"><b>Please note:</b> Clearing site data removes the
          library, and it is not private on a shared computer.</p>

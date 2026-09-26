@@ -653,6 +653,64 @@ function freeSpotNear(cx, cy) {
   return { x: Math.round(cx), y: Math.round(cy) };
 }
 
+/* THE OFF SWITCH
+   ---------------------------------------------------------------------------
+   A node that is off stays wired and keeps its settings; it simply stops doing
+   its job and passes its input straight through. The alternative people reach
+   for is deleting the node, which loses the settings and leaves two loose ends
+   to reconnect, so the question "what does this look like without the filter"
+   costs a rebuild to ask and another to undo. It should cost one keystroke.
+
+   Source is refused. Every other type has an input to pass through, so "off"
+   has one obvious meaning; a Source has none, and the only thing it could mean
+   there is "emit nothing", which is the broken query the switch exists to
+   avoid. Refusing it is better than offering a switch that breaks the graph.
+
+   Output is allowed and means something slightly different: it drops out of the
+   results panel. That is the same idea read at the end of a chain rather than
+   in the middle of one, and it is how a whole branch gets switched off.
+
+   Stored as a flag that is absent when false, so a query saved before this
+   existed loads with every node on, and a saved file does not grow a line of
+   "off": false for every node in it. */
+function nodeCanBeOff(node) {
+  return !!node && node.type !== 'source';
+}
+
+function isNodeOff(node) {
+  return !!(node && node.off && nodeCanBeOff(node));
+}
+
+/* Toggles the selection, not one node, because the unit people think in is the
+   branch: a run of three nodes is switched off by sweeping them and pressing
+   the key once. Sources in the selection are passed over rather than refused,
+   so a marquee that happens to catch one still does the obvious thing to the
+   rest instead of failing whole.
+
+   The whole selection moves to a single state rather than each node flipping
+   independently. Flipping each would mean a mixed selection stayed mixed
+   forever, with the key shuffling it rather than resolving it. Turning ON is
+   the tie-breaker: if anything in the selection is still running, the key
+   switches the selection off, and only a selection that is entirely off comes
+   back on. */
+function toggleNodesOff(ids) {
+  var targets = (ids || []).map(findNode).filter(nodeCanBeOff);
+  if (!targets.length) return 0;
+  var anyOn = targets.some(function(n){ return !n.off; });
+  targets.forEach(function(n) {
+    if (anyOn) n.off = true;
+    else delete n.off;
+  });
+  markStale();
+  render();
+  return targets.length;
+}
+
+function toggleSelectionOff() {
+  var ids = selection.length ? selection.slice() : [];
+  return toggleNodesOff(ids);
+}
+
 function addNode(type) {
   var c = viewCentreWorld();
   var spot = freeSpotNear(c.x - NODE_W / 2, c.y - SHAPE[type].h / 2);
