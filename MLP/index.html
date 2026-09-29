@@ -72,7 +72,7 @@
       <div class="proc-group cat-summarise">Summarise</div>
       <button class="proc-item cat-summarise" onclick="addProcNode('aggregate')">
         <span class="proc-name">Aggregate</span>
-        <span class="proc-desc">Whole table down to one value</span>
+        <span class="proc-desc">Whole table down to one row</span>
       </button>
       <button class="proc-item cat-summarise" onclick="addProcNode('aggregateColumns')">
         <span class="proc-name">Aggregate Columns</span>
@@ -968,16 +968,19 @@
           <p class="help-note">Rows collapse to a summary, and the columns are rewritten.</p>
           <dl class="help-defs">
             <dt>Aggregate</dt>
-            <dd>Reduces the whole table to a single value: a count, sum, average, median,
-                minimum or maximum of one column.
+            <dd>Reduces the whole table to a single row. Add a measure for each figure you
+                want on it: a count, sum, average, median, minimum or maximum, each of a
+                column you choose. One measure gives one value, which is the commonest use;
+                a minimum and a maximum together give a range, and there is no need to build
+                two branches and join them back up for it.
                 <div class="help-eg">
                   <div class="help-eg-t">Example</div>
                   <div class="help-eg-io">
                     <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Student</th><th>GPA</th></tr><tr><td>Jo</td><td>7.8</td></tr><tr><td>Ana</td><td>6.2</td></tr><tr><td>Kim</td><td>5.1</td></tr></table></div>
                     <div class="help-eg-arrow">&rarr;</div>
-                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Average of GPA</th></tr><tr><td>6.37</td></tr></table></div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Average GPA</th><th>Minimum GPA</th><th>Maximum GPA</th></tr><tr><td>6.37</td><td>5.1</td><td>7.8</td></tr></table></div>
                   </div>
-                  <p class="help-eg-note">Settings: <b>Measure</b> Average, <b>Of column</b> GPA. The whole table becomes one value.</p>
+                  <p class="help-eg-note">Settings: three measures, Average, Minimum and Maximum, each of GPA. The whole table becomes one row, with a column per measure. With a single measure it becomes one value.</p>
                 </div></dd>
             <dt>Aggregate Columns</dt>
             <dd>One row out, with the chosen calculation applied to every numeric column at once.

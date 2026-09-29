@@ -287,11 +287,14 @@ function defaultCfg(type) {
   // col:'' means all columns: Whole-row deduplication. Naming a column
   // switches to the label-producing mode and rewrites the header.
   if (type === 'unique')  return { col: '' };
-  // Both aggregation nodes share one config shape: which measure, and (for the
-  // measures that need one) which column. col:'' means "resolve against
-  // whatever arrives", which is what keeps a saved query working after the
-  // Source granularity is changed underneath it.
-  if (type === 'aggregate')        return { op: AGG_DEFAULT_OP, col: '' };
+  /* The whole-table Aggregate takes a LIST of measures, in the shape and under
+     the key Select For uses, so one validator, one set of controls and one pair
+     of engine functions serve both. A query saved under the old single-measure
+     shape ({op, col}) is migrated on load; see mergeCfg. */
+  if (type === 'aggregate')        return { stats: [newStat()] };
+  // Its two siblings keep one measure each, because in those the plurality is
+  // the table's rather than the setting's: one measure down every column, or
+  // one across every row.
   if (type === 'aggregateColumns') return { op: 'sum' };
   // Same shape, and sum for the same reason: totalling is the measure a row of
   // measures is usually wanted for, and it is the one that is obviously wrong
@@ -918,7 +921,12 @@ function removeSortKey(nodeId, idx) {
    under it did nothing: the panel rendered them, the handler checked the type
    and returned. Asking what the node HAS rather than what it IS is what makes
    the next such node work without an edit here. */
-function hasStats(n) { return !!n && (n.type === 'selectFor' || n.type === 'histogram'); }
+/* The nodes whose measures are a LIST. Aggregate joined them when it stopped
+   taking exactly one: addStat, removeStat and the panel's measure rows are all
+   gated on this, so adding the type here is most of what that change needed. */
+function hasStats(n) {
+  return !!n && (n.type === 'selectFor' || n.type === 'histogram' || n.type === 'aggregate');
+}
 
 function addStat(nodeId) {
   var n = findNode(nodeId);

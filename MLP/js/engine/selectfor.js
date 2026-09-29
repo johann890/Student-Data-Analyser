@@ -147,10 +147,12 @@ function statsOf(node) {
   return (Array.isArray(s) && s.length) ? s : defaultStats();
 }
 
-/* Which column one measure applies to. Resolved against the table exactly as
-   aggregateCol() does, and against the WHOLE data table rather than a group's
-   rows. A per-group resolve could reach different columns in different groups
-   and the one header would then be true of neither. */
+/* Which column one measure applies to. Resolved against the table rather than
+   trusted from the config, because a saved key can outlive its column (rewiring
+   the node behind a different branch is enough), and against the WHOLE data
+   table rather than a group's rows. A per-group resolve could reach different
+   columns in different groups and the one header would then be true of
+   neither. Aggregate resolves its measures through this same function. */
 function statCol(stat, t) {
   var op = selectForOp(stat && stat.op);
   if (!op.needsCol) return null;

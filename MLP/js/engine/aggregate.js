@@ -104,62 +104,63 @@ function columnValues(t, key) {
   return t.rows.map(function(r){ return r[i]; });
 }
 
-/* ---- Aggregate: whole table -> 1x1 ---------------------------------------- */
+/* ---- Aggregate: whole table -> one row ------------------------------------ */
 
-/* Which column the measure applies to, resolved against the table rather than
-   trusted from config. A saved key can outlive its column (rewiring the node
-   behind a different branch is enough), so this falls back rather than
-   measuring nothing. */
-function aggregateCol(node, t) {
-  var op = aggOp(node);
-  if (!op.needsCol) return null;
-  var key = (node && node.cfg && node.cfg.col) || '';
-  var col = key ? colByKey(t, key) : null;
-  if (col && isMeasurable(t, col)) return col;
-  var avail = measurableCols(t);
-  return avail.length ? avail[0] : null;
-}
+/* IT TAKES A LIST OF MEASURES, not one.
 
-// The single column both the schema walk and the engine must agree on. Derived
-// in one place so they cannot disagree. The registry invariant depends on it.
-function aggregateColumn(node, t) {
-  var op = aggOp(node);
-  if (!op.needsCol) {
-    return { key:'count', label:'Count', type:COLTYPE.NUMBER };
-  }
-  var col = aggregateCol(node, t);
-  return {
-    key: op.key,
-    label: col ? (op.verb + ' ' + col.label) : op.label,
-    type: COLTYPE.NUMBER
-  };
-}
+   It used to take exactly one, a measure and the column it applied to, and a
+   1x1 table came out. That made the commonest shape of question awkward in a
+   way that was easy to miss: "what is the range of GPAs" is a minimum and a
+   maximum, and with one measure per node it took two Aggregates on two
+   branches and a Combine to put them back beside each other, which then failed
+   because neither branch had a column the join could match on. Two nodes, a
+   third to reconcile them, and a refusal, for one row of two numbers.
+
+   The list is not a new idea here, it is Select For's, unchanged. Its measures
+   are already {op, col} objects under `stats`, already validated on load,
+   already added and removed by addStat and removeStat, and already rendered by
+   one markup function. So this node reuses measureColumns() and
+   measureValues() outright rather than growing its own pair, and the two nodes
+   cannot drift apart about what "average of GPA" means or what the column it
+   produces is called.
+
+   The reading is the same one Select For has, with the grouping taken away:
+   Select For asks the measures of each group, this asks them of the whole
+   table, and a Select For with no groups would be this node. That is why the
+   column keys match too, `average_gpa` rather than the bare `average` this
+   node produced before. The LABEL is unchanged ("Average GPA"), so nothing on
+   screen or in an exported file reads differently; only a downstream node that
+   had been pointed at the old key has to be pointed again, and every one of
+   them resolves a missing key by falling back rather than failing.
+
+   Share of total is deliberately not offered. It divides by the rows that came
+   in, which here are the rows being measured, so it could only ever answer
+   100%. See statListHTML(), which is handed AGG_OPS for this node alone.     */
 
 function aggregateSchema(node, inSchema) {
-  return makeTable([aggregateColumn(node, inSchema)], []);
+  return makeTable(measureColumns(node, inSchema), []);
 }
 
 function applyAggregate(node, t, log) {
-  var op = aggOp(node);
-  var outCol = aggregateColumn(node, t);
-  var value;
+  var stats = statsOf(node);
+  var cols  = measureColumns(node, t);
+  var scols = stats.map(function(s){ return statCol(s, t); });
 
-  if (!op.needsCol) {
-    value = t.rows.length;
-    log.push(logEntry('AGGREGATE', [{s:'count of'}, {c:'val', s:t.rows.length}, {s:'rows'}]));
-  } else {
-    var col = aggregateCol(node, t);
-    if (!col) {
-      // No column the measure could apply to. Blank and say so, rather than
-      // returning a number that describes nothing.
-      log.push(logEntry('AGGREGATE', [{s:op.label.toLowerCase()}, {s:'(no numeric column in this table)'}]));
-      return makeTable([outCol], [[null]]);
-    }
-    value = reduceValues(op.key, columnValues(t, col.key));
-    log.push(logEntry('AGGREGATE', [{s:op.label.toLowerCase() + ' of'}, {c:'val', s:col.label},
-                                    {s:'over'}, {c:'val', s:t.rows.length}, {s:'rows'}]));
-  }
-  return makeTable([outCol], [[value]]);
+  /* One line, however many measures, because they were all taken over the same
+     rows and a line each would say "over 780 rows" three times. A measure with
+     no column to apply to says so in place rather than being left out, since a
+     blank cell in the result is otherwise unexplained. */
+  var said = stats.map(function(s, i) {
+    var op = selectForOp(s && s.op);
+    if (!op.needsCol) return op.label.toLowerCase();
+    return scols[i]
+      ? op.label.toLowerCase() + ' of ' + scols[i].label
+      : op.label.toLowerCase() + ' (no numeric column)';
+  });
+  log.push(logEntry('AGGREGATE', [{s: said.join(', ')}, {s:'over'},
+                                  {c:'val', s:t.rows.length}, {s:'rows'}]));
+
+  return makeTable(cols, [measureValues(t, stats, scols, t.rows.length)]);
 }
 
 /* ---- AggregateColumns: many rows -> one row ------------------------------- */

@@ -195,7 +195,6 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     // aggregation
     AGG_OPS: AGG_OPS, aggOp: aggOp, reduceValues: reduceValues,
     measurableCols: measurableCols, isMeasurable: isMeasurable,
-    aggregateCol: aggregateCol, aggregateColumn: aggregateColumn,
     aggregateSchema: aggregateSchema, applyAggregate: applyAggregate,
     aggregateColumnsSchema: aggregateColumnsSchema,
     applyAggregateColumns: applyAggregateColumns,

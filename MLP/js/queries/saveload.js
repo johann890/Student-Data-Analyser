@@ -291,7 +291,7 @@ function deserialiseGraph(raw) {
       color: n.color || EDGE_PALETTE[0],
       // Merge over the defaults so a file written before a config key existed
       // still loads, with the new key at its default rather than undefined.
-      cfg: mergeCfg(defaultCfg(n.type), n.cfg),
+      cfg: mergeCfg(defaultCfg(n.type), n.cfg, n.type),
       // Absent means on, which is what every query saved before the switch
       // existed means. Read through nodeCanBeOff so a hand-edited file cannot
       // switch off a Source and hand back a graph that emits nothing.
@@ -347,7 +347,7 @@ function deserialiseGraph(raw) {
 
 // Shallow merge is enough: cfg is one level deep apart from criteria and labels,
 // and both of those are replaced wholesale when present.
-function mergeCfg(base, saved) {
+function mergeCfg(base, saved, type) {
   if (!saved || typeof saved !== 'object') return base;
   var wantsCriteria = Object.prototype.hasOwnProperty.call(base, 'criteria');
   Object.keys(saved).forEach(function(k) { base[k] = saved[k]; });
@@ -386,6 +386,29 @@ function mergeCfg(base, saved) {
     });
     if (!base.stats.length) base.stats = [newStat()];
   }
+
+  /* AGGREGATE'S OLD SHAPE: one measure, as `op` plus `col`.
+     -------------------------------------------------------------------------
+     Every query saved before the node took a list carries those two keys and
+     no `stats`, and dropping them would silently turn "average GPA" into the
+     default count, which is a different answer wearing the same graph. So the
+     pair is folded into the one-measure list that means the same thing.
+
+     Scoped by type rather than by "has op and no stats", because Select For
+     and Histogram also keep their measures under `stats`, and a hand-edited
+     file that put an `op` on one of those must not have its real measures
+     replaced by a guess. The type is the fact that settles it, so the type is
+     what is asked.
+
+     The old keys are dropped rather than carried along, so re-saving writes
+     the current shape and the file stops describing two readings at once. */
+  if (type === 'aggregate' && !Array.isArray(saved.stats) && saved.op !== undefined) {
+    base.stats = [{
+      op:  typeof saved.op === 'string' ? saved.op : 'count',
+      col: typeof saved.col === 'string' ? saved.col : ''
+    }];
+  }
+  if (type === 'aggregate') { delete base.op; delete base.col; }
   /* The dataset descriptor is a name and a list of years and nothing else. It
      is read straight back into the panel's markup, so a file supplying an
      object where the name belongs, or 2000 fabricated years, is normalised here
