@@ -142,6 +142,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     hasCol: hasCol, cellAt: cellAt, headerOnly: headerOnly, numericCols: numericCols,
     coursesColIndex: coursesColIndex, studentsTable: studentsTable,
     fmtCell: fmtCell, exportCell: exportCell, cellTitle: cellTitle,
+    uniqueAgainst: uniqueAgainst,
     schemaKey: schemaKey, rowKey: rowKey,
 
     // engine
@@ -263,6 +264,8 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     projectSchema: projectSchema, applyProject: applyProject,
     enrolmentColumns: enrolmentColumns, enrolmentKeys: enrolmentKeys,
     combineOrder: combineOrder, joinColumns: joinColumns, joinTables: joinTables,
+    combineInputLabel: combineInputLabel, combineLabelOf: combineLabelOf,
+    COMBINE_LABEL_MAX: COMBINE_LABEL_MAX,
 
     // take
     applyTake: applyTake, takeCount: takeCount,

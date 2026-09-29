@@ -354,6 +354,39 @@ module.exports = ({ describe, test }) => {
       assert.includes(help, 'Put a Select after this node');
     });
 
+    test('Combine can be told what its inputs are called, and the Help says how', () => {
+      /* The same pair as above, for the same reason: the glossary described a
+         join naming its columns after the node, which stopped being the whole
+         story the moment an input could be named. */
+      const h = boot();
+      const s = h.add('source');
+      const ids = [0, 1].map(() => {
+        const f = h.add('filter'), sf = h.add('selectFor');
+        h.app.connect(s.id, f.id);
+        h.app.connect(f.id, sf.id, null, 'data');
+        h.w.render();
+        h.set(sf.id, 'by', 'specialisation');
+        h.w.render();
+        return sf.id;
+      });
+      const c = h.add('combine'), o = h.add('output');
+      ids.forEach(id => h.app.connect(id, c.id, null, 'in'));
+      h.app.connect(c.id, o.id);
+      h.w.render();
+      h.set(c.id, 'mode', 'join');
+      h.w.render();
+      h.set(c.id, 'label:' + ids[0], '2022');
+      h.set(c.id, 'label:' + ids[1], '2023');
+      h.w.runQuery();
+      assert.deepEqual(h.app.exportData[o.id].table.columns.map(col => col.label),
+        ['Specialisation', '2022', '2023'], 'a name really does head the column');
+
+      const help = helpText(h);
+      assert.includes(help, 'Name the inputs');
+      assert.includes(help, 'headed by the name alone');
+      assert.includes(help, 'keeps its automatic name');
+    });
+
     test('an ID is still kept out of the total, and the Help still says so', () => {
       const h = boot();
       const [s, ar, o] = h.build('source', 'aggregateRows', 'output');

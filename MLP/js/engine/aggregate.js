@@ -276,14 +276,10 @@ function aggregateRowsColumn(node) {
    a duplicate label is a file with two columns of the same name and no way to
    tell them apart. A column keyed `sum` and labelled `Total` collides on one
    and not the other, and renaming what did not clash would be noise on screen
-   for no gain. */
-function uniqueAgainst(taken, want, join) {
-  if (!taken[want]) return want;
-  var n = 2;
-  while (taken[want + join + n]) n++;
-  return want + join + n;
-}
+   for no gain.
 
+   uniqueAgainst() lives in data/table.js, because Combine's join needs the same
+   rule for the same reason and one spelling of it is better than two. */
 function aggregateRowsColumns(node, t) {
   var carried = aggregateRowsCarried(t);
   var out = aggregateRowsColumn(node);

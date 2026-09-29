@@ -299,7 +299,13 @@ function defaultCfg(type) {
   if (type === 'aggregateRows')    return { op: 'sum' };
   // dedupe defaults off: merge stacks rows, and discarding identical rows is a
   // decision the user makes rather than one the node makes quietly.
-  if (type === 'combine') return { mode: 'merge', dedupe: false, base: '', key: '' };
+  /* `labels` is the same key, the same shape and the same control name Compare
+     uses: a map from an INPUT'S node id to what the user calls it. Empty means
+     every input keeps its automatic name, which is what every query written
+     before this existed does. It only reaches the result in Join mode, because
+     that is the only mode where an input's identity becomes a column header;
+     the row modes stack rows under one header and have nothing to label. */
+  if (type === 'combine') return { mode: 'merge', dedupe: false, base: '', key: '', labels: {} };
   // cols:null means "every column", so a fresh Select is a pass-through and
   // only becomes a narrowing once the user unticks something. An explicit list
   // of every key would go stale the moment the node was rewired.

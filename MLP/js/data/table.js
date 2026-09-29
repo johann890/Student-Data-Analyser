@@ -114,6 +114,27 @@ var STUDENT_COLUMNS = [
   { key:'courses',        label:'Courses',        type:COLTYPE.COURSES }
 ];
 
+/* A NAME THAT IS NOT ALREADY TAKEN
+   ---------------------------------------------------------------------------
+   `taken` is a map of the names already in use, `want` the one being asked for,
+   and `join` what separates the name from the number when one has to be added:
+   `_` for a key, which has to stay selector-safe, and a space for a label,
+   which is read by a person.
+
+   Two nodes build a header out of columns that arrived from somewhere else, and
+   both can be handed the same name twice: Combine's join, where two inputs
+   carry a column of the same name, and AggregateRows, where the measure it
+   appends can collide with a label it carries. Keys and labels are made unique
+   separately, because colIndex() reads the key and serialiseTable() writes the
+   label as the CSV header, so the two can clash independently and renaming what
+   did not clash is noise. */
+function uniqueAgainst(taken, want, join) {
+  if (!taken[want]) return want;
+  var n = 2;
+  while (taken[want + join + n]) n++;
+  return want + join + n;
+}
+
 /* The one table builder: every Source produces this shape, and a row is a
    student. The student's courses ride along nested in the last cell rather than
    being flattened into rows of their own. */

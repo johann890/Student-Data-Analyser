@@ -558,8 +558,11 @@ function configHTML(node, schemas) {
         html += '<div class="cfg-label">Base</div>' +
           '<select' + ctl(id, 'base') + '>' +
             cinIds.map(function(inId) {
-              var up = findNode(inId);
-              return opt(String(inId), String(baseId), up ? (upstreamLabel(up)) : ('Input ' + inId));
+              /* combineInputLabel(), not upstreamLabel(), so an input the user
+                 has named is called that here too. Picking a base out of a list
+                 of node ids when the boxes below call the same inputs 2022 and
+                 2023 would be two names for one thing. */
+              return opt(String(inId), String(baseId), combineInputLabel(node, inId));
             }).join('') +
           '</select>';
       }
@@ -581,6 +584,35 @@ function configHTML(node, schemas) {
         html += '<label class="cmb-check"><input type="checkbox"' +
             (cfg.keepUnmatched ? ' checked' : '') + ctl(id, 'keepUnmatched') + '>' +
           '<span>Keep base rows with no match</span></label>';
+
+        /* Only in Join, and only with something to name. Join is the one mode
+           where an input's identity becomes a column header, so it is the one
+           mode where naming an input changes the result. Offering the boxes
+           under Merge would be offering a setting that does nothing.
+
+           Built exactly like Compare's branch list, down to the swatch and the
+           placeholder, because it is the same question asked of the same kind
+           of thing, and a user who has named a Compare branch should not have
+           to learn a second control to name a Combine input. The placeholder
+           carries the automatic name, so leaving a box empty is visibly a
+           choice rather than a gap. */
+        if (cinIds.length > 1) {
+          var jlabels = cfg.labels || {};
+          html += '<div class="cfg-label">Name the inputs</div><div class="cmp-branches">';
+          cinIds.forEach(function(inId) {
+            var up = findNode(inId);
+            html += '<div class="cmp-branch">' +
+              '<span class="cmp-swatch" style="background:' +
+                (up ? getNodeEdgeColor(up) : '#555') + '"></span>' +
+              '<input type="text" class="cmp-label-input" maxlength="' + COMBINE_LABEL_MAX + '" ' +
+                'placeholder="' + esc(up ? upstreamLabel(up) : ('Input ' + inId)) + ' (auto)" ' +
+                'value="' + esc(jlabels[inId] || '') + '"' + ctl(id, 'label:' + inId) + '>' +
+            '</div>';
+          });
+          html += '</div>' +
+            '<div class="cmp-hint">A name becomes the heading of the columns that ' +
+            'input brings. An input bringing one column is headed by the name alone.</div>';
+        }
       }
       html += '<div class="cmp-hint">' +
         (cmode.key === 'intersect'

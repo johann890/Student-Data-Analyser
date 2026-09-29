@@ -1026,6 +1026,11 @@
                 with no match</b>, which leaves the missing cells blank instead. Where two branches
                 carry the same column name, the incoming one is renamed after the node it came from
                 rather than overwriting what is already there.
+                <br>Under <b>Name the inputs</b> you can say what each branch is called, and that
+                name heads the columns it brings instead of the node's own. A branch bringing one
+                column is headed by the name alone, so three branches named 2022, 2023 and 2024
+                give you a table with those three headings. A branch bringing several has the name
+                added to each of them. Leave a box empty and that branch keeps its automatic name.
                 <div class="help-eg">
                   <div class="help-eg-t">Example</div>
                   <div class="help-eg-io">
@@ -1033,7 +1038,7 @@
                     <div class="help-eg-arrow">&rarr;</div>
                     <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Student</th><th>GPA&nbsp;2022</th><th>GPA&nbsp;2023</th></tr><tr><td>Jo</td><td>7.8</td><td>7.1</td></tr><tr><td>Ana</td><td>6.2</td><td>6.9</td></tr></table></div>
                   </div>
-                  <p class="help-eg-note">Settings: <b>Mode</b> Join, <b>Base</b> the 2022 branch, <b>Match rows on</b> Student. Merge would have stacked these into four rows instead.</p>
+                  <p class="help-eg-note">Settings: <b>Mode</b> Join, <b>Base</b> the 2022 branch, <b>Match rows on</b> Student, and the two branches named GPA&nbsp;2022 and GPA&nbsp;2023. Without those names the second column would have read GPA &middot; Select For #5, after the node rather than the year. Merge would have stacked these into four rows instead.</p>
                 </div></dd>
             <dt>Compare</dt>
             <dd>Puts branches beside each other instead: one row per branch, with a column per
