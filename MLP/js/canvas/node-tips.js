@@ -60,7 +60,8 @@ var NODE_TIPS = {
           'this count enrolments rather than people.',
   aggregate: 'Reduces the whole table to one value, such as a count or an average.',
   aggregateColumns: 'One row out, with the measure applied down each column.',
-  aggregateRows:    'One column out, with the measure applied across each row.',
+  aggregateRows:    'The measure applied across each row. Label columns come ' +
+                    'through beside it, so each answer still says which row it is.',
   combine:'Joins branches into one table: stack their rows, or match them up ' +
           'side by side on a shared column.',
   compare:'Puts branches side by side, one row each, so two cohorts can be read ' +

@@ -45,6 +45,8 @@ window.addVariable = addVariable;
 window.requestRemoveVariable = requestRemoveVariable;
 window.toggleVarMenu = toggleVarMenu;
 window.useVariableAt = useVariableAt;
+window.startGuide = startGuide;
+window.libOpenExample = libOpenExample;
 
 /* TEST HOOK
    Set window.__QB_TEST__ = true *before* loading these scripts to expose internals to
@@ -198,6 +200,8 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     applyAggregateColumns: applyAggregateColumns,
     aggregateRowsColumn: aggregateRowsColumn, aggregateRowsSchema: aggregateRowsSchema,
     aggregateRowsIdx: aggregateRowsIdx, applyAggregateRows: applyAggregateRows,
+    aggregateRowsKeepIdx: aggregateRowsKeepIdx, aggregateRowsCarried: aggregateRowsCarried,
+    aggregateRowsColumns: aggregateRowsColumns,
     outputCols: outputCols,
     columnValues: columnValues,
 
@@ -366,6 +370,11 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     libPendingNow: function(){ return libPending; },
     libNoticeNow:  function(){ return libNotice; },
 
+    // the worked examples, which are in the page and never in the store
+    LIB_EXAMPLES: LIB_EXAMPLES, libExampleGet: libExampleGet,
+    libExampleCardHTML: libExampleCardHTML, libExamplesHTML: libExamplesHTML,
+    libOpenExample: libOpenExample,
+
     // export / import
     libCleanEntry: libCleanEntry, libExportPayload: libExportPayload,
     libImportText: libImportText, libImportSummary: libImportSummary,
@@ -397,7 +406,22 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     syncMenuButtons: syncMenuButtons,
     varUseWords: varUseWords, varChipHTML: varChipHTML,
     varPendingNow: function(){ return varPending; },
-    readVariables: readVariables, pruneVarBindings: pruneVarBindings
+    readVariables: readVariables, pruneVarBindings: pruneVarBindings,
+
+    /* THE GUIDED WALKTHROUGH
+       The step data and the machinery are handed back separately, because the
+       suite checks them separately: the data for its shape and its copy, the
+       rest for what it points at and for the promise that the only thing it
+       ever writes is the practice query the reader asked for. guideTargetEl is
+       the only honest geometry assertion available, since jsdom lays nothing
+       out and every rect comes back as zeros. */
+    GUIDE_STEPS: GUIDE_STEPS, GUIDE_EXAMPLE: GUIDE_EXAMPLE,
+    startGuide: startGuide, endGuide: endGuide,
+    guideNext: guideNext, guideBack: guideBack, guideGo: guideGo,
+    guideRunning: guideRunning, guideStep: guideStep, guideStepId: guideStepId,
+    guidePlace: guidePlace, guideResolve: guideResolve, guideDraw: guideDraw,
+    guideTargetEl: guideTargetEl, guideNodeId: guideNodeId, guideDisarm: guideDisarm,
+    guidePendingNow: function(){ return guidePending; }
   };
 }
 

@@ -441,18 +441,27 @@ function configHTML(node, schemas) {
       /* Naming the count of contributing columns is the whole warning: if it
          says 1, the measure is reducing a single column to itself, and if it
          counts a column the user thinks of as a label, the label is being
-         added into the total. */
+         added into the total. Count is the only measure that can do the
+         second, and it is the reason this line still leads with the figure.
+
+         What is CARRIED is named too, because the shape of the result changed
+         when labels began surviving the step: a reader who expects one column
+         and gets four should be told before the query runs rather than after.
+         Naming them by label, not just by number, makes the claim checkable
+         against the node above. */
       var rIdx = aggregateRowsIdx(node, schema);
+      var rKeep = aggregateRowsCarried(schema);
       var rTotal = schema.columns.length;
-      var rSkip = rTotal - rIdx.length;
       html += '<div class="cmp-hint">' +
-        'Out: one column, one row per row in \u2014 ' + esc(op.label.toLowerCase()) +
+        'Out: one row per row in, ' + esc(op.label.toLowerCase()) +
         ' across ' + (rTotal
           ? rIdx.length + ' of ' + rTotal + ' column' + (rTotal === 1 ? '' : 's')
           : 'each row') + '.' +
-        (rSkip > 0
-          ? ' ' + rSkip + ' non-measure column' + (rSkip === 1 ? ' is' : 's are') +
-            ' ignored. Put a <b>Select</b> in front.'
+        (rKeep.length
+          ? ' ' + rKeep.length + ' label column' + (rKeep.length === 1 ? '' : 's') +
+            ' come' + (rKeep.length === 1 ? 's' : '') + ' through: <b>' +
+            rKeep.map(function(c){ return esc(c.label); }).join('</b>, <b>') + '</b>.' +
+            ' Drop ' + (rKeep.length === 1 ? 'it' : 'them') + ' with a <b>Select</b>.'
           : '') +
         '</div>';
     } else if (isCols) {

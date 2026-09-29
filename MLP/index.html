@@ -18,6 +18,7 @@
 <link rel="stylesheet" href="css/dialogs.css">
 <link rel="stylesheet" href="css/library.css">
 <link rel="stylesheet" href="css/variables.css">
+<link rel="stylesheet" href="css/guide.css">
 </head>
 <body>
 
@@ -79,7 +80,7 @@
       </button>
       <button class="proc-item cat-summarise" onclick="addProcNode('aggregateRows')">
         <span class="proc-name">Aggregate Rows</span>
-        <span class="proc-desc">One value per row, one column out</span>
+        <span class="proc-desc">One value per row, labels kept</span>
       </button>
       <div class="proc-group cat-branches">Branches</div>
       <button class="proc-item cat-branches" onclick="addProcNode('combine')">
@@ -310,6 +311,7 @@
 
     <div class="help-main">
       <nav class="help-nav" id="helpNav">
+        <button class="help-navitem" data-goto="help-guide">Guided walkthrough</button>
         <button class="help-navitem" data-goto="help-start">Start here</button>
         <button class="help-navitem" data-goto="help-data">Loading the data</button>
         <button class="help-navitem" data-goto="help-toolbar">The toolbar</button>
@@ -324,6 +326,36 @@
       </nav>
 
       <div class="help-body" id="helpBody">
+
+        <!-- ── GUIDED WALKTHROUGH ──────────────────────────── -->
+        <!-- First, because everything below it is reference: written to be
+             looked up by somebody who already knows what they are looking for.
+             This is the only part of the dialog that works for somebody who
+             does not, and it is the answer to the two weakest scores in the
+             usability test, learnability and confidence.
+
+             It asks nothing of the reader. The practice query is already built
+             when the walkthrough starts, so every step is about something that
+             is on the screen rather than something the reader has to make
+             appear first. See js/guide/steps.js. -->
+        <section id="help-guide">
+          <h3>Guided walkthrough</h3>
+          <p>A short walk around a query that is already built, so you can see what the parts
+             are before you make one yourself. It puts a small practice query on the canvas and
+             then talks you through it, one part at a time.</p>
+
+          <p>Nothing is asked of you and nothing is loaded from your own files. You can leave at
+             any point with <b>Escape</b>, and the practice query stays on the canvas afterwards
+             so you can take it apart, change it, or run it against real data.</p>
+
+          <div class="help-tip">
+            <b>It replaces what is on the canvas.</b> If you have a query you want to keep, save
+            it first. The button will ask you once before it does anything.
+          </div>
+
+          <p><button type="button" class="guide-start" id="guideStartBtn"
+                     onclick="startGuide(this)">Start the walkthrough</button></p>
+        </section>
 
         <!-- ── START ───────────────────────────────────────── -->
         <section id="help-start">
@@ -735,7 +767,7 @@
               <text x="24" y="410" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Columns</text>
               <text x="24" y="423" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One row out, one value per column</text>
               <text x="24" y="444" fill="#5ac8c8" font-size="11" font-family="system-ui, sans-serif">Aggregate Rows</text>
-              <text x="24" y="457" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One value per row, one column out</text>
+              <text x="24" y="457" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">One value per row, labels kept</text>
               <text x="22" y="484" fill="#e089ae" font-size="9" letter-spacing="0.8" font-family="system-ui, sans-serif">BRANCHES</text>
               <text x="24" y="504" fill="#e089ae" font-size="11" font-family="system-ui, sans-serif">Combine</text>
               <text x="24" y="517" fill="#6f6f6f" font-size="9" font-family="system-ui, sans-serif">Stack rows, or join columns side by side</text>
@@ -961,18 +993,19 @@
                 </div></dd>
             <dt>Aggregate Rows</dt>
             <dd>The mirror of Aggregate Columns, and the one that runs across the page instead of
-                down it: one value for every row, and a single column out. The row count does not
-                change. It replaces the whole row rather than adding to it, because totalling a row
-                that still carries an ID is not a meaningful thing to have done. Put a <b>Select</b>
-                in front to narrow the row down to the figures you actually mean to combine.
+                down it: one value for every row. The row count does not change. The figures on a
+                row are replaced by the single value they combine to, and the columns that name the
+                row, its labels, come through beside it, so every answer still says which row it
+                belongs to. An ID is a label, not a figure, so it is never added into the total.
+                Put a <b>Select</b> after this node to drop the labels you do not want.
                 <div class="help-eg">
                   <div class="help-eg-t">Example</div>
                   <div class="help-eg-io">
                     <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Student</th><th>2022</th><th>2023</th></tr><tr><td>Jo</td><td>4</td><td>3</td></tr><tr><td>Ana</td><td>5</td><td>5</td></tr></table></div>
                     <div class="help-eg-arrow">&rarr;</div>
-                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Sum</th></tr><tr><td>7</td></tr><tr><td>10</td></tr></table></div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Student</th><th>Sum</th></tr><tr><td>Jo</td><td>7</td></tr><tr><td>Ana</td><td>10</td></tr></table></div>
                   </div>
-                  <p class="help-eg-note">Settings: <b>Measure</b> Sum. One value per row and a single column out, so the row count is unchanged. Student is not a measure and is left out of the total.</p>
+                  <p class="help-eg-note">Settings: <b>Measure</b> Sum. One value per row, so the row count is unchanged. Student is not a measure, so it is left out of the total and carried through as the label.</p>
                 </div></dd>
           </dl>
 
@@ -1669,9 +1702,16 @@
 <script src="js/queries/saveload.js"></script>
 <script src="js/queries/library-store.js"></script>
 <script src="js/queries/library-thumb.js"></script>
+<script src="js/queries/library-examples.js"></script>
 <script src="js/queries/library-dialog.js"></script>
 <script src="js/shell/toolbar-menus.js"></script>
 <script src="js/canvas/gestures.js"></script>
+<!-- Before panel-width.js, and this is not a preference. applyView() calls
+     guidePlace(), and panel-width.js runs wirePanelResize() as it loads, which
+     reaches applyView() before the first paint. Loaded any later than this, the
+     page dies on "guidePlace is not defined" before it has drawn anything. -->
+<script src="js/guide/steps.js"></script>
+<script src="js/guide/guide.js"></script>
 <script src="js/results/panel-width.js"></script>
 <script src="js/shell/toolbar-height.js"></script>
 <script src="js/shell/events.js"></script>

@@ -201,26 +201,57 @@ function applyAggregateColumns(node, t, log) {
 
 /* The third member of the family, and the one that runs the other way. Aggregate
    collapses a table to a cell; AggregateColumns collapses each column to a cell
-   and emits one row; AggregateRows collapses each ROW to a cell and emits one
-   column. Row count is preserved, which is what makes it the counterpart of
-   AggregateColumns rather than a second spelling of it:
+   and emits one row; AggregateRows collapses each ROW to a cell, keeping one
+   row out for every row in:
 
      AggregateColumns   N rows x M cols  ->  1 row  x M cols   (down each column)
-     AggregateRows      N rows x M cols  ->  N rows x 1 col    (across each row)
+     AggregateRows      N rows x M cols  ->  N rows x L+1 cols (across each row)
 
-   THE WHOLE ROW IS REPLACED, not appended to. The settled position is that row
-   aggregation assumes a row of measures: totalling a row that still carries a
-   student id is not a meaningful operation, so the question of whether the
-   answer replaces the row or joins it never arises. Narrowing to the measures
-   first is a Select, which is a node that exists, so the composition is
-   Select then AggregateRows, and neither node grows a column picker for the
-   other's benefit.
+   THE MEASURE COLUMNS ARE REPLACED. THE LABEL COLUMNS ARE CARRIED.
 
-   The cost is that a label column goes with everything else: total a histogram
-   of one row per year and the years are not in the result. That is the honest
-   consequence of the rule above rather than an oversight, and the fix, if it is
-   ever wanted, is the general "say which columns are aggregated" approach the
-   supervisor described and explicitly deferred. */
+   This used to replace the whole row, on the position that row aggregation
+   assumes a row of measures, so a label had no business being there and
+   narrowing to the measures first was a Select. The rule was consistent and it
+   made the node useless for the thing it is most often reached for. Averaging a
+   breakdown, one row per course, produced a column of averages with no courses
+   beside them: figures that cannot be read, exported or wired onward, because
+   nothing in the table says which row each one belongs to. Select could not
+   help, since the label has to survive the step to be in the result at all, and
+   dropping it beforehand is the very thing that loses it.
+
+   So the split is made here instead, and it is made by the same test that
+   already decides what the arithmetic may touch. A column that isMeasurable()
+   accepts is a measure and feeds the answer. Everything else, text, enums,
+   identifiers and the nested course column, is a label: it identifies the row
+   rather than contributing to it, and it comes out unchanged. That is why
+   nothing had to be added to say which columns are which, and why the promise
+   the old comment made about ids is still kept. An id is excluded from the sum
+   exactly as before. It is now shown next to it rather than thrown away.
+
+   Count is the one measure this does not tidy up. It still asks how many values
+   a row holds and still accepts any column, so on a row with a label the label
+   is counted AND carried. That is the documented meaning of count here and
+   changing it is a separate decision, so the panel goes on naming how many
+   columns contribute, which is where a label being added into a total shows up
+   before the query is run.                                                    */
+
+/* The columns that identify a row rather than contributing to it, as indices
+   into the incoming header. Indices rather than columns, because the row
+   builder needs to read the cells and the header builder needs to name them,
+   and deriving both from one list is what stops the two disagreeing about
+   which column went where. */
+function aggregateRowsKeepIdx(t) {
+  var idx = [];
+  t.columns.forEach(function(c, i) {
+    if (!isMeasurable(t, c)) idx.push(i);
+  });
+  return idx;
+}
+
+function aggregateRowsCarried(t) {
+  return aggregateRowsKeepIdx(t).map(function(i){ return t.columns[i]; });
+}
+
 function aggregateRowsColumn(node) {
   var op = aggOp(node);
   // No single input column to name, so the measure names itself. Keyed on the
@@ -228,8 +259,45 @@ function aggregateRowsColumn(node) {
   return { key: op.key, label: op.label, type: COLTYPE.NUMBER };
 }
 
+/* The whole output header: the labels, in the order they arrived, then the
+   measure. The measure goes last because that is the order the result reads in,
+   label first and answer after, and because appending keeps every carried
+   column at the index it already had.
+
+   A clash is renamed rather than allowed, the way joinColumns() renames one.
+   A table whose label column is already keyed `count` would otherwise produce
+   two columns under one key, and colIndex() hands every later node the first
+   it finds, so the wrong column would feed the next step. Rare, and silent,
+   which is the combination worth spending a few lines on.
+
+   Key and label are made unique SEPARATELY because they are read by different
+   things and can clash independently. colIndex() reads the key, so a duplicate
+   key is a wiring bug. serialiseTable() writes the LABEL as the CSV header, so
+   a duplicate label is a file with two columns of the same name and no way to
+   tell them apart. A column keyed `sum` and labelled `Total` collides on one
+   and not the other, and renaming what did not clash would be noise on screen
+   for no gain. */
+function uniqueAgainst(taken, want, join) {
+  if (!taken[want]) return want;
+  var n = 2;
+  while (taken[want + join + n]) n++;
+  return want + join + n;
+}
+
+function aggregateRowsColumns(node, t) {
+  var carried = aggregateRowsCarried(t);
+  var out = aggregateRowsColumn(node);
+  var keys = {}, labels = {};
+  carried.forEach(function(c){ keys[c.key] = true; labels[c.label] = true; });
+  return carried.concat([{
+    key:   uniqueAgainst(keys, out.key, '_'),
+    label: uniqueAgainst(labels, out.label, ' '),
+    type:  out.type
+  }]);
+}
+
 function aggregateRowsSchema(node, inSchema) {
-  return makeTable([aggregateRowsColumn(node)], []);
+  return makeTable(aggregateRowsColumns(node, inSchema), []);
 }
 
 /* Which cells of a row feed the measure. The same rule AggregateColumns uses,
@@ -248,21 +316,21 @@ function aggregateRowsIdx(node, t) {
 
 function applyAggregateRows(node, t, log) {
   var op = aggOp(node);
-  var out = aggregateRowsColumn(node);
+  var cols = aggregateRowsColumns(node, t);
   var idx = aggregateRowsIdx(node, t);
+  var keep = aggregateRowsKeepIdx(t);
 
   var rows = t.rows.map(function(r) {
-    return [reduceValues(op.key, idx.map(function(i){ return r[i]; }))];
+    return keep.map(function(i){ return r[i]; })
+      .concat([reduceValues(op.key, idx.map(function(i){ return r[i]; }))]);
   });
 
-  var skipped = t.columns.length - idx.length;
   log.push(logEntry('AGGREGATE ROWS', [{s:op.label.toLowerCase() + ' across'},
                                        {c:'val', s:idx.length},
                                        {s:'column' + (idx.length === 1 ? '' : 's') + ', per row'}]));
-  if (skipped > 0) {
-    log.push(logEntry('AGGREGATE ROWS', [{s:'ignored'}, {c:'val', s:skipped},
-      {s:'non-measure column' + (skipped === 1 ? '' : 's')}]));
+  if (keep.length > 0) {
+    log.push(logEntry('AGGREGATE ROWS', [{s:'carried'}, {c:'val', s:keep.length},
+      {s:'label column' + (keep.length === 1 ? '' : 's')}]));
   }
-  return makeTable([out], rows);
+  return makeTable(cols, rows);
 }
-
