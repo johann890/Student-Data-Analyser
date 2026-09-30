@@ -131,7 +131,17 @@
   white-space: nowrap;
   width: 58px;
 }
-th.cmp-num { color: #8a8a8a !important; }
+/* A numeric heading sits over its own numbers.
+   The alignment above is the cell's, and `.rtable th` in results-panel.css set
+   every heading to the left with a selector of equal weight, so the two halves
+   of a numeric column were set in opposite directions: GPA at the left of the
+   column, 5.53 at the right of it. That is the second half of what made a
+   single average unreadable, and it is fixed here rather than by loosening the
+   heading rule, which is right for the text columns it also covers.
+
+   This file is linked after results-panel.css, which is what lets a selector
+   of the same weight win. That order is load-bearing and index.html says so. */
+th.cmp-num { color: #8a8a8a !important; text-align: right; }
 .cmp-empty {
   padding: 8px 11px;
   font-size: 12px;
