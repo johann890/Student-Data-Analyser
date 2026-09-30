@@ -138,26 +138,26 @@ module.exports = ({ describe, test }) => {
     test('the column list comes from the incoming numeric columns', () => {
       const h = boot();
       const [s, a, o] = h.build('source', 'aggregate', 'output');
-      h.set(a.id, 'op', 'average');
-      assert.includes(h.optionsOf(a.id, 'col'), 'gpa');
+      h.set(a.id, 'stat.0.op', 'average');
+      assert.includes(h.optionsOf(a.id, 'stat.0.col'), 'gpa');
     });
 
     test('it follows a narrowed header rather than assuming student records', () => {
       const h = boot();
       const [s, sel, a, o] = h.build('source', 'select', 'aggregate', 'output');
-      h.set(a.id, 'op', 'average');
-      assert.includes(h.optionsOf(a.id, 'col'), 'gpa');
+      h.set(a.id, 'stat.0.op', 'average');
+      assert.includes(h.optionsOf(a.id, 'stat.0.col'), 'gpa');
 
       h.set(sel.id, 'column:gpa', false);
-      assert.excludes(h.optionsOf(a.id, 'col'), 'gpa',
+      assert.excludes(h.optionsOf(a.id, 'stat.0.col'), 'gpa',
         'a column that stopped arriving must stop being offered');
     });
 
     test('identifier columns are not offered as measures', () => {
       const h = boot();
       const [s, a, o] = h.build('source', 'aggregate', 'output');
-      h.set(a.id, 'op', 'average');
-      const opts = h.optionsOf(a.id, 'col');
+      h.set(a.id, 'stat.0.op', 'average');
+      const opts = h.optionsOf(a.id, 'stat.0.col');
       assert.ok(opts.length > 0, 'the control must actually be rendered');
       assert.excludes(opts, 'id', 'averaging an ID is meaningless');
     });

@@ -320,7 +320,7 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, ar, agg, o] = h.build('source', 'aggregateRows', 'aggregate', 'output');
       h.set(ar.id, 'op', 'sum');
-      h.set(agg.id, 'op', 'average');
+      h.set(agg.id, 'stat.0.op', 'average');
       h.w.runQuery();
       const want = A.STUDENTS.reduce((a, s2) => a + s2.gpa, 0) / A.STUDENTS.length;
       assert.close(h.entry(o.id).table.rows[0][0], want, 1e-9);

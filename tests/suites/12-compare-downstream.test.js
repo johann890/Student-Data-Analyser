@@ -209,9 +209,9 @@ module.exports = ({ describe, test }) => {
         h.set(f.id, 'crit.0.value:courses.code', CODE);
       });
       h.w.render();
-      h.set(agg.id, 'op', 'average');
+      h.set(agg.id, 'stat.0.op', 'average');
       h.w.render();
-      h.set(agg.id, 'col', 'count');
+      h.set(agg.id, 'stat.0.col', 'count');
       h.w.runQuery();
 
       const per = [y1, y2].map(y =>

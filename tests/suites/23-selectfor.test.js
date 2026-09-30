@@ -665,7 +665,7 @@ module.exports = ({ describe, test }) => {
       const [src, sf, sel, agg, out] = h.build('source', 'selectFor', 'select', 'aggregate', 'output');
       h.set(sf.id, 'by', 'specialisation'); h.w.render();
       A.findNode(sel.id).cfg.cols = ['count']; h.w.render();
-      h.set(agg.id, 'op', 'average'); h.w.render();
+      h.set(agg.id, 'stat.0.op', 'average'); h.w.render();
       h.w.runQuery();
       const t = h.entry(out.id).source;
       assert.close(t.rows[0][0], A.STUDENTS.length / A.SPECS.length, 1e-9,

@@ -470,8 +470,8 @@ module.exports = ({ describe, test }) => {
       reset();
       const [s, p, ag, o] = t.build('source', 'project', 'aggregate', 'output');
       await t.loadArchive(s.id, [2022]);
-      t.set(ag.id, 'op', 'average');
-      t.set(ag.id, 'col', 'level');
+      t.set(ag.id, 'stat.0.op', 'average');
+      t.set(ag.id, 'stat.0.col', 'level');
       w.runQuery();
       const tab = t.entry(o.id).table;
       const got = tab.rows[0][0];
@@ -488,8 +488,8 @@ module.exports = ({ describe, test }) => {
       t.set(f.id, 'crit.0.field', 'id');
       t.set(f.id, 'crit.0.op:id', 'eq');
       t.set(f.id, 'crit.0.value:id', '300107735');
-      t.set(ag.id, 'op', 'max');
-      t.set(ag.id, 'col', 'level');
+      t.set(ag.id, 'stat.0.op', 'max');
+      t.set(ag.id, 'stat.0.col', 'level');
       w.runQuery();
       assert.equal(t.entry(o.id).table.rows[0][0], 4);
       assert.ok(s && p);

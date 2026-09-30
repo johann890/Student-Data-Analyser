@@ -264,8 +264,8 @@ module.exports = ({ describe, test }) => {
     test('a downstream Aggregate offers Mark as a measure', () => {
       const h = boot();
       const [s, p, a, o] = h.build('source', 'project', 'aggregate', 'output');
-      h.set(a.id, 'op', 'average');
-      assert.includes(h.optionsOf(a.id, 'col'), 'gradePoints');
+      h.set(a.id, 'stat.0.op', 'average');
+      assert.includes(h.optionsOf(a.id, 'stat.0.col'), 'gradePoints');
     });
   });
 
@@ -383,8 +383,8 @@ module.exports = ({ describe, test }) => {
       h.set(f.id, 'crit.0.field', 'code');
       h.set(f.id, 'crit.0.value:code', CODE);
       h.w.render();
-      h.set(a.id, 'op', 'average');
-      h.set(a.id, 'col', 'gradePoints');
+      h.set(a.id, 'stat.0.op', 'average');
+      h.set(a.id, 'stat.0.col', 'gradePoints');
       h.w.runQuery();
       const marks = [];
       S.forEach(x => x.courses.forEach(c => { if (c.code === CODE) marks.push(c.mark); }));

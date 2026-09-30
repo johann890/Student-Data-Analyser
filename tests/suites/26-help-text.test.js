@@ -110,7 +110,7 @@ module.exports = ({ describe, test }) => {
     });
 
     test('the shape of the result is still stated, on every node that changes it', () => {
-      [['aggregate', 'Out: one row, one column'],
+      [['aggregate', 'Out: one row,'],
        ['aggregateColumns', 'Out: one row'],
        ['aggregateRows', 'Out: one row per row in'],
        ['unique', 'Out:'],
