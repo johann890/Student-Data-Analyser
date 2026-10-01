@@ -147,10 +147,12 @@ function statsOf(node) {
   return (Array.isArray(s) && s.length) ? s : defaultStats();
 }
 
-/* Which column one measure applies to. Resolved against the table exactly as
-   aggregateCol() does, and against the WHOLE data table rather than a group's
-   rows. A per-group resolve could reach different columns in different groups
-   and the one header would then be true of neither. */
+/* Which column one measure applies to. Resolved against the table rather than
+   trusted from the config, because a saved key can outlive its column (rewiring
+   the node behind a different branch is enough), and against the WHOLE data
+   table rather than a group's rows. A per-group resolve could reach different
+   columns in different groups and the one header would then be true of
+   neither. Aggregate resolves its measures through this same function. */
 function statCol(stat, t) {
   var op = selectForOp(stat && stat.op);
   if (!op.needsCol) return null;
@@ -362,6 +364,44 @@ function bandIndexOf(bands, v) {
   return -1;
 }
 
+/* ROWS NO GROUP CAN EVER HOLD
+   ---------------------------------------------------------------------------
+   A blank is not a label. labelsFromData() will not make a group out of one and
+   labelsFromTable() drops it from a wired label set, which is right both times:
+   a group named "" is a group nothing can refer to. The consequence is that a
+   row whose grouping value is missing belongs to no group, and before this it
+   left without a word. A grade distribution over the 2024 archive came out as
+   eleven groups totalling 1892 of the 1927 enrolments that went in, and the
+   thirty-five that vanished were the withdrawals: the rows most likely to be
+   the point of the question.
+
+   The bands path two functions up already counts this and says so ("no Grade
+   and are in no band"). The same loss on the group-by-value path went unsaid,
+   and Histogram makes bins-summing-to-the-rows an invariant with a test behind
+   it, so the silence was this node disagreeing with itself.
+
+   This is NOT the same thing as a narrowed label set. A user who wires ten
+   courses into the labels port has chosen to leave the rest out, and saying so
+   would be noise. A blank cannot be chosen: no label set, wired or derived,
+   can hold it. So it is counted whether the labels came from the data or from a
+   branch, and it is reported separately from the labels that could not be
+   matched, because the fix is different. A blank means the data is incomplete;
+   an unmatchable label means the labels branch is wrong.
+
+   Only the column case has an answer here. A course predicate reads the nested
+   column, where a row's value is a SET of enrolments rather than one cell, so
+   "this row has no value" is not a case that shape has: a student with no
+   enrolments is in no group because they took nothing, which is a true
+   statement about them rather than a gap in the file. */
+function blankGroupRows(f, t) {
+  if (!f || !f.column) return 0;
+  var i = colIndex(t, f.key);
+  if (i === -1) return 0;
+  var n = 0;
+  t.rows.forEach(function(r){ if (isBlank(r[i])) n++; });
+  return n;
+}
+
 function labelsFromData(node, t) {
   var f = groupField(node, t);
   if (!f) return [];
@@ -491,7 +531,8 @@ function evaluateSelectForBands(node, ctx, t, lt, hasSource) {
   if (blanks) {
     ctx.log.push(logEntry('SKIP', [
       {c:'val', s:blanks}, {s:(blanks === 1 ? 'row has' : 'rows have')},
-      {s:'no'}, {c:'val', s:col.label}, {s:'and are in no band'}
+      {s:'no'}, {c:'val', s:col.label},
+      {s:(blanks === 1 ? 'and is in no band' : 'and are in no band')}
     ]));
   }
   /* Counted apart because they are fixed apart. A malformed row is a typo in
@@ -592,6 +633,16 @@ function evaluateSelectFor(node, ctx) {
     ctx.log.push(logEntry('SKIP', [
       {c:'val', s:skipped}, {s:(skipped === 1 ? 'label' : 'labels')},
       {s:'this column cannot be matched against'}
+    ]));
+  }
+  /* Said in the bands path's words, because it is the bands path's situation:
+     the row is here, it was counted in the total above, and no group holds it. */
+  var missing = blankGroupRows(f, t);
+  if (missing) {
+    ctx.log.push(logEntry('SKIP', [
+      {c:'val', s:missing}, {s:(missing === 1 ? 'row has' : 'rows have')},
+      {s:'no'}, {c:'val', s:f.label},
+      {s:(missing === 1 ? 'and is in no group' : 'and are in no group')}
     ]));
   }
 

@@ -48,8 +48,8 @@ module.exports = ({ describe, test }) => {
     test('an Aggregate average is a 1x1 table that says what it measured', () => {
       const h = boot();
       const [s, f, a, o] = h.build('source', 'filter', 'aggregate', 'output');
-      h.set(a.id, 'op', 'average');
-      h.set(a.id, 'col', 'gpa');
+      h.set(a.id, 'stat.0.op', 'average');
+      h.set(a.id, 'stat.0.col', 'gpa');
       h.w.runQuery();
       const t = h.entry(o.id).table;
       assert.equal(t.columns.length, 1);
@@ -86,7 +86,7 @@ module.exports = ({ describe, test }) => {
     test('Copy on an Aggregate average carries its label', () => {
       const h = boot();
       const [s, f, a, o] = h.build('source', 'filter', 'aggregate', 'output');
-      h.set(a.id, 'op', 'average');
+      h.set(a.id, 'stat.0.op', 'average');
       h.w.runQuery();
       h.w.copyOutput(o.id, h.doc.createElement('button'));
       const lines = h.copied[h.copied.length - 1].split('\n');
@@ -139,7 +139,7 @@ module.exports = ({ describe, test }) => {
          punished them for it. */
       const h = boot();
       const [s, a, o] = h.build('source', 'aggregate', 'output');
-      h.set(a.id, 'op', 'average');
+      h.set(a.id, 'stat.0.op', 'average');
       h.w.runQuery();
       assert.ok(h.q('.big-num'), 'a 1x1 table should render as a headline number');
       assert.includes(h.text('.result-head'), 'Average', 'and must say what it is');
@@ -158,7 +158,7 @@ module.exports = ({ describe, test }) => {
       const h = boot();
       const [s, f, a, o] = h.build('source', 'filter', 'aggregate', 'output');
       h.set(f.id, 'crit.0.value:gpa', '500');   // matches nobody
-      h.set(a.id, 'op', 'average');
+      h.set(a.id, 'stat.0.op', 'average');
       h.w.runQuery();
       assert.equal(h.bigNum(), '\u2014', 'showing 0 would assert something false about the data');
     });
@@ -173,8 +173,8 @@ module.exports = ({ describe, test }) => {
     test('the measured column is configurable, not hardwired', () => {
       const h = boot();
       const [s, a, o] = h.build('source', 'aggregate', 'output');
-      h.set(a.id, 'op', 'max');
-      h.set(a.id, 'col', 'gpa');
+      h.set(a.id, 'stat.0.op', 'max');
+      h.set(a.id, 'stat.0.col', 'gpa');
       h.w.runQuery();
       const want = Math.max(...h.app.STUDENTS.map(x => x.gpa));
       assert.equal(h.entry(o.id).table.rows[0][0], want);

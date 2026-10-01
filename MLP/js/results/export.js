@@ -107,14 +107,54 @@ function timeStamp(fileSafe) {
   return dateStamp() + (fileSafe ? '-' : ' ') + time;
 }
 
-function csvCell(v) {
+/* QUOTING IS DECIDED AGAINST THE SEPARATOR, NOT AGAINST A COMMA
+   ---------------------------------------------------------------------------
+   This used to test for a comma whatever it was separating with, which was
+   right for the file and wrong for the clipboard. Copy writes tab separated
+   text, so a cell containing a TAB split into two cells and a cell containing a
+   newline split into two rows, and the paste landed in Excel or Word one column
+   out from there on with nothing to show why.
+
+   It is reachable without any odd data: an input name is typed into a text box
+   and becomes a column header, and a name pasted in from somewhere else can
+   carry a tab. A three-column table came out with rows of four, one and three
+   fields.
+
+   So the rule is RFC 4180's, asked about whatever is actually dividing the
+   cells: quote when the cell holds the separator, a quote mark or a line break,
+   and double the quote marks inside. A cell with none of those is untouched,
+   which is nearly all of them, so an ordinary copy is byte for byte what it was.
+   Excel, Word and Numbers all honour quotes in pasted text, so the quoting
+   survives the one trip it has to. */
+function quotedCell(v, sep) {
   var s = String(v);
-  return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  var needs = s.indexOf(sep) !== -1 || s.indexOf('"') !== -1 ||
+              s.indexOf('\n') !== -1 || s.indexOf('\r') !== -1;
+  return needs ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
+
+// Kept as the comma case of the above, which is what every existing caller and
+// the exported test surface mean by it.
+function csvCell(v) { return quotedCell(v, ','); }
+
+/* THE BYTE ORDER MARK, AND WHY ONLY THE CSV GETS ONE
+   ---------------------------------------------------------------------------
+   Excel on Windows reads a .csv as the machine's own code page unless the file
+   says otherwise, and the only thing it accepts as saying otherwise is a UTF-8
+   BOM. Without one, a name carrying a macron or an accent arrives mojibaked,
+   and the archive being ASCII today is not a reason to ship a file that cannot
+   carry a student's name correctly tomorrow.
+
+   It goes on the CSV and nothing else. A saved query is JSON, and JSON.parse
+   refuses a leading BOM, so putting this in downloadFile() would have broken
+   every saved query in the library to fix an encoding nothing had complained
+   about yet. One format, one marker, decided where the format is decided. */
+var UTF8_BOM = '﻿';
 
 // The whole export layer, for every result shape the tool can produce.
 function serialiseTable(t, sep, quote) {
-  var cell = quote ? csvCell : function(v){ return String(v); };
+  var cell = quote ? function(v){ return quotedCell(v, sep); }
+                   : function(v){ return String(v); };
   return [t.columns.map(function(c){ return cell(c.label); }).join(sep)]
     .concat(t.rows.map(function(r) {
       return t.columns.map(function(c, i){ return cell(exportCell(c, r[i])); }).join(sep);
@@ -275,9 +315,12 @@ function exportEntry(id, btn) {
   return e;
 }
 
+/* Quoted now, where it used to be raw. No BOM: this is text on a clipboard
+   rather than bytes on disk, and the receiving application already knows the
+   encoding it was handed. */
 function copyOutput(id, btn) {
   var e = exportEntry(id, btn);
-  if (e) writeClipboard(serialiseTable(exportTableFor(e), '\t', false), btn);
+  if (e) writeClipboard(serialiseTable(exportTableFor(e), '\t', true), btn);
 }
 
 /* The name written is the name typed, with nothing appended. A timestamp used
@@ -295,7 +338,7 @@ function saveOutput(id, btn) {
   var e = exportEntry(id, btn);
   if (!e) return;
   var name = safeName(e.name) + '.csv';
-  flashBtn(btn, downloadFile(name, serialiseTable(exportTableFor(e), ',', true))
+  flashBtn(btn, downloadFile(name, UTF8_BOM + serialiseTable(exportTableFor(e), ',', true))
     ? 'Saved ✓' : 'Save failed');
 }
 

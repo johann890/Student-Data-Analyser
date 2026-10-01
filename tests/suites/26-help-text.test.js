@@ -110,9 +110,9 @@ module.exports = ({ describe, test }) => {
     });
 
     test('the shape of the result is still stated, on every node that changes it', () => {
-      [['aggregate', 'Out: one row, one column'],
+      [['aggregate', 'Out: one row,'],
        ['aggregateColumns', 'Out: one row'],
-       ['aggregateRows', 'Out: one column'],
+       ['aggregateRows', 'Out: one row per row in'],
        ['unique', 'Out:'],
        ['select', 'Out:'],
        ['take', 'Out:'],
@@ -332,6 +332,73 @@ module.exports = ({ describe, test }) => {
       const help = helpText(h);
       assert.includes(help, 'Hovering a wire shows the rows');
       assert.includes(help, 'row count of what reached its Output');
+    });
+
+    test('Aggregate Rows carries its labels, and the Help no longer denies it', () => {
+      /* This pair caught real drift once already: the glossary described the
+         whole row being replaced, and its worked example showed a lone Sum
+         column, for a node that had started carrying labels. Both halves are
+         pinned so neither can go back on its own. */
+      const h = boot();
+      const [s, sf, ar, o] = h.build('source', 'selectFor', 'aggregateRows', 'output');
+      h.set(sf.id, 'by', 'specialisation');
+      h.set(ar.id, 'op', 'sum');
+      h.w.runQuery();
+      const cols = h.app.exportData[o.id].table.columns.map(c => c.key);
+      assert.deepEqual(cols, ['group', 'sum'], 'the label really does come through');
+
+      const help = helpText(h);
+      assert.excludes(help, 'replaces the whole row');
+      assert.excludes(help, 'a single column out');
+      assert.includes(help, 'come through beside it');
+      assert.includes(help, 'Put a Select after this node');
+    });
+
+    test('Combine can be told what its inputs are called, and the Help says how', () => {
+      /* The same pair as above, for the same reason: the glossary described a
+         join naming its columns after the node, which stopped being the whole
+         story the moment an input could be named. */
+      const h = boot();
+      const s = h.add('source');
+      const ids = [0, 1].map(() => {
+        const f = h.add('filter'), sf = h.add('selectFor');
+        h.app.connect(s.id, f.id);
+        h.app.connect(f.id, sf.id, null, 'data');
+        h.w.render();
+        h.set(sf.id, 'by', 'specialisation');
+        h.w.render();
+        return sf.id;
+      });
+      const c = h.add('combine'), o = h.add('output');
+      ids.forEach(id => h.app.connect(id, c.id, null, 'in'));
+      h.app.connect(c.id, o.id);
+      h.w.render();
+      h.set(c.id, 'mode', 'join');
+      h.w.render();
+      h.set(c.id, 'label:' + ids[0], '2022');
+      h.set(c.id, 'label:' + ids[1], '2023');
+      h.w.runQuery();
+      assert.deepEqual(h.app.exportData[o.id].table.columns.map(col => col.label),
+        ['Specialisation', '2022', '2023'], 'a name really does head the column');
+
+      const help = helpText(h);
+      assert.includes(help, 'Name the inputs');
+      assert.includes(help, 'headed by the name alone');
+      assert.includes(help, 'keeps its automatic name');
+    });
+
+    test('an ID is still kept out of the total, and the Help still says so', () => {
+      const h = boot();
+      const [s, ar, o] = h.build('source', 'aggregateRows', 'output');
+      h.set(ar.id, 'op', 'sum');
+      h.w.runQuery();
+      const t = h.app.exportData[o.id].table;
+      const idAt = h.app.colIndex(t, 'id');
+      assert.ok(idAt !== -1, 'the id is carried');
+      // the row total is the gpa alone, so the id was not added in
+      assert.deepEqual(t.rows.map(r => r[r.length - 1]),
+        h.app.STUDENTS.map(st => st.gpa));
+      assert.includes(helpText(h), 'An ID is a label, not a figure');
     });
   });
 

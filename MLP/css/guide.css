@@ -1,0 +1,144 @@
+/* guide.css: The guided walkthrough's ring and its parked panel.
+   Part of the Student Data Analyser's stylesheet. The files load in the order
+   index.html lists them, and that order is the cascade: it must not change.
+
+   Last in the list on purpose. The walkthrough draws over the whole page,
+   including over the toolbar and the results panel, so every rule here has to
+   win against whatever it is standing on top of. Being last is cheaper than a
+   fight with specificity in nine other files.
+   ========================================================================== */
+
+/* THE RING
+   ---------------------------------------------------------------------------
+   One element does both jobs. The ring marks the thing being talked about, and
+   the 9999px shadow spreading out from it is the dim over everything else, so
+   the hole in the dim can never drift out of register with the ring: they are
+   the same box.
+
+   pointer-events: none because the reader is not shut out of the tool while
+   this is up. The walkthrough asks nothing of them, but somebody who wants to
+   press something anyway should be able to.
+
+   The transition is on the box rather than on opacity, so moving between two
+   steps reads as one light travelling across the page rather than one light
+   going out and another coming on. 0.12s is what the toolbar buttons use for
+   their hover, and the shortest time that still reads as movement. */
+.guide-spot {
+  position: fixed;
+  z-index: 250;
+  pointer-events: none;
+  border: 2px solid #c0a040;
+  border-radius: 6px;
+  box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.62);
+  display: none;
+  transition: left 0.12s, top 0.12s, width 0.12s, height 0.12s;
+}
+.guide-spot.on { display: block; }
+
+/* A step whose node has been deleted still has copy worth reading, so the ring
+   goes and the panel stays. The dim goes with it: a dim with no hole in it
+   looks like the page has hung. */
+
+/* THE PANEL
+   ---------------------------------------------------------------------------
+   Parked. Same place every step, so the reader's eyes go back to one spot
+   instead of hunting for where the words went. This is the whole reason there
+   is no placement arithmetic in guide/guide.js.
+
+   Bottom centre, which is the one part of the canvas that is reliably empty:
+   the zoom dock is bottom left, the results panel is right, and zoomToFit()
+   centres the practice query vertically. Raised far enough to clear the dock.
+
+   251 so it sits in front of its own dim, which covers the whole viewport.
+   Both numbers are above everything on the canvas and the toolbar (the highest
+   of those is the config panel dropdown at 200) and below the help dialog at
+   290 and the save dialog at 300. So opening Help covers the walkthrough, which
+   is the right way round and is what makes the Escape order in shell/events.js
+   correct: the dialog is peeled off first, the walkthrough second. */
+.guide-panel {
+  position: fixed;
+  z-index: 251;
+  left: 50%;
+  bottom: 26px;
+  transform: translateX(-50%);
+  width: 460px;
+  max-width: calc(100vw - 32px);
+  background: #181818;
+  border: 1px solid #3a3a3a;
+  border-radius: 8px;
+  padding: 14px 16px 12px;
+  box-shadow: 0 14px 40px rgba(0, 0, 0, 0.75);
+  display: none;
+}
+.guide-panel.on { display: block; }
+
+.guide-panel h4 {
+  font-size: 14px;
+  font-weight: 600;
+  color: #f0d78a;
+  margin-bottom: 6px;
+}
+.guide-panel p {
+  font-size: 13px;
+  line-height: 1.55;
+  color: #d8d8d8;
+}
+
+.guide-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+  padding-top: 10px;
+  border-top: 1px solid #272727;
+}
+.guide-count {
+  font-size: 12px;
+  color: #8c8c8c;
+  margin-right: auto;
+}
+.guide-nav {
+  border-radius: 5px;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  border: 1px solid #3a3a3a;
+  background: transparent;
+  color: #d8d8d8;
+  transition: background 0.12s;
+}
+.guide-nav:hover { background: #242424; }
+.guide-nav.guide-next {
+  background: #8a6a10;
+  border-color: #c0a040;
+  color: #fff;
+  font-weight: 600;
+}
+.guide-nav.guide-next:hover { background: #a07e18; }
+
+/* Back on the first step. Disabled rather than hidden, so the row of controls
+   does not change width as the reader moves through. */
+.guide-nav[disabled] { opacity: 0.4; cursor: default; }
+.guide-nav[disabled]:hover { background: transparent; }
+
+/* THE BUTTON IN THE HELP DIALOG
+   ---------------------------------------------------------------------------
+   Gold, like the ? that opens the dialog it lives in. Armed, it turns red and
+   asks, borrowing the treatment Clear and the library's Delete already use for
+   "this throws something away". */
+.guide-start {
+  border-radius: 5px;
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  background: #8a6a10;
+  border: 1px solid #c0a040;
+  color: #fff;
+  transition: background 0.12s;
+}
+.guide-start:hover { background: #a07e18; }
+.guide-start.armed { background: #8a2020; border-color: #c04040; }
+.guide-start.armed:hover { background: #a02828; }

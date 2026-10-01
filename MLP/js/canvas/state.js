@@ -140,6 +140,11 @@ function applyView() {
      transform moves. */
   placeConnNote();
   placeNodeTip();
+  /* And the guide's ring, for the same reason. Every way the geometry can move
+     already funnels through here (zoom, pan, panel resize, panel show and hide,
+     toolbar height, window resize), which is why the guide adds no listener of
+     its own. */
+  guidePlace();
 }
 
 /* Zoom about a fixed point: the world position under the cursor stays under the

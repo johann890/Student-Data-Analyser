@@ -278,6 +278,18 @@ body.panel-resizing * { cursor: col-resize !important; }
 }
 .rtable tr:last-child td { border-bottom: none; }
 
+/* The empty column at the end of every result table, from tableHTML(), which
+   explains why it is there. This is the whole of what it does: asking for all
+   of the width is what makes the browser give the real columns their contents'
+   width and hand the remainder to this one, instead of sharing the remainder
+   out among the columns and pushing each value away from its own heading.
+
+   It collapses to nothing on its own when the real columns already fill the
+   panel, so a wide table is drawn exactly as it was before. No padding, so it
+   is not a column of blank space at the end of a table that needs every pixel:
+   the heading band and the row rules run through it, and nothing else does. */
+.rtable .rt-fill { width: 100%; padding: 0; }
+
 .error-box {
   background: #0e0606; border: 1px solid #3a1010;
   border-radius: 6px; padding: 10px 12px;

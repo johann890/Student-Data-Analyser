@@ -68,6 +68,10 @@ function render() {
      which is the same reason selection is synced rather than re-rendered. */
   syncVarUsage();
   drawArrows();
+  /* The guide's ring is pinned to a node, and this is where nodes are thrown
+     away and rebuilt. Deleting the node a step is about would otherwise leave
+     the ring drawn around empty canvas. Costs one comparison with no guide up. */
+  guidePlace();
 }
 
 /* Delegated config listener: One handler for every control on the canvas.

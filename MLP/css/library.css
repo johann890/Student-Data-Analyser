@@ -349,3 +349,36 @@
 /* The hint line under the field doubles as the dialog's error line, so it has
    a second colour. The 'show' class still decides whether it is there at all. */
 .save-hint.bad { color: #e0864a; }
+
+/* ── WORKED EXAMPLES ─────────────────────────────────────
+   Shipped in the page rather than kept in the store, for the reasons set out in
+   queries/library-examples.js. They are drawn as an ordinary grid of cards
+   above the user's own, with a heading between the two so it is clear whose
+   queries are whose: a reader who cannot tell which of these they saved is a
+   reader who will not delete any of them. */
+.lib-section { margin-bottom: 22px; }
+.lib-section-head {
+  font-size: 13px;
+  font-weight: 600;
+  color: #c9c9c9;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  margin-bottom: 4px;
+}
+.lib-section-note {
+  font-size: 13px;
+  line-height: 1.5;
+  color: #9a9a9a;
+  margin-bottom: 12px;
+}
+
+/* One button instead of four, so the card is shorter than a saved one and the
+   sentence has somewhere to go. The tint is what says "not yours" at a glance,
+   without a badge to read. */
+.lib-example { background: #14171c; border-color: #2b3340; }
+.lib-why {
+  margin-top: 5px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #9a9a9a;
+}

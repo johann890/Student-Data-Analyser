@@ -104,10 +104,49 @@ function combineOrder(node, inIds) {
   return [at].concat(idx.filter(function(i){ return i !== at; }));
 }
 
-/* The name a joined column carries when it has to say where it came from. */
-function combineInputLabel(id) {
-  var up = findNode(id);
-  return up ? upstreamLabel(up) : ('Input ' + id);
+/* WHAT AN INPUT IS CALLED
+   ---------------------------------------------------------------------------
+   A joined column has to say which input it came from, and until now the only
+   name available was the node's own: "Select For #5". That is an accurate
+   answer to a question nobody asked. Three branches joined to compare 2022,
+   2023 and 2024 produced "Count", "Count · Select For #5" and
+   "Count · Select For #7", so the one thing the columns would not tell you
+   was which year each was, and the id is an implementation detail that changes
+   if the query is rebuilt.
+
+   So an input can be named, in the same shape Compare already names a branch:
+   a map on the node keyed by the INPUT'S node id, written through the same
+   `label:<id>` control key, falling back to the automatic name when empty.
+   Compare's precedent is followed deliberately rather than a second convention
+   invented, down to the placeholder that says the automatic name is still
+   there.
+
+   Keyed by id and not by position because a wire can be removed: naming the
+   second input and then deleting the first would otherwise silently move the
+   name onto a table it was never about. */
+var COMBINE_LABEL_MAX = 40;
+
+/* The name the user gave this input, or '' for none. Trimmed and capped HERE
+   rather than only by the control's maxlength, because the same value can
+   arrive from a saved file, and one rule is better than two. That is the
+   arrangement setVarName() uses, for the same reason. The cap is 40 because
+   this becomes a column header, on screen and in an exported CSV, and a header
+   long enough to break the table is not a name. */
+function combineLabelOf(node, id) {
+  var m = node && node.cfg && node.cfg.labels;
+  if (!m || typeof m !== 'object' || Array.isArray(m)) return '';
+  var v = m[id];
+  if (v === undefined || v === null) return '';
+  return String(v).trim().slice(0, COMBINE_LABEL_MAX);
+}
+
+/* The name a joined column carries when it has to say where it came from: what
+   the user called this input, or the node's own name when they have not said. */
+function combineInputLabel(node, id) {
+  return combineLabelOf(node, id) || (function() {
+    var up = findNode(id);
+    return up ? upstreamLabel(up) : ('Input ' + id);
+  })();
 }
 
 /* ---- Join: the horizontal combination ------------------------------------ */
@@ -121,33 +160,83 @@ function combineInputLabel(id) {
    suffix and the label says which node it came from, so the header stays unique,
    which matters beyond the screen, since these become CSV column names.
 
+   NAMING AN INPUT CHANGES WHAT ITS COLUMNS ARE CALLED, and nothing else. An
+   input nobody has named behaves exactly as it always did, which is what keeps
+   every existing query reading the same: the automatic name appears only on a
+   column whose key had to be renamed to avoid a clash.
+
+   A NAMED input is different in two ways, and both are the point of naming one.
+   Its columns always carry the name, whether or not anything clashed, because
+   the user named it in order to tell it apart. And when it contributes exactly
+   one column, the name IS that column's label rather than a suffix on it:
+   three branches named 2022, 2023 and 2024 produce a header reading
+   "Took course, 2022, 2023, 2024", which is the table the question was asked
+   about. Two or more columns cannot share one header, so there the name is
+   appended to each: "Count \u00b7 2023", "Average \u00b7 2023".
+
+   The SHARED KEY column is never renamed by any of this. It belongs to no one
+   input, so putting one input's name on it would be a false claim about where
+   it came from.
+
+   Labels are made unique as well as keys. Two inputs named the same thing, or a
+   name that matches a column already in the header, would otherwise produce two
+   columns a reader cannot tell apart, and a CSV with two identical headers.
+
    Derived from headers alone so the schema pass and the evaluator can call the
    same function and cannot disagree about the result's shape. */
-function joinColumns(node, heads, labels) {
+function joinColumns(node, heads, labels, ids) {
   if (!heads.length) return [];
-  var base = heads[0];
-  var keyCol = combineKeyCol(node, base);
-  var cols = base.columns.slice();
-  var used = {};
-  cols.forEach(function(c){ used[c.key] = true; });
+  var keyCol = combineKeyCol(node, heads[0]);
+  var isKey = function(c){ return !!(keyCol && c.key === keyCol.key); };
+  var cols = [], usedKeys = {}, usedLabels = {};
 
-  heads.slice(1).forEach(function(h, i) {
+  /* Every column is rebuilt rather than carried by reference, including the
+     base's, which used to come through untouched. A named base has to be
+     relabelled like any other input, and relabelling a column object that the
+     upstream header still owns would rename it upstream too. Copied whole
+     rather than through a list of properties, so a property added to a column
+     tomorrow survives the join without this function being edited. */
+  var take = function(c, labelFor) {
+    var key = uniqueAgainst(usedKeys, c.key, '_');
+    var label = uniqueAgainst(usedLabels, labelFor(key), ' ');
+    usedKeys[key] = true;
+    usedLabels[label] = true;
+    var out = {};
+    Object.keys(c).forEach(function(p){ out[p] = c[p]; });
+    out.key = key;
+    out.label = label;
+    cols.push(out);
+  };
+
+  heads.forEach(function(h, i) {
+    var name = (ids && ids.length > i) ? combineLabelOf(node, ids[i]) : '';
+    // What this input adds to the header, the shared key aside. Decides whether
+    // a name can stand as a column label or has to be appended to one.
+    var brings = h.columns.filter(function(c){ return !isKey(c); }).length;
+
     h.columns.forEach(function(c) {
-      if (keyCol && c.key === keyCol.key) return;
-      var key = c.key, n = 2;
-      while (used[key]) { key = c.key + '_' + n; n++; }
-      used[key] = true;
-      cols.push({
-        key: key,
-        label: (key === c.key) ? c.label : (c.label + ' \u00b7 ' + (labels[i + 1] || 'input ' + (i + 2))),
-        type: c.type, values: c.values, order: c.order, def: c.def, filter: c.filter
+      if (isKey(c)) {
+        // The base carries the shared key; the others do not repeat it.
+        if (i === 0) take(c, function(){ return c.label; });
+        return;
+      }
+      if (name) {
+        take(c, function(){
+          return brings === 1 ? name : (c.label + ' \u00b7 ' + name);
+        });
+        return;
+      }
+      take(c, function(key) {
+        return key === c.key
+          ? c.label
+          : (c.label + ' \u00b7 ' + (labels[i] || 'input ' + (i + 1)));
       });
     });
   });
   return cols;
 }
 
-function joinTables(node, tables, labels, log) {
+function joinTables(node, tables, labels, log, ids) {
   var base = tables[0];
   var keyCol = combineKeyCol(node, base);
   if (!keyCol) {
@@ -162,7 +251,7 @@ function joinTables(node, tables, labels, log) {
     }
   }
 
-  var cols = joinColumns(node, tables, labels);
+  var cols = joinColumns(node, tables, labels, ids);
   var keepUnmatched = !!(node && node.cfg && node.cfg.keepUnmatched);
 
   /* Each other input is indexed by key, first row winning. The alternative
@@ -220,7 +309,7 @@ function joinTables(node, tables, labels, log) {
   return { table: makeTable(cols, rows) };
 }
 
-function combineTables(node, tables, log, labels) {
+function combineTables(node, tables, log, labels, ids) {
   if (!tables.length) return { table: makeTable([], []) };
   labels = labels || [];
   var mode = combineMode(node);
@@ -246,7 +335,7 @@ function combineTables(node, tables, log, labels) {
     return { table: tables[0] };
   }
 
-  if (mode.key === 'join') return joinTables(node, tables, labels, log);
+  if (mode.key === 'join') return joinTables(node, tables, labels, log, ids);
 
   var base = tables[0];
   var others = tables.slice(1);

@@ -30,11 +30,18 @@ module.exports = ({ describe, test }) => {
     return { ...h, s, o };
   }
 
-  // What the block on screen is actually showing, read from the DOM rather than
-  // from the model, because the model being right while the screen is stale is
-  // precisely the bug this suite exists for.
+  /* What the block on screen is actually showing, read from the DOM rather than
+     from the model, because the model being right while the screen is stale is
+     precisely the bug this suite exists for.
+
+     The filler heading is dropped. It is the slack column the table pads itself
+     out with, empty and aria-hidden, and panel.js says in as many words that
+     its class is there for the suites to filter it out by. Counting it here
+     made this read one heading more than the export ever writes. */
   const drawn = (h, id) =>
-    h.qa('[data-output-view="' + id + '"] .rtable thead th').map(e => e.textContent.trim());
+    h.qa('[data-output-view="' + id + '"] .rtable thead th')
+      .filter(e => !e.classList.contains('rt-fill'))
+      .map(e => e.textContent.trim());
 
   // What Copy and Save would write.
   const exported = (h, id) => h.entry(id).table.columns.map(c => c.label);

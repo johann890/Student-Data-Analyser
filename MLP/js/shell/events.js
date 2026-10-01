@@ -64,6 +64,10 @@ function openHelp(btn) {
 function closeHelp() {
   var d = helpDialogEl();
   if (d) d.classList.remove('open');
+  /* A half-armed Start button is disarmed on the way out, so that reopening
+     Help later does not present a question the reader has forgotten answering
+     and cannot now see the context for. */
+  guideDisarm();
   // Focus must leave the panel, not merely be hidden with it. Left inside a
   // closed dialog it belongs to nothing on screen, and the keyboard user is
   // stranded with no visible caret and no working shortcuts.
@@ -290,6 +294,13 @@ document.addEventListener('keydown', function(e) {
       return;
     }
     if (helpOpen())        { e.preventDefault(); closeHelp(); return; }
+    /* After the dialogs, because Help is drawn over the guide and is therefore
+       the nearer thing to abandon. Before the menus and the selection, because
+       leaving the guide is a bigger "never mind" than either, and a reader
+       pressing Escape to be rid of the panel should not have to press it twice.
+       The guide leaves the practice query on the canvas: it was loaded
+       deliberately, and taking it away again would be a second surprise. */
+    if (guideRunning())    { e.preventDefault(); endGuide(); return; }
     closeProcMenu();
     clearSelection();
     return;

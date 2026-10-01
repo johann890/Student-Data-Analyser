@@ -45,6 +45,8 @@ window.addVariable = addVariable;
 window.requestRemoveVariable = requestRemoveVariable;
 window.toggleVarMenu = toggleVarMenu;
 window.useVariableAt = useVariableAt;
+window.startGuide = startGuide;
+window.libOpenExample = libOpenExample;
 
 /* TEST HOOK
    Set window.__QB_TEST__ = true *before* loading these scripts to expose internals to
@@ -140,6 +142,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     hasCol: hasCol, cellAt: cellAt, headerOnly: headerOnly, numericCols: numericCols,
     coursesColIndex: coursesColIndex, studentsTable: studentsTable,
     fmtCell: fmtCell, exportCell: exportCell, cellTitle: cellTitle,
+    uniqueAgainst: uniqueAgainst,
     schemaKey: schemaKey, rowKey: rowKey,
 
     // engine
@@ -192,12 +195,15 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     // aggregation
     AGG_OPS: AGG_OPS, aggOp: aggOp, reduceValues: reduceValues,
     measurableCols: measurableCols, isMeasurable: isMeasurable,
-    aggregateCol: aggregateCol, aggregateColumn: aggregateColumn,
     aggregateSchema: aggregateSchema, applyAggregate: applyAggregate,
     aggregateColumnsSchema: aggregateColumnsSchema,
     applyAggregateColumns: applyAggregateColumns,
     aggregateRowsColumn: aggregateRowsColumn, aggregateRowsSchema: aggregateRowsSchema,
     aggregateRowsIdx: aggregateRowsIdx, applyAggregateRows: applyAggregateRows,
+    ROW_OPS: ROW_OPS, ROW_PAIR_OPS: ROW_PAIR_OPS, rowOp: rowOp, isPairOp: isPairOp,
+    aggregateRowsPair: aggregateRowsPair, pairValue: pairValue,
+    aggregateRowsKeepIdx: aggregateRowsKeepIdx, aggregateRowsCarried: aggregateRowsCarried,
+    aggregateRowsColumns: aggregateRowsColumns,
     outputCols: outputCols,
     columnValues: columnValues,
 
@@ -219,6 +225,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     globToRegExp: globToRegExp,
     labelCols: labelCols, labelsFromTable: labelsFromTable,
     labelsFromData: labelsFromData, rowsForLabel: rowsForLabel,
+    blankGroupRows: blankGroupRows,
     addStat: addStat, removeStat: removeStat,
 
     /* toolbar height. The drag itself is layout, and layout is the one thing
@@ -259,6 +266,8 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     projectSchema: projectSchema, applyProject: applyProject,
     enrolmentColumns: enrolmentColumns, enrolmentKeys: enrolmentKeys,
     combineOrder: combineOrder, joinColumns: joinColumns, joinTables: joinTables,
+    combineInputLabel: combineInputLabel, combineLabelOf: combineLabelOf,
+    COMBINE_LABEL_MAX: COMBINE_LABEL_MAX,
 
     // take
     applyTake: applyTake, takeCount: takeCount,
@@ -315,6 +324,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
 
     // export + persistence
     serialiseTable: serialiseTable, exportTableFor: exportTableFor, safeName: safeName,
+    quotedCell: quotedCell, UTF8_BOM: UTF8_BOM,
     exportNameOf: exportNameOf, defaultExportName: defaultExportName, markStale: markStale,
     timeStamp: timeStamp, dateStamp: dateStamp, resultHTML: resultHTML, scalarHTML: scalarHTML, tableHTML: tableHTML,
     courseLabel: courseLabel, courseTitle: courseTitle, courseSelect: courseSelect,
@@ -366,6 +376,11 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     libPendingNow: function(){ return libPending; },
     libNoticeNow:  function(){ return libNotice; },
 
+    // the worked examples, which are in the page and never in the store
+    LIB_EXAMPLES: LIB_EXAMPLES, libExampleGet: libExampleGet,
+    libExampleCardHTML: libExampleCardHTML, libExamplesHTML: libExamplesHTML,
+    libOpenExample: libOpenExample,
+
     // export / import
     libCleanEntry: libCleanEntry, libExportPayload: libExportPayload,
     libImportText: libImportText, libImportSummary: libImportSummary,
@@ -397,7 +412,22 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     syncMenuButtons: syncMenuButtons,
     varUseWords: varUseWords, varChipHTML: varChipHTML,
     varPendingNow: function(){ return varPending; },
-    readVariables: readVariables, pruneVarBindings: pruneVarBindings
+    readVariables: readVariables, pruneVarBindings: pruneVarBindings,
+
+    /* THE GUIDED WALKTHROUGH
+       The step data and the machinery are handed back separately, because the
+       suite checks them separately: the data for its shape and its copy, the
+       rest for what it points at and for the promise that the only thing it
+       ever writes is the practice query the reader asked for. guideTargetEl is
+       the only honest geometry assertion available, since jsdom lays nothing
+       out and every rect comes back as zeros. */
+    GUIDE_STEPS: GUIDE_STEPS, GUIDE_EXAMPLE: GUIDE_EXAMPLE,
+    startGuide: startGuide, endGuide: endGuide,
+    guideNext: guideNext, guideBack: guideBack, guideGo: guideGo,
+    guideRunning: guideRunning, guideStep: guideStep, guideStepId: guideStepId,
+    guidePlace: guidePlace, guideResolve: guideResolve, guideDraw: guideDraw,
+    guideTargetEl: guideTargetEl, guideNodeId: guideNodeId, guideDisarm: guideDisarm,
+    guidePendingNow: function(){ return guidePending; }
   };
 }
 

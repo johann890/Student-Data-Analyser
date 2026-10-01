@@ -16,27 +16,61 @@ var DISPLAY_ROW_LIMIT = 50;
    stays a page rather than a download. */
 var DISPLAY_CARD_LIMIT = 10;
 
+/* THE SLACK COLUMN
+   ---------------------------------------------------------------------------
+   The table fills the panel, and until now the columns shared whatever width
+   was left over. Two columns in a wide panel therefore sat half a panel apart,
+   and a number, which is set to the right of its column so that the digits of
+   a column of numbers line up, ended up at the far right of a cell whose
+   heading was at the far left. The supervisor's average GPA was a lone "5.53"
+   against the panel's edge with the word GPA a few hundred pixels away from it.
+
+   The width had to go somewhere, so it is given a column of its own at the end
+   that holds nothing. The real columns then take the width their contents need
+   and no more, which puts every value back beside its own heading, and the
+   leftover lands in a cell nobody reads. The alternative, letting the table
+   shrink to its contents, stops the heading band and the row rules short of
+   the card's edge and reads as a half-drawn table.
+
+   It is empty and it is not data, so it is hidden from the accessibility tree:
+   a screen reader announcing a blank cell at the end of all 280 rows is a
+   worse bargain than the one it is paying for. The class is what the panel
+   suites filter it out by, so it is not a decorative detail. */
+var FILL_TH = '<th class="rt-fill" aria-hidden="true"></th>';
+var FILL_TD = '<td class="rt-fill" aria-hidden="true"></td>';
+
+/* Which columns are drawn as numbers, asked once so that a heading and the
+   cells under it cannot answer it differently. They did: a Courses column is
+   shown as a count of enrolments and its cells were set to the right with the
+   numbers, while its heading was only tested for COLTYPE.NUMBER and stayed at
+   the left. Both halves read the same predicate now. */
+function numberish(c) {
+  return c.type === COLTYPE.NUMBER || c.type === COLTYPE.COURSES;
+}
+
 function tableHTML(t, title, badge) {
   if (t.columns.length === 0) {
     return card(title, '<div class="cmp-empty">Nothing to show. This Output has no columns.</div>', badge);
   }
 
   var head = t.columns.map(function(c) {
-    return '<th' + (c.type === COLTYPE.NUMBER ? ' class="cmp-num"' : '') + '>' + esc(c.label) + '</th>';
-  }).join('');
+    return '<th' + (numberish(c) ? ' class="cmp-num"' : '') + '>' + esc(c.label) + '</th>';
+  }).join('') + FILL_TH;
 
   var body = t.rows.slice(0, DISPLAY_ROW_LIMIT).map(function(r) {
     return '<tr>' + t.columns.map(function(c, i) {
       var ttl = cellTitle(c, r[i]);
-      var cls = c.type === COLTYPE.NUMBER ? 'cmp-num'
-              : c.type === COLTYPE.COURSES ? 'cmp-num crs-cell' : '';
+      var cls = !numberish(c) ? ''
+              : c.type === COLTYPE.COURSES ? 'cmp-num crs-cell' : 'cmp-num';
       return '<td' + (cls ? ' class="' + cls + '"' : '') +
         (ttl ? ' title="' + esc(ttl) + '"' : '') + '>' + esc(fmtCell(c, r[i])) + '</td>';
-    }).join('') + '</tr>';
+    }).join('') + FILL_TD + '</tr>';
   }).join('');
 
+  /* Spans the slack column too. A row that stopped one short of the width
+     would leave the rule above it hanging over an empty square. */
   var more = t.rows.length > DISPLAY_ROW_LIMIT
-    ? '<tr><td colspan="' + t.columns.length + '" class="cmp-more">... ' +
+    ? '<tr><td colspan="' + (t.columns.length + 1) + '" class="cmp-more">... ' +
       (t.rows.length - DISPLAY_ROW_LIMIT) + ' more. Copy and Save include every row</td></tr>'
     : '';
 

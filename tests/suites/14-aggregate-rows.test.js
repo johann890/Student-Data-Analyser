@@ -3,13 +3,27 @@
    page rather than down it:
 
      AggregateColumns   N rows x M cols  ->  1 row  x M cols
-     AggregateRows      N rows x M cols  ->  N rows x 1 col
+     AggregateRows      N rows x M cols  ->  N rows x L+1 cols  (L labels)
 
-   It replaces the whole row rather than adding to it. The settled position is
-   that row aggregation assumes a row of measures (totalling a row that still
-   carries a student id is not a meaningful operation), so narrowing to the
-   measures first is a Select, and neither node grows a column picker for the
-   other's benefit. */
+   It replaces the MEASURE columns and carries the LABEL columns. The split is
+   isMeasurable(), the same test that already decides what the arithmetic may
+   touch, so nothing was added to say which columns are which: a number that is
+   not an identifier is a measure, and text, enums, ids and the nested course
+   column are labels.
+
+   That is a reversal. The node used to replace the whole row, on the position
+   that row aggregation assumes a row of measures and that narrowing to them
+   first is a Select. Consistent, and it made the node useless for the thing it
+   is reached for most: averaging a breakdown produced a column of numbers with
+   no labels beside them, and Select could not put them back, because a label
+   has to survive the step to be in the result at all. These suites are written
+   against the new contract, and the ones that pinned the old one say so where
+   they were changed.
+
+   Two invariants did NOT change, and are asserted hardest for that reason:
+   the arithmetic never touches an identifier, and count still accepts any
+   column. A label is therefore counted AND carried, which is the one place the
+   two rules overlap. */
 
 const { boot } = require('../lib/harness');
 const { assert } = require('../lib/assert');
@@ -26,7 +40,20 @@ module.exports = ({ describe, test }) => {
     if (op) h.set(n.id, 'op', op);
     return { ...h, s: made[0], mid: made.slice(1, -2), n, o };
   }
-  const values = t => t.rows.map(r => r[0]);
+  /* The measure is the LAST column now, with the labels ahead of it, so a
+     reader of these assertions has to be told which cell is the answer. Read
+     from the end rather than by index, so a test does not silently start
+     asserting about a label if the carried set ever changes width. */
+  const values = t => t.rows.map(r => r[r.length - 1]);
+  const labelCells = t => t.rows.map(r => r.slice(0, -1));
+  const keysOf = t => t.columns.map(c => c.key);
+
+  /* How the student schema splits, derived rather than written as a number, so
+     a column added to the Source does not look like a regression here. gpa is
+     the only measure among the eight, so seven labels come through and the
+     measure is the eighth column out. */
+  const CARRIED  = A.STUDENT_COLUMNS.filter(c => !A.isMeasurable(null, c)).length;
+  const OUT_COLS = CARRIED + 1;
 
   describe('registration', () => {
     test('it appears in every table the registry keeps', () => {
@@ -35,7 +62,8 @@ module.exports = ({ describe, test }) => {
       assert.ok(app.NODE_SPEC.aggregateRows, 'no spec');
       assert.ok(app.CONNECT_RULES.aggregateRows, 'no wiring rules');
       assert.ok(app.NODE_PORTS.aggregateRows, 'no ports');
-      assert.deepEqual(app.defaultCfg('aggregateRows'), { op: 'sum' });
+      assert.deepEqual(app.defaultCfg('aggregateRows'),
+        { op: 'sum', left: '', right: '' });
     });
 
     test('it goes wherever its sibling goes', () => {
@@ -67,12 +95,35 @@ module.exports = ({ describe, test }) => {
   });
 
   describe('the shape of the result', () => {
-    test('one column out, one row per row in', () => {
+    test('the labels come through, the measure is appended, one row per row in', () => {
       const r = rig('sum');
       r.w.runQuery();
       const t = r.entry(r.o.id).table;
-      assert.equal(t.columns.length, 1);
-      assert.equal(t.rows.length, A.STUDENTS.length);
+      assert.equal(t.rows.length, A.STUDENTS.length, 'a row in is a row out');
+      assert.equal(t.columns.length, OUT_COLS);
+      // The labels arrive in the order the header had them, and the measure is
+      // last: asserted against the schema so this follows a column being added.
+      assert.deepEqual(keysOf(t).slice(0, -1),
+        A.STUDENT_COLUMNS.filter(c => !A.isMeasurable(null, c)).map(c => c.key));
+      assert.equal(keysOf(t)[t.columns.length - 1], 'sum');
+    });
+
+    test('a measure column is consumed, a label column is not', () => {
+      // gpa is the one measure on a student row, so it is the one column that
+      // does NOT come out the other side under its own name.
+      const r = rig('sum');
+      r.w.runQuery();
+      assert.excludes(keysOf(r.entry(r.o.id).table), 'gpa');
+      assert.includes(keysOf(r.entry(r.o.id).table), 'id');
+    });
+
+    test('the carried cells are the cells that arrived, untouched', () => {
+      const r = rig('sum');
+      r.w.runQuery();
+      const t = r.entry(r.o.id).table;
+      const keep = A.STUDENT_COLUMNS.filter(c => !A.isMeasurable(null, c)).map(c => c.key);
+      assert.deepEqual(labelCells(t).slice(0, 3),
+        A.STUDENTS.slice(0, 3).map(st => keep.map(k => st[k])));
     });
 
     test('it is the mirror of AggregateColumns, not a second spelling of it', () => {
@@ -85,21 +136,22 @@ module.exports = ({ describe, test }) => {
       const byRow = rows.entry(rows.o.id).table;
       const byCol = h.entry(o.id).table;
       assert.equal(byRow.rows.length, A.STUDENTS.length);
-      assert.equal(byRow.columns.length, 1);
+      assert.equal(byRow.columns.length, OUT_COLS, 'the labels plus the measure');
       assert.equal(byCol.rows.length, 1);
       // One column per column that came in: Asserted against the schema, so a
       // column added to the Source does not look like a regression here.
       assert.equal(byCol.columns.length, A.STUDENT_COLUMNS.length);
     });
 
-    test('the column names the measure', () => {
+    test('the last column names the measure', () => {
       A.AGG_OPS.forEach(op => {
         const r = rig(op.key);
         r.w.runQuery();
-        const c = r.entry(r.o.id).table.columns[0];
-        assert.equal(c.key, op.key);
-        assert.equal(c.label, op.label);
-        assert.equal(c.type, A.COLTYPE.NUMBER);
+        const cols = r.entry(r.o.id).table.columns;
+        const c = cols[cols.length - 1];
+        assert.equal(c.key, op.key, op.key);
+        assert.equal(c.label, op.label, op.key);
+        assert.equal(c.type, A.COLTYPE.NUMBER, op.key);
       });
     });
 
@@ -112,14 +164,30 @@ module.exports = ({ describe, test }) => {
       });
     });
 
-    test('the header depends on the measure alone, not on what arrives', () => {
-      // Which is why the schema walk can answer without looking upstream
+    test('the header follows what arrives, because the labels are part of it', () => {
+      /* This is the assertion that turned over. It used to read "the header
+         depends on the measure alone, not on what arrives", which was true
+         while the whole row was replaced and is the precise thing that made
+         the node lose its labels. The schema walk is handed the incoming
+         header anyway, so nothing had to be given up to derive this. */
       const wide = rig('sum');
       const narrow = rig('sum', ['select']);
-      narrow.set(narrow.mid[0].id, 'column:gpa', false);
-      assert.deepEqual(
-        wide.app.computeSchemas()[wide.n.id].columns.map(c => c.key),
-        narrow.app.computeSchemas()[narrow.n.id].columns.map(c => c.key));
+      narrow.set(narrow.mid[0].id, 'column:gender', false);
+      const w = wide.app.computeSchemas()[wide.n.id].columns.map(c => c.key);
+      const n = narrow.app.computeSchemas()[narrow.n.id].columns.map(c => c.key);
+      assert.includes(w, 'gender');
+      assert.excludes(n, 'gender', 'dropping a label upstream drops it here');
+      assert.equal(n.length, w.length - 1);
+    });
+
+    test('dropping the only measure still leaves the measure column', () => {
+      // There is nothing to compute from, which is a blank answer rather than
+      // a missing column: the header is a promise the node keeps either way.
+      const r = rig('sum', ['select']);
+      r.set(r.mid[0].id, 'column:gpa', false);
+      const cols = r.app.computeSchemas()[r.n.id].columns.map(c => c.key);
+      assert.equal(cols[cols.length - 1], 'sum');
+      assert.equal(cols.length, CARRIED + 1);
     });
   });
 
@@ -135,12 +203,18 @@ module.exports = ({ describe, test }) => {
     });
 
     test('count counts every column, because any column can answer it', () => {
+      /* Unchanged by the labels change, and deliberately so. Count asks how
+         many values a row holds, and a label is a value, so a carried column
+         is counted AND carried. That overlap is the one place the two rules
+         touch, and the panel names the contributing count for exactly this
+         reason. */
       const r = rig('count');
       r.w.runQuery();
       const t = r.entry(r.o.id).table;
       const width = A.STUDENT_COLUMNS.length;
       assert.deepEqual(values(t), A.STUDENTS.map(() => width),
         'every column, none blank');
+      assert.equal(t.columns.length, OUT_COLS, 'and the labels still come through');
     });
 
     test('min, max and average of a single-measure row are that measure', () => {
@@ -153,7 +227,8 @@ module.exports = ({ describe, test }) => {
 
     test('with two measures on the row, the arithmetic is real', () => {
       /* A Compare summary carries two measures per row (a count and an
-         average) plus a branch label that must be left out of the sum. */
+         average) plus a branch label that must be left out of the sum, and
+         that now comes through beside the answer rather than being dropped. */
       const h = boot();
       const s1 = h.add('source'), f1 = h.add('filter'),
             s2 = h.add('source'), f2 = h.add('filter'),
@@ -169,18 +244,24 @@ module.exports = ({ describe, test }) => {
 
       const summary = h.app.evaluateGraph().res[c.id].table;
       const want = summary.rows.map(r => r[1] + r[2]);   // count + average, not the label
-      assert.deepEqual(values(h.entry(o.id).table), want);
+      const out = h.entry(o.id).table;
+      assert.deepEqual(values(out), want, 'the label is not added in');
+      // and the label is still there to say which branch each total belongs to
+      assert.deepEqual(labelCells(out), summary.rows.map(r => [r[0]]));
+      assert.deepEqual(out.columns.map(c2 => c2.key), ['branch', 'sum']);
     });
 
     test('a row with nothing measurable gives null, not zero', () => {
       const r = rig('sum', ['select']);
       ['id', 'gender', 'year', 'specialisation', 'gpa', 'courses']
-        .forEach(k => r.set(r.mid[0].id, 'column:' + k, false));   // letterGrade only
+        .forEach(k => r.set(r.mid[0].id, 'column:' + k, false));   // degree, letterGrade
       r.w.runQuery();
       assert.notOk(r.q('.error-box'), r.text('.error-box'));
       const t = r.entry(r.o.id).table;
       assert.equal(t.rows.length, A.STUDENTS.length, 'the rows are still there');
       assert.deepEqual(values(t), A.STUDENTS.map(() => null), 'there was nothing to sum');
+      // the labels are all that survived, and they are all still here
+      assert.deepEqual(keysOf(t), ['degree', 'letterGrade', 'sum']);
     });
 
     test('an empty table gives an empty result, not an error', () => {
@@ -190,7 +271,8 @@ module.exports = ({ describe, test }) => {
       h.w.runQuery();
       assert.notOk(h.q('.error-box'));
       assert.equal(h.entry(o.id).table.rows.length, 0);
-      assert.equal(h.entry(o.id).table.columns.length, 1, 'the column is still declared');
+      assert.equal(h.entry(o.id).table.columns.length, OUT_COLS,
+        'the header is still declared, labels and all');
     });
   });
 
@@ -204,32 +286,71 @@ module.exports = ({ describe, test }) => {
       assert.deepEqual(values(r.entry(r.o.id).table), A.STUDENTS.map(() => 2));
     });
 
+    test('and Select behind decides which labels are kept', () => {
+      /* The composition that replaces the old "narrow first" advice. Narrowing
+         first loses the label for good; narrowing afterwards is a choice the
+         user can still make, and this is the path the panel hint points at. */
+      const h = boot();
+      const [s2, ar, sel, o] = h.build('source', 'aggregateRows', 'select', 'output');
+      h.set(ar.id, 'op', 'sum');
+      h.w.render();
+      A.STUDENT_COLUMNS.filter(c => !A.isMeasurable(null, c))
+        .forEach(c => h.set(sel.id, 'column:' + c.key, false));
+      h.w.runQuery();
+      const t = h.entry(o.id).table;
+      assert.deepEqual(t.columns.map(c => c.key), ['sum'], 'back to one column');
+      assert.deepEqual(t.rows.map(r => r[0]), A.STUDENTS.map(st => st.gpa));
+    });
+
     test('an identifier is still excluded from the arithmetic', () => {
       const r = rig('sum', ['select']);
       ['gender', 'year', 'degree', 'specialisation', 'letterGrade', 'courses']
         .forEach(k => r.set(r.mid[0].id, 'column:' + k, false));   // id + gpa
       r.w.runQuery();
-      assert.deepEqual(values(r.entry(r.o.id).table), A.STUDENTS.map(s => s.gpa),
+      const t = r.entry(r.o.id).table;
+      assert.deepEqual(values(t), A.STUDENTS.map(s => s.gpa),
         'the id must not be added in');
+      /* The promise the old whole-row rule was defending, kept by the rule
+         that replaced it: the id is still outside the sum. It is now shown
+         beside it instead of thrown away, which is the whole change. */
+      assert.deepEqual(keysOf(t), ['id', 'sum']);
+      assert.deepEqual(labelCells(t), A.STUDENTS.map(s => [s.id]));
     });
 
     test('its result can be fed onward like any other table', () => {
       const h = boot();
       const [s, ar, agg, o] = h.build('source', 'aggregateRows', 'aggregate', 'output');
       h.set(ar.id, 'op', 'sum');
-      h.set(agg.id, 'op', 'average');
+      h.set(agg.id, 'stat.0.op', 'average');
       h.w.runQuery();
       const want = A.STUDENTS.reduce((a, s2) => a + s2.gpa, 0) / A.STUDENTS.length;
       assert.close(h.entry(o.id).table.rows[0][0], want, 1e-9);
     });
 
-    test('a one-row result reaches the headline display', () => {
+    test('a one-row, one-column result reaches the headline display', () => {
+      /* A Take(1) alone no longer produces one cell, because seven labels come
+         with it, so the headline needs the labels dropped as well as the rows.
+         That is a Select, which is the composition the panel names. */
+      const h = boot();
+      const [s, t, ar, sel, o] =
+        h.build('source', 'take', 'aggregateRows', 'select', 'output');
+      h.set(t.id, 'n', '1');
+      h.set(ar.id, 'op', 'sum');
+      h.w.render();
+      A.STUDENT_COLUMNS.filter(c => !A.isMeasurable(null, c))
+        .forEach(c => h.set(sel.id, 'column:' + c.key, false));
+      h.w.runQuery();
+      assert.ok(h.q('.big-num'), 'one cell should headline');
+      assert.includes(h.text('.result-head'), 'Sum');
+    });
+
+    test('a wide result does not headline, it tabulates', () => {
       const h = boot();
       const [s, t, ar, o] = h.build('source', 'take', 'aggregateRows', 'output');
       h.set(t.id, 'n', '1');
       h.w.runQuery();
-      assert.ok(h.q('.big-num'));
-      assert.includes(h.text('.result-head'), 'Sum');
+      assert.notOk(h.q('.big-num'), 'labels came through, so this is a row');
+      assert.equal(h.entry(o.id).table.columns.length, OUT_COLS);
     });
 
     test('branch metadata is dropped — the columns are not those columns', () => {
@@ -253,7 +374,29 @@ module.exports = ({ describe, test }) => {
 
     test('every measure is offered', () => {
       const r = rig();
-      assert.deepEqual(r.optionsOf(r.n.id, 'op'), OPS);
+      assert.deepEqual(r.optionsOf(r.n.id, 'op'), A.ROW_OPS.map(o => o.key));
+    });
+
+    test('and they are in two sections, because they are two kinds of answer', () => {
+      /* The six run ALONG the row over whatever numbers are on it; the three
+         read two named columns in an order that matters. One flat list would
+         offer Sum and Ratio as if they were the same kind of choice. */
+      const r = rig();
+      const groups = r.qa('[data-node="' + r.n.id + '"][data-key="op"] optgroup');
+      assert.equal(groups.length, 2);
+      assert.deepEqual(groups.map(g => g.getAttribute('label')),
+        ['Across the row', 'Between two columns']);
+      const inGroup = i => [...groups[i].querySelectorAll('option')].map(o => o.value);
+      assert.deepEqual(inGroup(0), A.AGG_OPS.map(o => o.key));
+      assert.deepEqual(inGroup(1), A.ROW_PAIR_OPS.map(o => o.key));
+    });
+
+    test('its sibling is offered the reductions alone', () => {
+      // "Difference down a column of 780 rows" is not a question.
+      const h = boot();
+      const [s2, ac, o] = h.build('source', 'aggregateColumns', 'output');
+      assert.deepEqual(h.optionsOf(ac.id, 'op'), A.AGG_OPS.map(o2 => o2.key));
+      assert.equal(h.qa('[data-node="' + ac.id + '"][data-key="op"] optgroup').length, 0);
     });
 
     test('the hint counts the columns that will actually contribute', () => {
@@ -265,12 +408,443 @@ module.exports = ({ describe, test }) => {
       assert.includes(hint, 'Select', 'and it says how to change it');
     });
 
+    test('the hint names the labels that will come through', () => {
+      /* The shape of the result is what people get wrong about this node, and
+         it changed: a reader who expects one column and gets eight should be
+         told before the query runs. Naming them, not just counting them, makes
+         the claim checkable against the node above. */
+      const r = rig('sum');
+      const hint = r.qa('[data-node="' + r.n.id + '"]')[0]
+        .closest('.node-config').textContent.replace(/\s+/g, ' ');
+      assert.includes(hint, CARRIED + ' label columns come through');
+      A.STUDENT_COLUMNS.filter(c => !A.isMeasurable(null, c))
+        .forEach(c => assert.includes(hint, c.label, c.key + ' should be named'));
+      assert.includes(hint, 'Drop them with a Select');
+      assert.excludes(hint, 'one column, one row per row in',
+        'the old promise of a single column is gone');
+    });
+
+    test('and reads as English when there is only one of them', () => {
+      const h = boot();
+      const [s2, sf, ar, o] = h.build('source', 'selectFor', 'aggregateRows', 'output');
+      h.set(sf.id, 'by', 'specialisation');
+      h.w.render();
+      const hint = h.qa('[data-node="' + ar.id + '"]')[0]
+        .closest('.node-config').textContent.replace(/\s+/g, ' ');
+      assert.includes(hint, '1 label column comes through: Specialisation');
+      assert.includes(hint, 'Drop it with a Select');
+    });
+
+    test('with nothing to carry, the hint does not mention labels', () => {
+      const r = rig('sum', ['select']);
+      A.STUDENT_COLUMNS.filter(c => !A.isMeasurable(null, c))
+        .forEach(c => r.set(r.mid[0].id, 'column:' + c.key, false));   // gpa only
+      const hint = r.qa('[data-node="' + r.n.id + '"]')[0]
+        .closest('.node-config').textContent.replace(/\s+/g, ' ');
+      assert.excludes(hint, 'label column');
+      assert.includes(hint, '1 of 1 column');
+    });
+
     test('the hint follows the header, not a guess', () => {
       const r = rig('sum', ['select']);
       r.set(r.mid[0].id, 'column:courses', false);
       const hint = r.qa('[data-node="' + r.n.id + '"]')[0]
         .closest('.node-config').textContent;
       assert.includes(hint, 'of ' + (A.STUDENT_COLUMNS.length - 1));
+    });
+  });
+
+  describe('the labels it carries', () => {
+
+    // A one-node rig over a table written out here, because the interesting
+    // cases are headers the archive does not happen to produce.
+    const node = op => ({ id: 99, type: 'aggregateRows', cfg: { op } });
+    const run  = (t, op) => A.applyAggregateRows(node(op || 'sum'), t, []);
+    const col  = (key, label, type) => ({ key, label, type });
+    const NUM = A.COLTYPE.NUMBER, TXT = A.COLTYPE.TEXT;
+
+    test('a breakdown keeps its group label, which is the point of the change', () => {
+      /* Select For -> Aggregate Rows. Before this, the averages came out with
+         nothing saying which group each belonged to, which is what made the
+         supervisor's "average enrolment for multiple courses" unanswerable. */
+      const h = boot();
+      const [s, sf, ar, o] = h.build('source', 'selectFor', 'aggregateRows', 'output');
+      h.set(sf.id, 'by', 'specialisation');
+      h.w.render();
+      h.app.addStat(sf.id);
+      h.w.render();
+      h.set(sf.id, 'stat.1.op', 'average');
+      h.w.render();
+      h.set(sf.id, 'stat.1.col', 'gpa');
+      h.set(ar.id, 'op', 'sum');
+      h.w.runQuery();
+
+      const grouped = h.app.evaluateGraph().res[sf.id].table;
+      const t = h.entry(o.id).table;
+      assert.deepEqual(t.columns.map(c => c.key), ['group', 'sum']);
+      assert.deepEqual(labelCells(t), grouped.rows.map(r => [r[0]]),
+        'every average still says which group it is');
+      assert.deepEqual(values(t), grouped.rows.map(r => r[1] + r[2]));
+    });
+
+    test('an identifier counts as a label, not as a measure', () => {
+      const t = A.makeTable([col('id', 'ID', NUM), col('a', 'A', NUM)], [[1001, 5]]);
+      const out = run(t);
+      assert.deepEqual(out.columns.map(c => c.key), ['id', 'sum']);
+      assert.deepEqual(out.rows, [[1001, 5]], 'the id rides along, it is not summed');
+    });
+
+    test('the nested course column is a label too', () => {
+      const t = A.studentsTable(A.STUDENTS.slice(0, 2));
+      assert.includes(A.aggregateRowsCarried(node('sum'), t).map(c => c.key), 'courses');
+    });
+
+    test('a table of labels alone still produces the measure column', () => {
+      const t = A.makeTable([col('g', 'G', TXT)], [['x'], ['y']]);
+      const out = run(t);
+      assert.deepEqual(out.columns.map(c => c.key), ['g', 'sum']);
+      assert.deepEqual(out.rows, [['x', null], ['y', null]], 'nothing to sum');
+    });
+
+    test('a table of measures alone carries nothing, as it always did', () => {
+      const t = A.makeTable([col('a', 'A', NUM), col('b', 'B', NUM)], [[1, 2]]);
+      const out = run(t);
+      assert.deepEqual(out.columns.map(c => c.key), ['sum']);
+      assert.deepEqual(out.rows, [[3]]);
+    });
+
+    test('an empty header gives the measure column and no rows', () => {
+      OPS.forEach(op => {
+        const out = run(A.makeTable([], []), op);
+        assert.deepEqual(out.columns.map(c => c.key), [op], op);
+        assert.equal(out.rows.length, 0, op);
+      });
+    });
+
+    describe('a label whose name collides with the measure', () => {
+      test('a clashing key is suffixed, so colIndex cannot pick the wrong one', () => {
+        const t = A.makeTable([col('sum', 'Total', TXT), col('a', 'A', NUM)], [['x', 5]]);
+        const out = run(t);
+        assert.deepEqual(out.columns.map(c => c.key), ['sum', 'sum_2']);
+        assert.deepEqual(out.columns.map(c => c.label), ['Total', 'Sum'],
+          'the labels did not clash, so neither was touched');
+        assert.equal(A.colIndex(out, 'sum_2'), 1);
+      });
+
+      test('a clashing label is suffixed too, because it becomes a CSV header', () => {
+        const t = A.makeTable([col('total', 'Sum', TXT), col('a', 'A', NUM)], [['x', 5]]);
+        const out = run(t);
+        assert.deepEqual(out.columns.map(c => c.key), ['total', 'sum'],
+          'the keys did not clash, so neither was renamed');
+        assert.deepEqual(out.columns.map(c => c.label), ['Sum', 'Sum 2']);
+        assert.equal(A.serialiseTable(out, ',', true).split('\n')[0], 'Sum,Sum 2');
+      });
+
+      test('both at once', () => {
+        const t = A.makeTable([col('sum', 'Sum', TXT), col('a', 'A', NUM)], [['x', 5]]);
+        const out = run(t);
+        assert.deepEqual(out.columns.map(c => c.key), ['sum', 'sum_2']);
+        assert.deepEqual(out.columns.map(c => c.label), ['Sum', 'Sum 2']);
+      });
+
+      test('every key and label out is unique, for every measure', () => {
+        const t = A.makeTable(
+          OPS.map(o => col(o, A.AGG_OPS.find(x => x.key === o).label, TXT))
+             .concat([col('a', 'A', NUM)]),
+          [OPS.map(() => 'x').concat([5])]);
+        OPS.forEach(op => {
+          const out = run(t, op);
+          const ks = out.columns.map(c => c.key), ls = out.columns.map(c => c.label);
+          assert.equal(new Set(ks).size, ks.length, 'duplicate key for ' + op);
+          assert.equal(new Set(ls).size, ls.length, 'duplicate label for ' + op);
+        });
+      });
+    });
+
+    test('the export carries the labels, not just the numbers', () => {
+      const h = boot();
+      const [s, sf, ar, o] = h.build('source', 'selectFor', 'aggregateRows', 'output');
+      h.set(sf.id, 'by', 'specialisation');
+      h.set(ar.id, 'op', 'sum');
+      h.w.runQuery();
+      const t = h.entry(o.id).table;
+      const lines = A.serialiseTable(t, ',', true).split('\n');
+      assert.equal(lines[0], 'Specialisation,Sum');
+      // Checked against the table rather than against a name written here, so
+      // this says "the label reached the file" and not "the file says SWEN".
+      assert.equal(lines.length, t.rows.length + 1);
+      assert.includes(lines[1], String(t.rows[0][0]));
+    });
+
+    test('the log says what was carried', () => {
+      const h = boot();
+      const [s, ar, o] = h.build('source', 'aggregateRows', 'output');
+      h.set(ar.id, 'op', 'sum');
+      h.w.runQuery();
+      const log = h.entry(o.id).log.join(' | ');
+      assert.includes(log, 'carried ' + CARRIED + ' label columns');
+      assert.excludes(log, 'ignored', 'nothing is ignored any more');
+    });
+
+    test('nothing carried, nothing logged about it', () => {
+      const t = A.makeTable([col('a', 'A', NUM)], [[1]]);
+      const log = [];
+      A.applyAggregateRows(node('sum'), t, log);
+      assert.equal(log.filter(e => /carried/.test(JSON.stringify(e))).length, 0);
+    });
+  });
+
+  describe('the two-column measures', () => {
+
+    const NUM = A.COLTYPE.NUMBER, TXT = A.COLTYPE.TEXT;
+    const col2 = (key, label, type) => ({ key, label, type: type || TXT });
+    const pnode = (op, left, right) =>
+      ({ id: 99, type: 'aggregateRows', cfg: { op, left: left || '', right: right || '' } });
+    // Course, Passed, Enrolled. The shape a Combine set to Join produces.
+    const rate = (rows) => A.makeTable(
+      [col2('g', 'Course'), col2('a', 'Passed', NUM), col2('b', 'Enrolled', NUM)], rows);
+    const run = (op, rows, l, r) =>
+      A.applyAggregateRows(pnode(op, l || 'a', r || 'b'), rate(rows), []);
+    const vals = t => t.rows.map(r => r[r.length - 1]);
+
+    test('the arithmetic is the arithmetic', () => {
+      const rows = [['x', 80, 82]];
+      assert.close(vals(run('difference', rows))[0], -2, 1e-9);
+      assert.close(vals(run('ratio', rows))[0], 80 / 82, 1e-9);
+      assert.close(vals(run('percent', rows))[0], (80 / 82) * 100, 1e-9);
+    });
+
+    test('the order is the one you picked, not the one the columns arrived in', () => {
+      // Passed over Enrolled is a pass rate; Enrolled over Passed is not a
+      // number anybody wants, and the node must be able to tell them apart.
+      const rows = [['x', 80, 82]];
+      assert.close(vals(run('percent', rows, 'a', 'b'))[0], (80 / 82) * 100, 1e-9);
+      assert.close(vals(run('percent', rows, 'b', 'a'))[0], (82 / 80) * 100, 1e-9);
+    });
+
+    test('the column names the expression, in the incoming labels', () => {
+      assert.equal(run('difference', [['x', 1, 2]]).columns[1].label, 'Passed - Enrolled');
+      assert.equal(run('ratio',      [['x', 1, 2]]).columns[1].label, 'Passed ÷ Enrolled');
+      /* Spelled out rather than a per cent sign, because this label is exported
+         and a per cent sign starts a comment in LaTeX. See ROW_PAIR_OPS. */
+      assert.equal(run('percent',    [['x', 1, 2]]).columns[1].label,
+                   'Passed as a percentage of Enrolled');
+    });
+
+    /* THE RULES THAT STOP IT BEING QUIETLY WRONG.
+       reduceValues SKIPS a blank, which is right for a sum and fatal here:
+       80 divided by nothing would come back as 80, a number that looks like an
+       answer. These four tests are the reason pairValue() exists at all. */
+    describe('a row with no answer says so', () => {
+      test('a blank on either side is blank, never skipped', () => {
+        assert.deepEqual(vals(run('percent', [['x', null, 20]])), [null]);
+        assert.deepEqual(vals(run('percent', [['x', 7, null]])), [null]);
+        assert.deepEqual(vals(run('percent', [['x', null, null]])), [null]);
+        assert.deepEqual(vals(run('difference', [['x', null, 20]])), [null]);
+      });
+
+      test('a zero to divide by is blank, not Infinity', () => {
+        // A course with no enrolments has no pass rate, not an infinite one.
+        assert.deepEqual(vals(run('ratio', [['x', 5, 0]])), [null]);
+        assert.deepEqual(vals(run('percent', [['x', 5, 0]])), [null]);
+      });
+
+      test('but subtracting zero is ordinary arithmetic', () => {
+        assert.deepEqual(vals(run('difference', [['x', 5, 0]])), [5]);
+      });
+
+      test('something that is not a number is blank too', () => {
+        assert.deepEqual(vals(run('ratio', [['x', 'n/a', 4]])), [null]);
+      });
+
+      test('the log says how many rows had no answer', () => {
+        const log = [];
+        A.applyAggregateRows(pnode('percent', 'a', 'b'),
+          rate([['x', 80, 82], ['y', 5, 0], ['z', null, 3]]), log);
+        const said = log.map(e => e.parts.map(pp => pp.s).join(' ')).join(' | ');
+        assert.includes(said, 'no answer for');
+        assert.includes(said, '2');
+      });
+
+      test('and says nothing when every row had one', () => {
+        const log = [];
+        A.applyAggregateRows(pnode('percent', 'a', 'b'), rate([['x', 80, 82]]), log);
+        assert.excludes(log.map(e => e.parts.map(pp => pp.s).join(' ')).join(' | '),
+          'no answer for');
+      });
+
+      test('negatives are values, not errors', () => {
+        assert.close(vals(run('percent', [['x', -3, 6]]))[0], -50, 1e-9);
+      });
+    });
+
+    test('a column that is neither operand comes through', () => {
+      /* The rule is "what the measure consumes is replaced, the rest come
+         through". A reduction consumes every numeric column; this consumes
+         exactly two, so a third is carried rather than quietly dropped. */
+      const t = A.makeTable(
+        [col2('g', 'Course'), col2('a', 'Passed', NUM),
+         col2('b', 'Enrolled', NUM), col2('c', 'Withdrew', NUM)],
+        [['X', 80, 82, 2]]);
+      const out = A.applyAggregateRows(pnode('percent', 'a', 'b'), t, []);
+      assert.deepEqual(out.columns.map(c => c.label),
+        ['Course', 'Withdrew', 'Passed as a percentage of Enrolled']);
+      assert.equal(out.rows[0][1], 2, 'the value came through untouched');
+    });
+
+    test('a reduction still consumes every numeric column', () => {
+      const t = A.makeTable(
+        [col2('g', 'Course'), col2('a', 'A', NUM), col2('b', 'B', NUM)], [['X', 1, 2]]);
+      const out = A.applyAggregateRows(pnode('sum'), t, []);
+      assert.deepEqual(out.columns.map(c => c.label), ['Course', 'Sum']);
+      assert.equal(out.rows[0][1], 3);
+    });
+
+    test('with nothing numeric arriving, the column is still declared', () => {
+      const t = A.makeTable([col2('g', 'Course')], [['x']]);
+      const out = A.applyAggregateRows(pnode('percent'), t, []);
+      assert.equal(out.columns.length, 2);
+      assert.deepEqual(vals(out), [null]);
+    });
+
+    test('with one numeric column both sides resolve to it', () => {
+      // Honest and visibly useless, which beats an error: the fix is to wire
+      // in something with two numbers on a row.
+      const t = A.makeTable([col2('g', 'Course'), col2('a', 'A', NUM)], [['x', 5]]);
+      const out = A.applyAggregateRows(pnode('percent'), t, []);
+      assert.deepEqual(vals(out), [100]);
+    });
+
+    test('a saved column that no longer arrives falls back rather than failing', () => {
+      // Rewiring the node behind a different branch is enough to do this.
+      const out = A.applyAggregateRows(pnode('percent', 'gone', 'alsogone'),
+        rate([['x', 80, 82]]), []);
+      assert.deepEqual(vals(out), [(80 / 82) * 100], 'it used the first two numbers');
+    });
+
+    test('the header it declares is the header it produces', () => {
+      const tables = [
+        A.makeTable([], []),
+        A.makeTable([col2('g', 'G')], [['x']]),
+        A.makeTable([col2('a', 'A', NUM)], [[1]]),
+        rate([['x', 1, 2]])
+      ];
+      A.ROW_PAIR_OPS.forEach(op => tables.forEach((t, ti) => {
+        const n = pnode(op.key);
+        const produced = A.headerOnly(A.applyAggregateRows(n, t, []))
+          .columns.map(c => c.key + ':' + c.label);
+        const declared = A.aggregateRowsSchema(n, A.headerOnly(t))
+          .columns.map(c => c.key + ':' + c.label);
+        assert.deepEqual(produced, declared, op.key + ' on table ' + ti);
+      }));
+    });
+
+    describe('through a real graph', () => {
+      function wired(op) {
+        const h = boot();
+        const [s2, ar, o] = h.build('source', 'aggregateRows', 'output');
+        h.set(ar.id, 'op', op);
+        h.w.render();
+        return Object.assign(h, { s: s2, ar, o });
+      }
+
+      test('picking a pair measure grows two column pickers', () => {
+        const before = wired('sum');
+        const keys = id => before.qa('[data-node="' + id + '"]')
+          .map(e => e.getAttribute('data-key'));
+        assert.deepEqual(keys(before.ar.id), ['op'], 'a reduction needs no operands');
+
+        const after = wired('percent');
+        assert.deepEqual(after.qa('[data-node="' + after.ar.id + '"]')
+          .map(e => e.getAttribute('data-key')), ['op', 'left', 'right']);
+      });
+
+      test('the second picker is named after the operation', () => {
+        [['difference', 'Minus'], ['ratio', 'Divided by'], ['percent', 'As % of']]
+          .forEach(([op, label]) => {
+            const h = wired(op);
+            const txt = h.qa('[data-node="' + h.ar.id + '"]')[0]
+              .closest('.node-config').textContent.replace(/\s+/g, ' ');
+            assert.includes(txt, label, op);
+          });
+      });
+
+      test('and the panel explains what the measure is', () => {
+        A.ROW_PAIR_OPS.forEach(op => {
+          const h = wired(op.key);
+          const txt = h.qa('[data-node="' + h.ar.id + '"]')[0]
+            .closest('.node-config').textContent.replace(/\s+/g, ' ');
+          assert.includes(txt, op.hint.slice(0, 40), op.key);
+          assert.includes(txt, 'leaves that row blank', op.key);
+        });
+      });
+
+      test('the Out line states the expression, word for word', () => {
+        const h = wired('percent');
+        const txt = h.qa('[data-node="' + h.ar.id + '"]')[0]
+          .closest('.node-config').textContent.replace(/\s+/g, ' ');
+        const label = h.app.computeSchemas()[h.ar.id].columns.slice(-1)[0].label;
+        assert.includes(txt, 'Out: one row per row in, ' + label);
+      });
+
+      test('the result can be sorted by, which is the point of having it', () => {
+        /* Reading two numbers off a row works for five rows. The archive has
+           78 courses, so ranking is the whole reason this is a column and not
+           a sum the reader does in their head. */
+        const h = boot();
+        const [s2, sf, ar, so, o] =
+          h.build('source', 'selectFor', 'aggregateRows', 'sort', 'output');
+        h.set(sf.id, 'by', 'specialisation');
+        h.w.render();
+        h.app.addStat(sf.id);
+        h.w.render();
+        h.set(sf.id, 'stat.1.op', 'average');
+        h.w.render();
+        h.set(sf.id, 'stat.1.col', 'gpa');
+        h.set(ar.id, 'op', 'ratio');
+        h.w.render();
+        assert.includes(h.optionsOf(so.id, 'sort.0.col'), 'ratio',
+          'the derived column must be rankable');
+        h.set(so.id, 'sort.0.col', 'ratio');
+        h.set(so.id, 'sort.0.dir', 'desc');
+        h.w.runQuery();
+        const got = h.entry(o.id).table.rows.map(r => r[r.length - 1]);
+        assert.deepEqual(got, got.slice().sort((x, y) => y - x), 'it really did rank');
+      });
+
+      test('the measure and its two columns survive a round trip', () => {
+        const h = wired('percent');
+        h.set(h.ar.id, 'left', 'gpa');
+        h.w.render();
+        h.set(h.ar.id, 'right', 'gpa');
+        const json = JSON.stringify(h.app.serialiseGraph());
+        h.w.clearAll();
+        h.app.loadGraphFromText(json, h.doc.createElement('button'));
+        const back = h.app.nodes.find(n => n.type === 'aggregateRows');
+        assert.equal(back.cfg.op, 'percent');
+        assert.equal(back.cfg.left, 'gpa');
+        assert.equal(back.cfg.right, 'gpa');
+      });
+
+      test('a query saved before these existed still loads', () => {
+        const h = wired('sum');
+        const g = h.app.serialiseGraph();
+        g.nodes.forEach(n => {
+          if (n.type === 'aggregateRows') { delete n.cfg.left; delete n.cfg.right; }
+        });
+        h.w.clearAll();
+        h.app.loadGraphFromText(JSON.stringify(g), h.doc.createElement('button'));
+        const back = h.app.nodes.find(n => n.type === 'aggregateRows');
+        assert.equal(back.cfg.op, 'sum');
+        assert.equal(back.cfg.left, '', 'the default fills the gap');
+        assert.notOk(h.q('.error-box'));
+      });
+
+      test('a file naming a measure this build does not have falls back', () => {
+        const h = wired('sum');
+        h.app.setCfg(h.ar.id, 'op', 'cube');
+        assert.equal(h.app.rowOp(h.app.findNode(h.ar.id)).key, 'count');
+      });
     });
   });
 

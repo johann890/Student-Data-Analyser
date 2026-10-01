@@ -194,22 +194,30 @@ function renderLibrary() {
   var search = document.getElementById('libSearchWrap');
   if (search) search.classList.toggle('show', !st.error && st.entries.length >= LIB_SEARCH_MIN);
 
-  if (st.error) { body.innerHTML = libProblemHTML(st.error); return; }
+  /* The examples go above whatever the user's own grid turns out to be, and
+     they survive all three of the early returns below. A store that cannot be
+     read, a library with nothing in it and a search that matched nothing are
+     the three moments a reader most needs something to open, so the one case
+     where the examples must not appear is the one where they are what the
+     search is being run against. */
+  var examples = libQuery.trim() ? '' : libExamplesHTML();
+
+  if (st.error) { body.innerHTML = examples + libProblemHTML(st.error); return; }
 
   /* An empty library says nothing. The dialog's own heading paragraph already
      explains what the library is for, and the name field and Save button sit
      in plain sight at the foot, so a second block of prose in the middle was
      repeating the two things around it. */
-  if (!st.entries.length) { body.innerHTML = ''; return; }
+  if (!st.entries.length) { body.innerHTML = examples; return; }
 
   var q = libQuery.trim().toLowerCase();
   var shown = st.entries.filter(function(e) { return libMatches(e, q); });
   if (!shown.length) {
-    body.innerHTML = '<div class="lib-empty">No saved query is called anything like ' +
+    body.innerHTML = examples + '<div class="lib-empty">No saved query is called anything like ' +
       '"' + esc(libQuery.trim()) + '".</div>';
     return;
   }
-  body.innerHTML = '<div class="lib-grid">' +
+  body.innerHTML = examples + '<div class="lib-grid">' +
     shown.map(libCardHTML).join('') + '</div>';
 
   // A rename renders as an input and is meant to be typed into immediately.

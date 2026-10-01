@@ -154,7 +154,8 @@ var NODE_SPEC = {
       var sperm = combineOrder(node, ids);
       return makeTable(joinColumns(node,
         sperm.map(function(i){ return heads[i]; }),
-        sperm.map(function(i){ return combineInputLabel(ids[i]); })), []);
+        sperm.map(function(i){ return combineInputLabel(node, ids[i]); }),
+        sperm.map(function(i){ return ids[i]; })), []);
     },
     evaluate: function(node, ctx) {
       // The base is a node the user named, not the wire that happened to be
@@ -163,8 +164,11 @@ var NODE_SPEC = {
       // names the node it actually came from.
       var perm = combineOrder(node, ctx.inIds);
       var ctabs = perm.map(function(i){ return ctx.ins[i].table; });
-      var clabels = perm.map(function(i){ return combineInputLabel(ctx.inIds[i]); });
-      var out = combineTables(node, ctabs, ctx.log, clabels);
+      var clabels = perm.map(function(i){ return combineInputLabel(node, ctx.inIds[i]); });
+      // The ids ride the same permutation, so joinColumns can ask which inputs
+      // the user has actually named rather than guessing from the label text.
+      var cids = perm.map(function(i){ return ctx.inIds[i]; });
+      var out = combineTables(node, ctabs, ctx.log, clabels, cids);
       return {
         table: out.table,
         error: out.error,

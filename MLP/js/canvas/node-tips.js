@@ -58,9 +58,12 @@ var NODE_TIPS = {
   select: 'Keeps only the columns you tick. Every row comes through.',
   project:'Unfolds each student into one row per course they took. Counts after ' +
           'this count enrolments rather than people.',
-  aggregate: 'Reduces the whole table to one value, such as a count or an average.',
+  aggregate: 'Reduces the whole table to one row. Add a measure for every ' +
+             'figure you want on it, such as a count and an average.',
   aggregateColumns: 'One row out, with the measure applied down each column.',
-  aggregateRows:    'One column out, with the measure applied across each row.',
+  aggregateRows:    'The measure applied across each row, or two named columns ' +
+                    'as a difference, ratio or percentage. Label columns come ' +
+                    'through beside it.',
   combine:'Joins branches into one table: stack their rows, or match them up ' +
           'side by side on a shared column.',
   compare:'Puts branches side by side, one row each, so two cohorts can be read ' +

@@ -981,4 +981,130 @@ module.exports = ({ describe, test }) => {
       assert.includes(h.doc.getElementById('libNotice').textContent, 'nothing in the library');
     });
   });
+
+  /* ------------------------------------------------- the worked examples */
+
+  /* Shipped in the page, never in the store. Asserted here rather than in a
+     suite of their own because every claim below is a claim about the library:
+     that the examples are openable, and that they stay out of everything the
+     store counts, exports or hands back. */
+  describe('the worked examples are in the page, not in the drawer', () => {
+
+    test('each one is a query this version can open', () => {
+      const h = boot();
+      assert.ok(h.app.LIB_EXAMPLES.length >= 3, 'not enough examples to be worth a section');
+      h.app.LIB_EXAMPLES.forEach(ex => {
+        assert.equal(ex.graph.kind, KIND, ex.id + ' is not a query file');
+        assert.ok(ex.graph.version <= h.app.FILE_VERSION,
+          ex.id + ' was written by a newer format than this page can read');
+        const parsed = h.app.deserialiseGraph(JSON.stringify(ex.graph));
+        assert.notOk(parsed.error, ex.id + ' is refused by the loader: ' + parsed.error);
+        assert.ok(parsed.nodes.length, ex.id + ' has no nodes left after the repair pass');
+      });
+    });
+
+    test('each one says what it is demonstrating', () => {
+      const h = boot();
+      h.app.LIB_EXAMPLES.forEach(ex => {
+        assert.ok(ex.name && ex.name.length, ex.id + ' has no name');
+        assert.ok(ex.why && ex.why.length > 20,
+          ex.id + ' has no sentence, which is the only thing it has that a saved card does not');
+        assert.excludes(ex.why, '—', ex.id + ' why');
+      });
+    });
+
+    test('ids are unique and cannot collide with a stored entry', () => {
+      const h = boot();
+      const ids = h.app.LIB_EXAMPLES.map(e => e.id);
+      assert.deepEqual(ids.slice().sort(), [...new Set(ids)].sort(), 'two examples share an id');
+      ids.forEach(id => assert.ok(/^ex-/.test(id), id + ' is not prefixed, so it reads as a saved entry'));
+    });
+
+    /* The three early returns in renderLibrary() are the three moments a reader
+       most needs something to open, so the examples have to survive all of
+       them. */
+    test('they are drawn when the library is empty', () => {
+      const h = boot();
+      h.w.openLibrary(null);
+      assert.equal(h.qa('#libBody .lib-example').length, h.app.LIB_EXAMPLES.length,
+        'an empty library shows an empty dialog');
+    });
+
+    test('and when the store cannot be read at all', () => {
+      const h = boot();
+      h.storage.setItem(STORE, 'not json');
+      h.w.openLibrary(null);
+      assert.ok(h.q('#libBody .lib-problem'), 'the store error went missing');
+      assert.equal(h.qa('#libBody .lib-example').length, h.app.LIB_EXAMPLES.length,
+        'a broken store took the examples down with it');
+    });
+
+    test('but not while a search is running, which is about saved queries', () => {
+      const h = built();
+      h.w.libSaveCurrent(null);
+      h.w.openLibrary(null);
+      h.app.libSearchInput({ value: 'zzzz-nothing-matches' });
+      assert.equal(h.qa('#libBody .lib-example').length, 0,
+        'the examples ignored the search they were shown next to');
+      assert.ok(h.q('#libBody .lib-empty'), 'the no-match message went missing');
+    });
+
+    test('nothing about them reaches the store', () => {
+      const h = boot();
+      h.w.openLibrary(null);
+      const st = h.app.libRead();
+      assert.equal(st.entries.length, 0, 'an example was written into the library');
+      assert.equal(h.storage.getItem(STORE), null, 'the store was created just by opening the dialog');
+      assert.equal(h.app.libBytes(), 0, 'the examples are being counted against the quota');
+      // libExportPayload returns the FILE TEXT, not an object.
+      const payload = JSON.parse(h.app.libExportPayload(h.app.libRead().entries));
+      assert.equal(payload.entries.length, 0, 'an example would travel in an export');
+      h.app.LIB_EXAMPLES.forEach(ex =>
+        assert.excludes(JSON.stringify(payload), ex.id, ex.id + ' is in the export file'));
+    });
+
+    test('they cannot be renamed, deleted or exported, and the card offers none of it', () => {
+      const h = boot();
+      h.w.openLibrary(null);
+      const card = h.q('#libBody .lib-example');
+      const labels = [...card.querySelectorAll('button')].map(b => b.textContent.trim());
+      assert.deepEqual(labels, ['Open'], 'an example card offers something it cannot do');
+      h.app.LIB_EXAMPLES.forEach(ex => {
+        assert.equal(h.app.libGet(ex.id), null, ex.id + ' is reachable through the store API');
+      });
+    });
+
+    test('opening one puts it on the canvas through the ordinary loader', () => {
+      const h = boot();
+      const ex = h.app.LIB_EXAMPLES[0];
+      h.w.openLibrary(null);
+      h.w.libOpenExample(ex.id, null);
+      assert.equal(h.app.nodes.length, ex.graph.nodes.length, 'the example did not arrive');
+      assert.notOk(h.app.libraryOpen(), 'the dialog stayed open over the answer');
+      assert.deepEqual(h.app.nodes.map(n => n.type).sort(),
+        ex.graph.nodes.map(n => n.type).sort(), 'the nodes are not the ones in the example');
+    });
+
+    test('opening one over existing work asks first', () => {
+      const h = built();
+      h.w.openLibrary(null);
+      const before = h.app.nodes.length;
+      const ex = h.app.LIB_EXAMPLES[0];
+      h.w.libOpenExample(ex.id, null);
+      assert.equal(h.app.nodes.length, before, 'it replaced the canvas without asking');
+      assert.ok(h.app.libraryOpen(), 'the dialog closed on the question');
+      assert.includes(h.q('#libBody .lib-example .lib-go').textContent, 'Replace',
+        'the card does not say it is waiting for an answer');
+      h.w.libOpenExample(ex.id, null);
+      assert.equal(h.app.nodes.length, ex.graph.nodes.length, 'the second press did not go through');
+    });
+
+    test('opening one does not propose its name for the next save', () => {
+      const h = boot();
+      h.w.openLibrary(null);
+      h.w.libOpenExample(h.app.LIB_EXAMPLES[0].id, null);
+      assert.notOk(h.app.lastQueryName(),
+        'saving would offer to overwrite a file named after something the user did not write');
+    });
+  });
 };

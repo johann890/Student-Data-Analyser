@@ -2,6 +2,49 @@
    Part of the Student Data Analyser. A classic script, not a module: the order
    these load in is set by the list at the foot of index.html and is load-bearing.
    ========================================================================== */
+/* THE LIST OF MEASURES
+   ---------------------------------------------------------------------------
+   One row per measure: what to work out, which column to work it out over, and
+   an x to drop it. Three nodes ask this now (Select For, Histogram and
+   Aggregate), and the markup was already written out twice before the third
+   arrived, so it is written once here instead.
+
+   `ops` is a parameter because the three do NOT offer the same set. Select For
+   and Histogram add "Share of total", which divides by the rows that came in;
+   on a whole-table Aggregate that divides the rows by themselves and is always
+   100%, so Aggregate is handed AGG_OPS and the option is simply not there. A
+   measure that can only ever give one answer is not a choice.
+
+   The column select appears only for the measures that take one, so a Count
+   row does not carry a control that means nothing for it. The first row has no
+   x: a node with no measures produces a table of nothing, and removeStat()
+   puts one back if it ever gets there.                                       */
+function statListHTML(id, node, schema, ops) {
+  var list = ops || SELECTFOR_OPS;
+  return '<div class="cfg-label">Measure</div><div class="stat-list">' +
+    statsOf(node).map(function(st, si) {
+      var sop = selectForOp(st && st.op);
+      var scol = sop.needsCol ? statCol(st, schema) : null;
+      return '<div class="stat-row">' +
+        '<select class="stat-op"' + ctl(id, 'stat.' + si + '.op') + '>' +
+          list.map(function(o){ return opt(o.key, sop.key, o.label); }).join('') +
+        '</select>' +
+        (sop.needsCol
+          ? '<select class="stat-col"' + ctl(id, 'stat.' + si + '.col') + '>' +
+              measurableCols(schema).map(function(c) {
+                return opt(c.key, scol ? scol.key : '', c.label);
+              }).join('') +
+            '</select>'
+          : '<span class="stat-nocol"></span>') +
+        (si > 0
+          ? '<button class="remove-criterion-btn" onclick="removeStat(' + id + ',' + si + ')">x</button>'
+          : '<span class="stat-nodel"></span>') +
+      '</div>';
+    }).join('') +
+  '</div>' +
+  '<button class="add-criterion-btn sort-add" onclick="addStat(' + id + ')">+ add measure</button>';
+}
+
 function configHTML(node, schemas) {
   var id = node.id;
   var cfg = node.cfg = node.cfg || defaultCfg(node.type);
@@ -211,31 +254,7 @@ function configHTML(node, schemas) {
         'for a fixed list, or three for named bands.</div>';
     }
 
-    var stats = statsOf(node);
-    html += '<div class="cfg-label">Measure</div><div class="stat-list">' +
-      stats.map(function(st, si) {
-        var sop = selectForOp(st && st.op);
-        var scol = sop.needsCol ? statCol(st, schema) : null;
-        return '<div class="stat-row">' +
-          '<select class="stat-op"' + ctl(id, 'stat.' + si + '.op') + '>' +
-            SELECTFOR_OPS.map(function(o){ return opt(o.key, sop.key, o.label); }).join('') +
-          '</select>' +
-          // The column select appears only for the measures that take one, so
-          // the row does not carry a control that means nothing for Count.
-          (sop.needsCol
-            ? '<select class="stat-col"' + ctl(id, 'stat.' + si + '.col') + '>' +
-                measurableCols(schema).map(function(c) {
-                  return opt(c.key, scol ? scol.key : '', c.label);
-                }).join('') +
-              '</select>'
-            : '<span class="stat-nocol"></span>') +
-          (si > 0
-            ? '<button class="remove-criterion-btn" onclick="removeStat(' + id + ',' + si + ')">x</button>'
-            : '<span class="stat-nodel"></span>') +
-        '</div>';
-      }).join('') +
-    '</div>' +
-    '<button class="add-criterion-btn sort-add" onclick="addStat(' + id + ')">+ add measure</button>';
+    html += statListHTML(id, node, schema, SELECTFOR_OPS);
 
     if (statsOf(node).some(function(st){ return selectForOp(st && st.op).needsCol; }) &&
         !measurableCols(schema).length) {
@@ -291,29 +310,7 @@ function configHTML(node, schemas) {
       }
     }
 
-    var hstats = statsOf(node);
-    html += '<div class="cfg-label">Measure</div><div class="stat-list">' +
-      hstats.map(function(st, si) {
-        var hop = selectForOp(st && st.op);
-        var hcol = hop.needsCol ? statCol(st, schema) : null;
-        return '<div class="stat-row">' +
-          '<select class="stat-op"' + ctl(id, 'stat.' + si + '.op') + '>' +
-            SELECTFOR_OPS.map(function(o){ return opt(o.key, hop.key, o.label); }).join('') +
-          '</select>' +
-          (hop.needsCol
-            ? '<select class="stat-col"' + ctl(id, 'stat.' + si + '.col') + '>' +
-                measurableCols(schema).map(function(c) {
-                  return opt(c.key, hcol ? hcol.key : '', c.label);
-                }).join('') +
-              '</select>'
-            : '<span class="stat-nocol"></span>') +
-          (si > 0
-            ? '<button class="remove-criterion-btn" onclick="removeStat(' + id + ',' + si + ')">x</button>'
-            : '<span class="stat-nodel"></span>') +
-        '</div>';
-      }).join('') +
-    '</div>' +
-    '<button class="add-criterion-btn sort-add" onclick="addStat(' + id + ')">+ add measure</button>';
+    html += statListHTML(id, node, schema, SELECTFOR_OPS);
 
     html += '<div class="cmp-hint">Out: one row per band \u2014 ' +
       histogramColumns(node, schema).map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(', ') +
@@ -410,28 +407,96 @@ function configHTML(node, schemas) {
       '</div>';
   }
 
-  if (node.type === 'aggregate' || node.type === 'aggregateColumns' ||
-      node.type === 'aggregateRows') {
+  /* THE WHOLE-TABLE AGGREGATE, which takes a LIST of measures.
+     -------------------------------------------------------------------------
+     It used to take one, through a Measure select and an "Of column" select
+     beside it, and answering "what is the range of GPAs" therefore meant two
+     Aggregates on two branches and a Combine to put them back together. The
+     list Select For already had is the same question asked of the same kind of
+     thing, so it is the same control, shown here.
+
+     Its two siblings keep the single select, and that is not an oversight.
+     Aggregate Columns applies ONE measure to every column and Aggregate Rows
+     applies ONE across every row; in both, the plurality is in the table
+     rather than in the setting, and a list of measures there would mean
+     something quite different from a list here. */
+  if (node.type === 'aggregate') {
+    html += statListHTML(id, node, schema, AGG_OPS);
+
+    if (statsOf(node).some(function(st){ return selectForOp(st && st.op).needsCol; }) &&
+        !measurableCols(schema).length) {
+      html += '<div class="cmp-hint">No numeric column upstream: Those ' +
+        'measures will come out blank.</div>';
+    }
+
+    var aCols = measureColumns(node, schema);
+    html += '<div class="cmp-hint">Out: one row, ' +
+      aCols.length + ' column' + (aCols.length === 1 ? '' : 's') + ': ' +
+      aCols.map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(', ') +
+      '.</div>';
+  }
+
+  if (node.type === 'aggregateColumns' || node.type === 'aggregateRows') {
     var isCols = node.type === 'aggregateColumns';
     var isRows = node.type === 'aggregateRows';
-    var op = aggOp(node);
+    /* rowOp() for this node, aggOp() for its sibling. Agg. Columns is offered
+       the reductions alone: "difference down a column of 780 rows" is not a
+       question, and an option that can only ever be nonsense is worse than a
+       missing one. */
+    var op = isRows ? rowOp(node) : aggOp(node);
 
+    /* TWO SECTIONS, because there are two kinds of answer here and they differ
+       in what they read rather than in what they compute. The six above run
+       ALONG the row, over whatever numbers are on it. The three below read two
+       named columns, in an order that matters. Putting them in one flat list
+       would offer "Sum" and "Ratio" as if they were the same kind of choice,
+       and the second needs two more controls the moment it is picked. */
     html += '<div class="cfg-label">Measure</div>' +
       '<select' + ctl(id, 'op') + '>' +
-        AGG_OPS.map(function(o){ return opt(o.key, op.key, o.label); }).join('') +
+        (isRows
+          ? '<optgroup label="Across the row">' +
+              AGG_OPS.map(function(o){ return opt(o.key, op.key, o.label); }).join('') +
+            '</optgroup>' +
+            '<optgroup label="Between two columns">' +
+              ROW_PAIR_OPS.map(function(o){ return opt(o.key, op.key, o.label); }).join('') +
+            '</optgroup>'
+          : AGG_OPS.map(function(o){ return opt(o.key, op.key, o.label); }).join('')) +
       '</select>';
 
-    if (!isCols && !isRows && op.needsCol) {
-      // Only the whole-table Aggregate picks a column: AggregateColumns applies
-      // the measure to every column at once, which is the point of it.
-      var mcols = measurableCols(schema);
-      var chosen = aggregateCol(node, schema);
-      html += '<div class="cfg-label">Of column</div>' +
-        (mcols.length
-          ? '<select' + ctl(id, 'col') + '>' +
-              mcols.map(function(c){ return opt(c.key, chosen ? chosen.key : '', c.label); }).join('') +
-            '</select>'
-          : '<div class="cmp-hint">No numeric column upstream: The result will be blank.</div>');
+    /* The two operands, and the sentence saying what the measure is.
+
+       Named rather than taken from the order the columns arrive in. Header
+       order would have been fewer lines and would have left the operand order
+       invisible: Passed over Enrolled is a pass rate and Enrolled over Passed
+       is not a number anybody wants, and which one you got would have depended
+       on which branch happened to be the Combine's base.
+
+       The help line is the op's own, written once beside the operation in
+       engine/aggregate.js so the panel and the definition cannot drift. */
+    if (isRows && op.pair) {
+      var pcols = measurableCols(schema);
+      if (!pcols.length) {
+        html += '<div class="cmp-hint">No numeric column upstream. ' +
+          'This measure reads two of them, so wire in a table with numbers, ' +
+          'such as a <b>Combine</b> set to Join.</div>';
+      } else {
+        var pr = aggregateRowsPair(node, schema);
+        html += '<div class="cfg-label">Of</div>' +
+          '<select' + ctl(id, 'left') + '>' +
+            pcols.map(function(c){ return opt(c.key, pr.left ? pr.left.key : '', c.label); }).join('') +
+          '</select>' +
+          '<div class="cfg-label">' + esc(op.pick) + '</div>' +
+          '<select' + ctl(id, 'right') + '>' +
+            pcols.map(function(c){ return opt(c.key, pr.right ? pr.right.key : '', c.label); }).join('') +
+          '</select>';
+        if (pcols.length === 1) {
+          html += '<div class="cmp-hint">Only one numeric column arrives here, so ' +
+            'both sides are the same column. Join another branch in to compare two.</div>';
+        }
+      }
+      html += '<div class="cmp-hint">' + esc(op.hint) + '</div>' +
+        '<div class="cmp-hint">A blank on either side, or a zero to divide by, ' +
+        'leaves that row blank. The query log says how many.</div>';
     }
 
     // Say what will come out, in the same words the result will use. The shape
@@ -441,18 +506,33 @@ function configHTML(node, schemas) {
       /* Naming the count of contributing columns is the whole warning: if it
          says 1, the measure is reducing a single column to itself, and if it
          counts a column the user thinks of as a label, the label is being
-         added into the total. */
+         added into the total. Count is the only measure that can do the
+         second, and it is the reason this line still leads with the figure.
+
+         What is CARRIED is named too, because the shape of the result changed
+         when labels began surviving the step: a reader who expects one column
+         and gets four should be told before the query runs rather than after.
+         Naming them by label, not just by number, makes the claim checkable
+         against the node above. */
       var rIdx = aggregateRowsIdx(node, schema);
+      var rKeep = aggregateRowsCarried(node, schema);
       var rTotal = schema.columns.length;
-      var rSkip = rTotal - rIdx.length;
       html += '<div class="cmp-hint">' +
-        'Out: one column, one row per row in \u2014 ' + esc(op.label.toLowerCase()) +
-        ' across ' + (rTotal
-          ? rIdx.length + ' of ' + rTotal + ' column' + (rTotal === 1 ? '' : 's')
-          : 'each row') + '.' +
-        (rSkip > 0
-          ? ' ' + rSkip + ' non-measure column' + (rSkip === 1 ? ' is' : 's are') +
-            ' ignored. Put a <b>Select</b> in front.'
+        'Out: one row per row in, ' +
+        (op.pair
+          /* The expression, in the user's own column names, because for a pair
+             measure that IS the setting. It is also what the result column
+             will call itself, so the panel and the header agree word for word. */
+          ? '<b>' + esc(aggregateRowsColumn(node, schema).label) + '</b>.'
+          : esc(op.label.toLowerCase()) +
+            ' across ' + (rTotal
+              ? rIdx.length + ' of ' + rTotal + ' column' + (rTotal === 1 ? '' : 's')
+              : 'each row') + '.') +
+        (rKeep.length
+          ? ' ' + rKeep.length + ' label column' + (rKeep.length === 1 ? '' : 's') +
+            ' come' + (rKeep.length === 1 ? 's' : '') + ' through: <b>' +
+            rKeep.map(function(c){ return esc(c.label); }).join('</b>, <b>') + '</b>.' +
+            ' Drop ' + (rKeep.length === 1 ? 'it' : 'them') + ' with a <b>Select</b>.'
           : '') +
         '</div>';
     } else if (isCols) {
@@ -462,9 +542,6 @@ function configHTML(node, schemas) {
         ', same headers, ' + esc(op.label.toLowerCase()) + ' down each.' +
         (op.key === 'count' ? '' : ' Non-numeric columns come out blank.') +
         '</div>';
-    } else {
-      html += '<div class="cmp-hint">Out: one row, one column \u2014 ' +
-        esc(aggregateColumn(node, schema).label) + '.</div>';
     }
   }
 
@@ -549,8 +626,11 @@ function configHTML(node, schemas) {
         html += '<div class="cfg-label">Base</div>' +
           '<select' + ctl(id, 'base') + '>' +
             cinIds.map(function(inId) {
-              var up = findNode(inId);
-              return opt(String(inId), String(baseId), up ? (upstreamLabel(up)) : ('Input ' + inId));
+              /* combineInputLabel(), not upstreamLabel(), so an input the user
+                 has named is called that here too. Picking a base out of a list
+                 of node ids when the boxes below call the same inputs 2022 and
+                 2023 would be two names for one thing. */
+              return opt(String(inId), String(baseId), combineInputLabel(node, inId));
             }).join('') +
           '</select>';
       }
@@ -572,6 +652,35 @@ function configHTML(node, schemas) {
         html += '<label class="cmb-check"><input type="checkbox"' +
             (cfg.keepUnmatched ? ' checked' : '') + ctl(id, 'keepUnmatched') + '>' +
           '<span>Keep base rows with no match</span></label>';
+
+        /* Only in Join, and only with something to name. Join is the one mode
+           where an input's identity becomes a column header, so it is the one
+           mode where naming an input changes the result. Offering the boxes
+           under Merge would be offering a setting that does nothing.
+
+           Built exactly like Compare's branch list, down to the swatch and the
+           placeholder, because it is the same question asked of the same kind
+           of thing, and a user who has named a Compare branch should not have
+           to learn a second control to name a Combine input. The placeholder
+           carries the automatic name, so leaving a box empty is visibly a
+           choice rather than a gap. */
+        if (cinIds.length > 1) {
+          var jlabels = cfg.labels || {};
+          html += '<div class="cfg-label">Name the inputs</div><div class="cmp-branches">';
+          cinIds.forEach(function(inId) {
+            var up = findNode(inId);
+            html += '<div class="cmp-branch">' +
+              '<span class="cmp-swatch" style="background:' +
+                (up ? getNodeEdgeColor(up) : '#555') + '"></span>' +
+              '<input type="text" class="cmp-label-input" maxlength="' + COMBINE_LABEL_MAX + '" ' +
+                'placeholder="' + esc(up ? upstreamLabel(up) : ('Input ' + inId)) + ' (auto)" ' +
+                'value="' + esc(jlabels[inId] || '') + '"' + ctl(id, 'label:' + inId) + '>' +
+            '</div>';
+          });
+          html += '</div>' +
+            '<div class="cmp-hint">A name becomes the heading of the columns that ' +
+            'input brings. An input bringing one column is headed by the name alone.</div>';
+        }
       }
       html += '<div class="cmp-hint">' +
         (cmode.key === 'intersect'
