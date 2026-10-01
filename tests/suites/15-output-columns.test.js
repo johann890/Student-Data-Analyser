@@ -214,7 +214,10 @@ module.exports = ({ describe, test }) => {
       r.w.runQuery();
       r.w.saveOutput(r.o.id, r.doc.createElement('button'));
       const lines = r.saved[r.saved.length - 1].content.split('\n');
-      assert.equal(lines[0], 'ID,Year,Degree,Specialisation,GPA,Overall grade');
+      // The BOM is part of the file, deliberately: it is what tells Excel on
+      // Windows that the bytes are UTF-8. Asserted here rather than stripped,
+      // so losing it would be a failure rather than a silent change.
+      assert.equal(lines[0], A.UTF8_BOM + 'ID,Year,Degree,Specialisation,GPA,Overall grade');
       assert.equal(lines.length - 1, A.STUDENTS.length, 'display truncates rows; export never does');
     });
 

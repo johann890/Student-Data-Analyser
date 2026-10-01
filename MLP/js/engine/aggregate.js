@@ -104,6 +104,36 @@ function columnValues(t, key) {
   return t.rows.map(function(r){ return r[i]; });
 }
 
+/* HOW MANY OF THE ROWS A MEASURE COULD ACTUALLY USE
+   ---------------------------------------------------------------------------
+   reduceValues() skips a blank, which is right: a missing mark is not a mark of
+   nought. What was missing is any way to tell that it happened. "average of GPA
+   over 80 rows" is what the log said when thirty of those GPAs were absent and
+   the mean was taken over fifty, and a single number has no blank cell in it to
+   notice, no column to add up and nothing else on screen that disagrees.
+
+   That is the same failure SelectFor's blankGroupRows() exists for, in the node
+   where it hides best, so it is answered the same way: the count is taken and
+   the log says so whenever it differs from the rows that came in.
+
+   The test has to match reduceValues()' own, or the two would disagree about a
+   value and the log would be wrong in the one case it exists to report. Blank
+   is skipped there and here; a non-numeric string is skipped there for every
+   measure but count, and skipped here for the same ones, because this is only
+   ever asked about a measure that needs a column.                            */
+function usableValueCount(t, col) {
+  if (!col) return 0;
+  var i = colIndex(t, col.key);
+  if (i === -1) return 0;
+  var n = 0;
+  t.rows.forEach(function(r) {
+    var v = r[i];
+    if (isBlank(v)) return;
+    if (isFinite(Number(v))) n++;
+  });
+  return n;
+}
+
 /* ---- Aggregate: whole table -> one row ------------------------------------ */
 
 /* IT TAKES A LIST OF MEASURES, not one.
@@ -160,6 +190,23 @@ function applyAggregate(node, t, log) {
   log.push(logEntry('AGGREGATE', [{s: said.join(', ')}, {s:'over'},
                                   {c:'val', s:t.rows.length}, {s:'rows'}]));
 
+  /* One line per measure that saw fewer rows than the line above claims, named
+     rather than totalled: two measures over two columns can be short by
+     different amounts, and "28 rows were blank" would not say which average to
+     distrust. A measure that saw every row says nothing, so a complete table
+     logs exactly what it always did. */
+  stats.forEach(function(s, i) {
+    var op = selectForOp(s && s.op);
+    if (!op.needsCol || !scols[i]) return;
+    var used = usableValueCount(t, scols[i]);
+    if (used === t.rows.length) return;
+    log.push(logEntry('SKIP', [
+      {s:op.label.toLowerCase() + ' of'}, {c:'val', s:scols[i].label},
+      {s:'used'}, {c:'val', s:used}, {s:'of'}, {c:'val', s:t.rows.length},
+      {s:'rows;'}, {c:'val', s:t.rows.length - used}, {s:'had no value'}
+    ]));
+  });
+
   return makeTable(cols, [measureValues(t, stats, scols, t.rows.length)]);
 }
 
@@ -194,6 +241,26 @@ function applyAggregateColumns(node, t, log) {
                                           {c:'val', s:t.rows.length}, {s:'rows'}]));
   if (skipped.length) {
     log.push(logEntry('AGGREGATE COLUMNS', [{s:'left blank:'}, {c:'val', s:skipped.join(', ')}]));
+  }
+  /* The columns that WERE measured, but over fewer rows than the line above
+     says. Listed in one line the way the skipped columns are, with the count
+     beside each name, because the question a reader has is which column to
+     distrust and by how much. Count is exempt: "how many values are present" is
+     a true answer whatever is missing, and is the one measure for which a blank
+     is the subject rather than an obstacle. */
+  if (op.key !== 'count') {
+    var short = [];
+    t.columns.forEach(function(c) {
+      if (!isMeasurable(t, c)) return;
+      var used = usableValueCount(t, c);
+      if (used !== t.rows.length) short.push(c.label + ' (' + used + ')');
+    });
+    if (short.length) {
+      log.push(logEntry('SKIP', [
+        {s:'measured fewer than'}, {c:'val', s:t.rows.length}, {s:'rows for'},
+        {c:'val', s:short.join(', ')}
+      ]));
+    }
   }
   return makeTable(out.columns, [row]);
 }
@@ -236,12 +303,132 @@ function applyAggregateColumns(node, t, log) {
    columns contribute, which is where a label being added into a total shows up
    before the query is run.                                                    */
 
+/* ---- The two-column measures ---------------------------------------------
+   Every measure above answers "given these values, produce one number", and
+   that is one shape: many in, one out. Difference, Ratio and Percent of are
+   the other shape, two in and one out, and it is the shape the tool had no
+   way to express. Counting the students on a course and counting the ones who
+   passed were both easy; saying what fraction passed was not reachable at all,
+   because nothing could relate two numbers the tool had already worked out.
+
+   They live here rather than in a node of their own because Agg. Rows already
+   means "one value per row, worked out from that row's values", and a ratio of
+   two of that row's values is exactly that. What it needed was not a new place
+   to live but a way to say WHICH two columns, since unlike a sum these are
+   ordered: Passed over Enrolled is a pass rate and Enrolled over Passed is not
+   a number anybody wants.
+
+   So they are picked explicitly, in two selects, rather than taken from the
+   order the columns happen to arrive in. Header order would have been fewer
+   lines and would have left the operand order invisible, controllable only
+   through Combine's Base dropdown, and silently meaningless as soon as a third
+   column appeared.
+
+   `pick` names the second select for each, so the panel reads as the operation
+   does: "Of Passed, Divided by Enrolled". `sym` is what the result column
+   calls itself, so the header says "Passed / Enrolled" and the query is
+   readable from its output alone.                                            */
+var ROW_PAIR_OPS = [
+  { key:'difference', label:'Difference', pair:true, pick:'Minus',     sym:'-',
+    hint:'The first column minus the second, on every row. Use it for a change ' +
+         'between two joined branches, such as this year against last year.' },
+  { key:'ratio',      label:'Ratio',      pair:true, pick:'Divided by', sym:'÷',
+    hint:'The first column divided by the second, on every row. 80 out of 82 ' +
+         'gives 0.98.' },
+  /* `sym` spells the word out where the other two use a symbol, and the reason
+     is the file the header ends up in rather than the header itself. A per cent
+     sign starts a comment in LaTeX, so a table pasted into a report silently
+     lost the rest of its header line, with no error anywhere to say so. The
+     panel's own `pick` keeps the symbol: it is read on screen and never
+     exported. See serialiseTable() for the other half of this. */
+  { key:'percent',    label:'Percent of', pair:true, pick:'As % of',
+    sym:'as a percentage of',
+    hint:'The first column as a percentage of the second, on every row. 80 out ' +
+         'of 82 gives 97.56. This is the one a pass rate wants.' }
+];
+
+// What Agg. Rows offers: the reductions, then the pair measures. Its two
+// siblings are handed AGG_OPS alone, because "difference down a column of 780
+// rows" is not a question.
+var ROW_OPS = AGG_OPS.concat(ROW_PAIR_OPS);
+
+function rowOp(node) {
+  var k = node && node.cfg ? node.cfg.op : null;
+  for (var i = 0; i < ROW_OPS.length; i++) if (ROW_OPS[i].key === k) return ROW_OPS[i];
+  return ROW_OPS[0];   // anything unrecognised, including a hand-edited file
+}
+
+function isPairOp(node) { return !!rowOp(node).pair; }
+
+/* The two columns a pair measure reads, resolved against the table rather than
+   trusted from the config, the way every other saved column key in this tool is
+   resolved: rewiring the node behind a different branch can outlive the names
+   it was set to, and falling back to real columns beats measuring nothing.
+
+   Defaults are the first two measurable columns in header order, so a node
+   dropped onto a join does something meaningful before either select is
+   touched. With only one measurable column both sides resolve to it, which is
+   a ratio of 1 rather than an error: honest, visibly useless, and fixed by
+   wiring something with two numbers in it. */
+function aggregateRowsPair(node, t) {
+  var avail = measurableCols(t);
+  if (!avail.length) return { left: null, right: null };
+  var cfg = (node && node.cfg) || {};
+  var pick = function(key, fallback) {
+    var c = key ? colByKey(t, key) : null;
+    return (c && isMeasurable(t, c)) ? c : fallback;
+  };
+  return {
+    left:  pick(cfg.left,  avail[0]),
+    right: pick(cfg.right, avail.length > 1 ? avail[1] : avail[0])
+  };
+}
+
+/* One row's answer. Deliberately NOT reduceValues, and that is the whole of
+   what makes these correct.
+
+   reduceValues SKIPS a blank, which is right for a sum (a missing mark is not
+   a mark of nought, and counting it as one drags the average down) and wrong
+   here. Skipping one side of a division does not leave the division short a
+   value, it leaves it a different expression: 80 divided by nothing would come
+   back as 80, a number that looks like an answer and is not one. A pair
+   measure with a blank on either side has no answer, so it says so.
+
+   Dividing by zero is the same case. Infinity is not a rate, and a course with
+   no enrolments has no pass rate rather than an infinite one. Blank, and the
+   log says how many rows it happened to, because a column of blanks with no
+   explanation is the kind of result people work around instead of asking
+   about. */
+function pairValue(opKey, a, b) {
+  if (isBlank(a) || isBlank(b)) return null;
+  var x = Number(a), y = Number(b);
+  if (!isFinite(x) || !isFinite(y)) return null;
+  if (opKey === 'difference') return x - y;
+  if (y === 0) return null;
+  return opKey === 'percent' ? (x / y) * 100 : x / y;
+}
+
 /* The columns that identify a row rather than contributing to it, as indices
    into the incoming header. Indices rather than columns, because the row
    builder needs to read the cells and the header builder needs to name them,
    and deriving both from one list is what stops the two disagreeing about
-   which column went where. */
-function aggregateRowsKeepIdx(t) {
+   which column went where.
+
+   A pair measure carries MORE than a reduction does, and by the same rule. The
+   rule is "the columns the measure consumes are replaced, the rest come
+   through"; a reduction consumes every measurable column, while a pair measure
+   consumes exactly two. So a third numeric column that is neither operand is
+   carried rather than quietly dropped, which is what a reader expects of a
+   step that was only asked about two of them. */
+function aggregateRowsKeepIdx(node, t) {
+  if (isPairOp(node)) {
+    var pair = aggregateRowsPair(node, t);
+    var used = {};
+    if (pair.left)  used[pair.left.key]  = true;
+    if (pair.right) used[pair.right.key] = true;
+    return t.columns.map(function(_, i){ return i; })
+      .filter(function(i){ return !used[t.columns[i].key]; });
+  }
   var idx = [];
   t.columns.forEach(function(c, i) {
     if (!isMeasurable(t, c)) idx.push(i);
@@ -249,15 +436,26 @@ function aggregateRowsKeepIdx(t) {
   return idx;
 }
 
-function aggregateRowsCarried(t) {
-  return aggregateRowsKeepIdx(t).map(function(i){ return t.columns[i]; });
+function aggregateRowsCarried(node, t) {
+  return aggregateRowsKeepIdx(node, t).map(function(i){ return t.columns[i]; });
 }
 
-function aggregateRowsColumn(node) {
-  var op = aggOp(node);
-  // No single input column to name, so the measure names itself. Keyed on the
-  // op so two of these in series produce distinguishable headers.
-  return { key: op.key, label: op.label, type: COLTYPE.NUMBER };
+/* What the measure calls itself. A reduction names the operation, because it
+   applied to whatever was there; a pair measure names the EXPRESSION, because
+   which two columns and in which order is the whole of what it did. A header
+   reading "Passed / Enrolled" describes the query it came out of without
+   anybody having to open the node. */
+function aggregateRowsColumn(node, t) {
+  var op = rowOp(node);
+  if (!op.pair) {
+    // Keyed on the op so two of these in series produce distinguishable headers.
+    return { key: op.key, label: op.label, type: COLTYPE.NUMBER };
+  }
+  var pair = aggregateRowsPair(node, t || makeTable([], []));
+  var label = (pair.left && pair.right)
+    ? (pair.left.label + ' ' + op.sym + ' ' + pair.right.label)
+    : op.label;
+  return { key: op.key, label: label, type: COLTYPE.NUMBER };
 }
 
 /* The whole output header: the labels, in the order they arrived, then the
@@ -282,8 +480,8 @@ function aggregateRowsColumn(node) {
    uniqueAgainst() lives in data/table.js, because Combine's join needs the same
    rule for the same reason and one spelling of it is better than two. */
 function aggregateRowsColumns(node, t) {
-  var carried = aggregateRowsCarried(t);
-  var out = aggregateRowsColumn(node);
+  var carried = aggregateRowsCarried(node, t);
+  var out = aggregateRowsColumn(node, t);
   var keys = {}, labels = {};
   carried.forEach(function(c){ keys[c.key] = true; labels[c.label] = true; });
   return carried.concat([{
@@ -297,13 +495,16 @@ function aggregateRowsSchema(node, inSchema) {
   return makeTable(aggregateRowsColumns(node, inSchema), []);
 }
 
-/* Which cells of a row feed the measure. The same rule AggregateColumns uses,
+/* Which cells of a row feed a REDUCTION. The same rule AggregateColumns uses,
    applied along the other axis: Count asks how many values are present and any
    column can answer that, while the arithmetic measures take only the columns
    that hold a number and are not an identifier. Resolved once for the table
-   rather than per row, since the header does not change between rows. */
+   rather than per row, since the header does not change between rows.
+
+   A pair measure does not come through here at all; its two columns are named
+   rather than gathered, which is what aggregateRowsPair() is for. */
 function aggregateRowsIdx(node, t) {
-  var op = aggOp(node);
+  var op = rowOp(node);
   var idx = [];
   t.columns.forEach(function(c, i) {
     if (op.key === 'count' || isMeasurable(t, c)) idx.push(i);
@@ -312,19 +513,44 @@ function aggregateRowsIdx(node, t) {
 }
 
 function applyAggregateRows(node, t, log) {
-  var op = aggOp(node);
+  var op   = rowOp(node);
   var cols = aggregateRowsColumns(node, t);
-  var idx = aggregateRowsIdx(node, t);
-  var keep = aggregateRowsKeepIdx(t);
+  var keep = aggregateRowsKeepIdx(node, t);
+  var pair = op.pair ? aggregateRowsPair(node, t) : null;
+  var li = pair && pair.left  ? colIndex(t, pair.left.key)  : -1;
+  var ri = pair && pair.right ? colIndex(t, pair.right.key) : -1;
+  var idx = op.pair ? [] : aggregateRowsIdx(node, t);
+  var blanks = 0;
 
   var rows = t.rows.map(function(r) {
-    return keep.map(function(i){ return r[i]; })
-      .concat([reduceValues(op.key, idx.map(function(i){ return r[i]; }))]);
+    var value;
+    if (op.pair) {
+      value = (li === -1 || ri === -1) ? null : pairValue(op.key, r[li], r[ri]);
+      if (value === null) blanks++;
+    } else {
+      value = reduceValues(op.key, idx.map(function(i){ return r[i]; }));
+    }
+    return keep.map(function(i){ return r[i]; }).concat([value]);
   });
 
-  log.push(logEntry('AGGREGATE ROWS', [{s:op.label.toLowerCase() + ' across'},
-                                       {c:'val', s:idx.length},
-                                       {s:'column' + (idx.length === 1 ? '' : 's') + ', per row'}]));
+  if (op.pair) {
+    /* Punctuation rides inside a part, because logHTML joins them with a space
+       and "Passed / Enrolled , per row" is not a sentence. The expression is
+       the value here, so it is the part that gets highlighted. */
+    log.push(logEntry('AGGREGATE ROWS',
+      [{s:'per row:'}, {c:'val', s:aggregateRowsColumn(node, t).label}]));
+    /* Named rather than left to be noticed. A column of blanks with nothing
+       said about it reads as the tool having failed, when what happened is
+       that those rows had a gap or a zero to divide by. */
+    if (blanks > 0) {
+      log.push(logEntry('AGGREGATE ROWS', [{s:'no answer for'}, {c:'val', s:blanks},
+        {s:'row' + (blanks === 1 ? '' : 's') + ' (a blank value, or zero to divide by)'}]));
+    }
+  } else {
+    log.push(logEntry('AGGREGATE ROWS', [{s:op.label.toLowerCase() + ' across'},
+                                         {c:'val', s:idx.length},
+                                         {s:'column' + (idx.length === 1 ? '' : 's') + ', per row'}]));
+  }
   if (keep.length > 0) {
     log.push(logEntry('AGGREGATE ROWS', [{s:'carried'}, {c:'val', s:keep.length},
       {s:'label column' + (keep.length === 1 ? '' : 's')}]));

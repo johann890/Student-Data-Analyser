@@ -439,12 +439,65 @@ function configHTML(node, schemas) {
   if (node.type === 'aggregateColumns' || node.type === 'aggregateRows') {
     var isCols = node.type === 'aggregateColumns';
     var isRows = node.type === 'aggregateRows';
-    var op = aggOp(node);
+    /* rowOp() for this node, aggOp() for its sibling. Agg. Columns is offered
+       the reductions alone: "difference down a column of 780 rows" is not a
+       question, and an option that can only ever be nonsense is worse than a
+       missing one. */
+    var op = isRows ? rowOp(node) : aggOp(node);
 
+    /* TWO SECTIONS, because there are two kinds of answer here and they differ
+       in what they read rather than in what they compute. The six above run
+       ALONG the row, over whatever numbers are on it. The three below read two
+       named columns, in an order that matters. Putting them in one flat list
+       would offer "Sum" and "Ratio" as if they were the same kind of choice,
+       and the second needs two more controls the moment it is picked. */
     html += '<div class="cfg-label">Measure</div>' +
       '<select' + ctl(id, 'op') + '>' +
-        AGG_OPS.map(function(o){ return opt(o.key, op.key, o.label); }).join('') +
+        (isRows
+          ? '<optgroup label="Across the row">' +
+              AGG_OPS.map(function(o){ return opt(o.key, op.key, o.label); }).join('') +
+            '</optgroup>' +
+            '<optgroup label="Between two columns">' +
+              ROW_PAIR_OPS.map(function(o){ return opt(o.key, op.key, o.label); }).join('') +
+            '</optgroup>'
+          : AGG_OPS.map(function(o){ return opt(o.key, op.key, o.label); }).join('')) +
       '</select>';
+
+    /* The two operands, and the sentence saying what the measure is.
+
+       Named rather than taken from the order the columns arrive in. Header
+       order would have been fewer lines and would have left the operand order
+       invisible: Passed over Enrolled is a pass rate and Enrolled over Passed
+       is not a number anybody wants, and which one you got would have depended
+       on which branch happened to be the Combine's base.
+
+       The help line is the op's own, written once beside the operation in
+       engine/aggregate.js so the panel and the definition cannot drift. */
+    if (isRows && op.pair) {
+      var pcols = measurableCols(schema);
+      if (!pcols.length) {
+        html += '<div class="cmp-hint">No numeric column upstream. ' +
+          'This measure reads two of them, so wire in a table with numbers, ' +
+          'such as a <b>Combine</b> set to Join.</div>';
+      } else {
+        var pr = aggregateRowsPair(node, schema);
+        html += '<div class="cfg-label">Of</div>' +
+          '<select' + ctl(id, 'left') + '>' +
+            pcols.map(function(c){ return opt(c.key, pr.left ? pr.left.key : '', c.label); }).join('') +
+          '</select>' +
+          '<div class="cfg-label">' + esc(op.pick) + '</div>' +
+          '<select' + ctl(id, 'right') + '>' +
+            pcols.map(function(c){ return opt(c.key, pr.right ? pr.right.key : '', c.label); }).join('') +
+          '</select>';
+        if (pcols.length === 1) {
+          html += '<div class="cmp-hint">Only one numeric column arrives here, so ' +
+            'both sides are the same column. Join another branch in to compare two.</div>';
+        }
+      }
+      html += '<div class="cmp-hint">' + esc(op.hint) + '</div>' +
+        '<div class="cmp-hint">A blank on either side, or a zero to divide by, ' +
+        'leaves that row blank. The query log says how many.</div>';
+    }
 
     // Say what will come out, in the same words the result will use. The shape
     // of an aggregation is the thing people get wrong about it, and stating it
@@ -462,13 +515,19 @@ function configHTML(node, schemas) {
          Naming them by label, not just by number, makes the claim checkable
          against the node above. */
       var rIdx = aggregateRowsIdx(node, schema);
-      var rKeep = aggregateRowsCarried(schema);
+      var rKeep = aggregateRowsCarried(node, schema);
       var rTotal = schema.columns.length;
       html += '<div class="cmp-hint">' +
-        'Out: one row per row in, ' + esc(op.label.toLowerCase()) +
-        ' across ' + (rTotal
-          ? rIdx.length + ' of ' + rTotal + ' column' + (rTotal === 1 ? '' : 's')
-          : 'each row') + '.' +
+        'Out: one row per row in, ' +
+        (op.pair
+          /* The expression, in the user's own column names, because for a pair
+             measure that IS the setting. It is also what the result column
+             will call itself, so the panel and the header agree word for word. */
+          ? '<b>' + esc(aggregateRowsColumn(node, schema).label) + '</b>.'
+          : esc(op.label.toLowerCase()) +
+            ' across ' + (rTotal
+              ? rIdx.length + ' of ' + rTotal + ' column' + (rTotal === 1 ? '' : 's')
+              : 'each row') + '.') +
         (rKeep.length
           ? ' ' + rKeep.length + ' label column' + (rKeep.length === 1 ? '' : 's') +
             ' come' + (rKeep.length === 1 ? 's' : '') + ' through: <b>' +

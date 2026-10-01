@@ -355,7 +355,8 @@ function mergeCfg(base, saved, type) {
   // Scalar settings are read straight into HTML attributes and comparisons, so
   // a file supplying an object or array where a string belongs is coerced
   // rather than trusted.
-  ['pop','grain','show','filename','sort','by','labelCol','labelsAs'].forEach(function(k) {
+  ['pop','grain','show','filename','sort','by','labelCol','labelsAs',
+   'left','right'].forEach(function(k) {
     if (base[k] !== undefined && typeof base[k] !== 'string') {
       base[k] = (base[k] === null || typeof base[k] === 'object') ? '' : String(base[k]);
     }

@@ -568,6 +568,79 @@ module.exports = ({ describe, test }) => {
     });
   });
 
+  /* ------------------------------------------------ rows no group can hold */
+
+  /* A blank cannot be a label, so a row whose grouping value is missing belongs
+     to no group and is absent from the breakdown. That part is right. Leaving
+     without a word was not: the counts then do not add up to the rows the log
+     says they were taken over, and the one place it bites hardest is a grade
+     distribution, where the rows with no grade are the withdrawals.
+
+     The bands path in the same node already counted this and said so. These
+     tests hold the group-by-value path to the same promise, which is the one
+     Histogram states as an invariant: everything that went in is accounted for,
+     either in a group or in a line saying why not. */
+  describe('a row with no value for the grouping column is counted, not dropped', () => {
+    function inputRows(h) {
+      return h.app.evaluateGraph().res[h.src.id].table.rows.length;
+    }
+    const logOf = h => h.entry(h.out.id).log.join(' | ');
+
+    test('one missing value is named, counted and in the singular', () => {
+      const h = plain(), A = h.app;
+      cfg(h, 'by', 'specialisation');
+      const keep = A.STUDENTS[0].specialisation;
+      A.STUDENTS[0].specialisation = '';
+      try {
+        const rows = inputRows(h);
+        const t = runTable(h);
+        const counted = t.rows.reduce((a, r) => a + Number(r[1]), 0);
+        assert.equal(counted, rows - 1, 'the groups should hold every row but the blank one');
+        assert.includes(logOf(h), '1 row has no Specialisation and is in no group');
+      } finally {
+        A.STUDENTS[0].specialisation = keep;
+      }
+    });
+
+    test('several are reported together, in the plural', () => {
+      const h = plain(), A = h.app;
+      cfg(h, 'by', 'specialisation');
+      const keep = [A.STUDENTS[0].specialisation, A.STUDENTS[1].specialisation];
+      A.STUDENTS[0].specialisation = '';
+      A.STUDENTS[1].specialisation = '';
+      try {
+        const rows = inputRows(h);
+        const t = runTable(h);
+        assert.equal(t.rows.reduce((a, r) => a + Number(r[1]), 0), rows - 2);
+        assert.includes(logOf(h), '2 rows have no Specialisation and are in no group');
+      } finally {
+        A.STUDENTS[0].specialisation = keep[0];
+        A.STUDENTS[1].specialisation = keep[1];
+      }
+    });
+
+    test('nothing is said when every row has a value', () => {
+      const h = plain();
+      cfg(h, 'by', 'specialisation');
+      const rows = inputRows(h);
+      const t = runTable(h);
+      assert.equal(t.rows.reduce((a, r) => a + Number(r[1]), 0), rows);
+      assert.excludes(logOf(h), 'in no group');
+    });
+
+    /* Grouping by a predicate reads the nested column, where a row's value is a
+       SET rather than a cell. A student with no enrolments is in no group
+       because they took nothing, which is a true statement about them rather
+       than a gap in the file, so there is nothing for this to report and it
+       must not invent a count. */
+    test('a predicate group makes no claim about blanks', () => {
+      const h = plain();
+      cfg(h, 'by', 'courses.code');
+      runTable(h);
+      assert.excludes(logOf(h), 'in no group');
+    });
+  });
+
   /* --------------------------------------------------------- the registry invariant */
 
   describe('the schema walk and the evaluator build one header', () => {
@@ -1088,6 +1161,35 @@ module.exports = ({ describe, test }) => {
         // Whole students, counted once each however many papers at that level.
         t.rows.forEach(([lvl, n]) => assert.equal(
           n, ds.filter(s => s.courses.some(c => c.level === Number(lvl))).length, 'level ' + lvl));
+      });
+
+      /* The case that found this. A grade distribution over a real year file
+         loses the withdrawn enrolments, because a withdrawal has no grade and
+         a blank is not a group. Against the 2024 archive that is 35 of 1927,
+         concentrated in the hard courses by the archive's own design, so the
+         rows that go missing are the ones the question is usually about. */
+      test('a grade distribution accounts for the enrolments with no grade', async () => {
+        const h = boot(), A = h.app;
+        const src = h.add('source');
+        const ds = (await h.loadArchive(src.id, [2024])).students;
+        h.w.render();
+        const pr = h.add('project'), sf = h.add('selectFor'), out = h.add('output');
+        A.connect(src.id, pr.id); A.connect(pr.id, sf.id, null, 'data');
+        A.connect(sf.id, out.id);
+        h.w.render();
+        h.set(sf.id, 'by', 'letterGrade'); h.w.render();
+        h.w.runQuery();
+        const e = h.entry(out.id);
+
+        const enrolments = ds.reduce((a, s) => a.concat(s.courses), []);
+        const ungraded = enrolments.filter(c => A.isBlank(c.letterGrade)).length;
+        const counted = e.source.rows.reduce((a, r) => a + Number(r[1]), 0);
+
+        assert.ok(ungraded > 0, 'the 2024 archive should carry some withdrawals');
+        assert.equal(counted + ungraded, enrolments.length,
+          'the groups plus the ungraded rows should be every enrolment that went in');
+        assert.includes(e.log.join(' | '),
+          ungraded + ' rows have no Grade and are in no group');
       });
     });
   }

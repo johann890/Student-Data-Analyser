@@ -80,7 +80,7 @@
       </button>
       <button class="proc-item cat-summarise" onclick="addProcNode('aggregateRows')">
         <span class="proc-name">Aggregate Rows</span>
-        <span class="proc-desc">One value per row, labels kept</span>
+        <span class="proc-desc">One value per row, or two columns compared</span>
       </button>
       <div class="proc-group cat-branches">Branches</div>
       <button class="proc-item cat-branches" onclick="addProcNode('combine')">
@@ -1009,6 +1009,28 @@
                     <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Student</th><th>Sum</th></tr><tr><td>Jo</td><td>7</td></tr><tr><td>Ana</td><td>10</td></tr></table></div>
                   </div>
                   <p class="help-eg-note">Settings: <b>Measure</b> Sum. One value per row, so the row count is unchanged. Student is not a measure, so it is left out of the total and carried through as the label.</p>
+                </div>
+                <p><b>Comparing two columns.</b> The Measure list has a second section,
+                   <b>Between two columns</b>, holding <b>Difference</b>, <b>Ratio</b> and
+                   <b>Percent of</b>. These read two columns you name rather than running along
+                   the whole row, and the order matters, so picking one gives you an <b>Of</b>
+                   box and a second box beside it. They are how you ask for a rate or a change:
+                   join the branch that counts everyone to the branch that counts the ones you
+                   are interested in, then take one as a percent of the other. The result is an
+                   ordinary column, so <b>Sort</b> will rank by it and <b>Filter</b> will cut it
+                   down, which is the point of having it rather than reading the two numbers off
+                   the row yourself.</p>
+                <p>A row with a blank on either side, or a zero to divide by, comes out blank
+                   rather than guessed at, and the query log says how many rows that happened to.
+                   A column that is neither of the two you named is carried through untouched.</p>
+                <div class="help-eg">
+                  <div class="help-eg-t">Example: a pass rate</div>
+                  <div class="help-eg-io">
+                    <div class="help-eg-side"><span class="help-eg-lbl">In</span><table><tr><th>Course</th><th>Enrolled</th><th>Passed</th></tr><tr><td>AIML231</td><td>82</td><td>80</td></tr><tr><td>SWEN326</td><td>258</td><td>235</td></tr></table></div>
+                    <div class="help-eg-arrow">&rarr;</div>
+                    <div class="help-eg-side"><span class="help-eg-lbl">Out</span><table><tr><th>Course</th><th>Passed as % of Enrolled</th></tr><tr><td>AIML231</td><td>97.56</td></tr><tr><td>SWEN326</td><td>91.09</td></tr></table></div>
+                  </div>
+                  <p class="help-eg-note">Settings: <b>Measure</b> Percent of, <b>Of</b> Passed, <b>As % of</b> Enrolled. The two columns came from a <b>Combine</b> set to Join, with its inputs named Enrolled and Passed. The result column names the sum it did, so the table explains itself.</p>
                 </div></dd>
           </dl>
 

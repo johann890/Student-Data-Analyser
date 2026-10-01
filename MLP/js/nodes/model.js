@@ -296,10 +296,17 @@ function defaultCfg(type) {
   // the table's rather than the setting's: one measure down every column, or
   // one across every row.
   if (type === 'aggregateColumns') return { op: 'sum' };
-  // Same shape, and sum for the same reason: totalling is the measure a row of
-  // measures is usually wanted for, and it is the one that is obviously wrong
-  // if the input is not a row of measures.
-  if (type === 'aggregateRows')    return { op: 'sum' };
+  /* Same shape, and sum for the same reason: totalling is the measure a row of
+     measures is usually wanted for, and it is the one that is obviously wrong
+     if the input is not a row of measures.
+
+     `left` and `right` name the two columns a PAIR measure reads (Difference,
+     Ratio, Percent of). Empty means "the first two measurable columns", the
+     same convention every other saved column key here uses, so the node does
+     something meaningful the moment it is dropped on a join. They are written
+     out rather than added lazily, for the reason at the top of this function:
+     a saved file then always carries every key the node uses. */
+  if (type === 'aggregateRows')    return { op: 'sum', left: '', right: '' };
   // dedupe defaults off: merge stacks rows, and discarding identical rows is a
   // decision the user makes rather than one the node makes quietly.
   /* `labels` is the same key, the same shape and the same control name Compare

@@ -267,4 +267,112 @@ module.exports = ({ describe, test }) => {
       assert.includes(r.copied[0], '\t');
     });
   });
+
+  /* ------------------------------------------------- leaving for another tool
+
+     Three things decide whether a result survives the trip into Excel, Word or
+     a report, and none of them is visible on screen: whether the separator can
+     appear inside a cell, whether the encoding is declared, and whether the
+     labels this tool generates are legal where they are going. */
+  describe('what leaves here can be read by something else', () => {
+    // A cell holding each character that can break a delimited file.
+    function hostile(A) {
+      return A.makeTable(
+        [{ key:'a', label:'Student', type:A.COLTYPE.TEXT },
+         { key:'b', label:'Note',    type:A.COLTYPE.TEXT }],
+        [['Smith, Jo',     'a comma'],
+         ['She said "hi"', 'a quote mark'],
+         ['tab\there',     'a tab'],
+         ['line\nbreak',   'a newline']]);
+    }
+    // Fields counted the way a reader counts them: a separator inside quotes
+    // does not divide anything.
+    function fieldCount(line, sep) {
+      var n = 1, inQ = false;
+      for (const ch of line) {
+        if (ch === '"') inQ = !inQ;
+        else if (ch === sep && !inQ) n++;
+      }
+      return n;
+    }
+    // Rows, respecting quoted line breaks, so an embedded newline is one row.
+    function logicalRows(text) {
+      var out = [''], inQ = false;
+      for (const ch of text) {
+        if (ch === '"') { inQ = !inQ; out[out.length - 1] += ch; continue; }
+        if (ch === '\n' && !inQ) { out.push(''); continue; }
+        out[out.length - 1] += ch;
+      }
+      return out.filter(l => l !== '');
+    }
+
+    [[',', 'the comma of a saved file'], ['\t', 'the tab of a copied one']].forEach(([sep, what]) => {
+      test('a cell can hold ' + what + ' without shifting a column', () => {
+        const A = boot().app;
+        const text = A.serialiseTable(hostile(A), sep, true);
+        const rows = logicalRows(text);
+        assert.equal(rows.length, 5, 'four rows and a header, whatever is inside them');
+        rows.forEach((l, i) => assert.equal(fieldCount(l, sep), 2,
+          'row ' + i + ' should still be two fields: ' + JSON.stringify(l)));
+      });
+    });
+
+    test('a cell with nothing special in it is not quoted', () => {
+      const A = boot().app;
+      const plain = A.makeTable([{ key:'a', label:'A', type:A.COLTYPE.TEXT }], [['x']]);
+      assert.equal(A.serialiseTable(plain, '\t', true), 'A\nx');
+      assert.equal(A.serialiseTable(plain, ',', true), 'A\nx');
+    });
+
+    test('quoting follows the separator rather than always the comma', () => {
+      const A = boot().app;
+      // A comma is ordinary in a tab-separated file and vice versa, so neither
+      // should be quoted where it cannot divide anything.
+      assert.equal(A.quotedCell('a,b', '\t'), 'a,b');
+      assert.equal(A.quotedCell('a\tb', ','), 'a\tb');
+      assert.equal(A.quotedCell('a,b', ','), '"a,b"');
+      assert.equal(A.quotedCell('a\tb', '\t'), '"a\tb"');
+    });
+
+    test('a saved CSV declares UTF-8, so Excel on Windows reads a macron', () => {
+      const r = rig('rows');
+      r.w.runQuery();
+      r.w.saveOutput(r.o.id, r.doc.createElement('button'));
+      const content = r.saved[r.saved.length - 1].content;
+      assert.equal(content.slice(0, 1), r.app.UTF8_BOM, 'the CSV should start with a BOM');
+      assert.equal(content.slice(1, 2) === r.app.UTF8_BOM, false, 'exactly one BOM');
+    });
+
+    /* The BOM must NOT spread to the other thing this tool downloads. A saved
+       query is JSON and JSON.parse refuses a leading BOM, so a marker added in
+       the wrong place would have broken every saved query to fix an encoding
+       problem the CSV has and this file does not. */
+    test('a saved query carries no BOM and still parses', () => {
+      const r = rig('rows');
+      r.w.runQuery();
+      r.w.saveGraph(r.doc.createElement('button'));
+      r.doc.getElementById('saveName').value = 'a query';
+      r.w.confirmSaveGraph();
+      const f = r.saved[r.saved.length - 1];
+      assert.excludes(f.content.slice(0, 1), r.app.UTF8_BOM);
+      assert.ok(JSON.parse(f.content), 'the query file should still be JSON');
+    });
+
+    test('the clipboard is text, so it carries no BOM', () => {
+      const r = rig('rows');
+      r.w.runQuery();
+      r.w.copyOutput(r.o.id, r.doc.createElement('button'));
+      assert.excludes(r.copied[r.copied.length - 1].slice(0, 1), r.app.UTF8_BOM);
+    });
+
+    /* A per cent sign starts a comment in LaTeX, so a header carrying one loses
+       the rest of its line when the table is pasted into a report, silently.
+       The only label this tool generated with one in it was the percent
+       measure's, and it spells the word out now. */
+    test('no generated measure label carries a per cent sign', () => {
+      const A = boot().app;
+      A.ROW_PAIR_OPS.forEach(op => assert.excludes(op.sym, '%',
+        op.key + ' puts a per cent sign in a column header'));
+    });
+  });
 };

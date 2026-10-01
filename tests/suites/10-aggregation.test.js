@@ -255,6 +255,91 @@ module.exports = ({ describe, test }) => {
     });
   });
 
+  /* ------------------------------------- a measure that could not see every row
+
+     reduceValues() skips a blank, which is right: a missing mark is not a mark
+     of nought. What was missing was any way to tell. "average of GPA over 80
+     rows" was logged while thirty of those GPAs were absent and the mean was
+     taken over fifty, and unlike a breakdown there is no column of counts to
+     add up and notice with. These are the same promise SelectFor's blank-group
+     line makes: everything that went in is accounted for. */
+  describe('a measure says when it could not see every row', () => {
+    /* Blanked on this instance's own STUDENTS, which is where its Source reads
+       them from, and put back afterwards so the rest of the file sees the
+       dataset it expects. It has to be the SAME boot the graph runs in: state
+       lives per instance, so blanking one app's students and querying another's
+       measures a complete column and proves nothing. */
+    function withBlankGpas(h, n, fn) {
+      const A2 = h.app;
+      const kept = [];
+      for (let i = 0; i < n; i++) { kept.push(A2.STUDENTS[i].gpa); A2.STUDENTS[i].gpa = null; }
+      try { return fn(A2); } finally { kept.forEach((v, i) => { A2.STUDENTS[i].gpa = v; }); }
+    }
+    const logOf = (h, id) => h.entry(id).log.map(String).join(' | ');
+
+    test('Aggregate names the measure, the count it used and the gap', () => {
+      const h = boot();
+      withBlankGpas(h, 5, (A2) => {
+        const [s, a, o] = h.build('source', 'aggregate', 'output');
+        h.set(a.id, 'stat.0.op', 'average');
+        h.set(a.id, 'stat.0.col', 'gpa');
+        h.w.runQuery();
+        const rows = A2.STUDENTS.length;
+        const present = A2.STUDENTS.filter(x => x.gpa !== null).map(x => x.gpa);
+        // The number itself is the mean of what was there, which is the
+        // behaviour being explained rather than changed.
+        assert.close(h.entry(o.id).table.rows[0][0], mean(present), 1e-9);
+        assert.includes(logOf(h, o.id),
+          'average of GPA used ' + present.length + ' of ' + rows + ' rows; 5 had no value');
+      });
+    });
+
+    test('a complete column logs nothing extra', () => {
+      const h = boot();
+      const [s, a, o] = h.build('source', 'aggregate', 'output');
+      h.set(a.id, 'stat.0.op', 'average');
+      h.set(a.id, 'stat.0.col', 'gpa');
+      h.w.runQuery();
+      assert.excludes(logOf(h, o.id), 'had no value');
+    });
+
+    /* Count is exempt, and deliberately: it reports how many values are there,
+       which is a true answer whatever is missing. It is also the measure whose
+       denominator is the row count rather than a column's, so there is no gap
+       for it to have. */
+    test('count claims nothing about blanks', () => {
+      const h = boot();
+      withBlankGpas(h, 5, () => {
+        const [s, a, o] = h.build('source', 'aggregate', 'output');
+        h.set(a.id, 'stat.0.op', 'count');
+        h.w.runQuery();
+        assert.excludes(logOf(h, o.id), 'had no value');
+      });
+    });
+
+    test('Agg. Columns lists each short column with the count it managed', () => {
+      const h = boot();
+      withBlankGpas(h, 5, (A2) => {
+        const [s, a, o] = h.build('source', 'aggregateColumns', 'output');
+        h.set(a.id, 'op', 'average');
+        h.w.runQuery();
+        const rows = A2.STUDENTS.length;
+        assert.includes(logOf(h, o.id),
+          'measured fewer than ' + rows + ' rows for GPA (' + (rows - 5) + ')');
+      });
+    });
+
+    test('Agg. Columns counting says nothing, for the reason Aggregate does not', () => {
+      const h = boot();
+      withBlankGpas(h, 5, () => {
+        const [s, a, o] = h.build('source', 'aggregateColumns', 'output');
+        h.set(a.id, 'op', 'count');
+        h.w.runQuery();
+        assert.excludes(logOf(h, o.id), 'measured fewer than');
+      });
+    });
+  });
+
   describe('persistence', () => {
     const reload = (h) => {
       const json = JSON.stringify(h.app.serialiseGraph());

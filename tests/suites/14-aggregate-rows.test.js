@@ -62,7 +62,8 @@ module.exports = ({ describe, test }) => {
       assert.ok(app.NODE_SPEC.aggregateRows, 'no spec');
       assert.ok(app.CONNECT_RULES.aggregateRows, 'no wiring rules');
       assert.ok(app.NODE_PORTS.aggregateRows, 'no ports');
-      assert.deepEqual(app.defaultCfg('aggregateRows'), { op: 'sum' });
+      assert.deepEqual(app.defaultCfg('aggregateRows'),
+        { op: 'sum', left: '', right: '' });
     });
 
     test('it goes wherever its sibling goes', () => {
@@ -373,7 +374,29 @@ module.exports = ({ describe, test }) => {
 
     test('every measure is offered', () => {
       const r = rig();
-      assert.deepEqual(r.optionsOf(r.n.id, 'op'), OPS);
+      assert.deepEqual(r.optionsOf(r.n.id, 'op'), A.ROW_OPS.map(o => o.key));
+    });
+
+    test('and they are in two sections, because they are two kinds of answer', () => {
+      /* The six run ALONG the row over whatever numbers are on it; the three
+         read two named columns in an order that matters. One flat list would
+         offer Sum and Ratio as if they were the same kind of choice. */
+      const r = rig();
+      const groups = r.qa('[data-node="' + r.n.id + '"][data-key="op"] optgroup');
+      assert.equal(groups.length, 2);
+      assert.deepEqual(groups.map(g => g.getAttribute('label')),
+        ['Across the row', 'Between two columns']);
+      const inGroup = i => [...groups[i].querySelectorAll('option')].map(o => o.value);
+      assert.deepEqual(inGroup(0), A.AGG_OPS.map(o => o.key));
+      assert.deepEqual(inGroup(1), A.ROW_PAIR_OPS.map(o => o.key));
+    });
+
+    test('its sibling is offered the reductions alone', () => {
+      // "Difference down a column of 780 rows" is not a question.
+      const h = boot();
+      const [s2, ac, o] = h.build('source', 'aggregateColumns', 'output');
+      assert.deepEqual(h.optionsOf(ac.id, 'op'), A.AGG_OPS.map(o2 => o2.key));
+      assert.equal(h.qa('[data-node="' + ac.id + '"][data-key="op"] optgroup').length, 0);
     });
 
     test('the hint counts the columns that will actually contribute', () => {
@@ -473,7 +496,7 @@ module.exports = ({ describe, test }) => {
 
     test('the nested course column is a label too', () => {
       const t = A.studentsTable(A.STUDENTS.slice(0, 2));
-      assert.includes(A.aggregateRowsCarried(t).map(c => c.key), 'courses');
+      assert.includes(A.aggregateRowsCarried(node('sum'), t).map(c => c.key), 'courses');
     });
 
     test('a table of labels alone still produces the measure column', () => {
@@ -568,6 +591,260 @@ module.exports = ({ describe, test }) => {
       const log = [];
       A.applyAggregateRows(node('sum'), t, log);
       assert.equal(log.filter(e => /carried/.test(JSON.stringify(e))).length, 0);
+    });
+  });
+
+  describe('the two-column measures', () => {
+
+    const NUM = A.COLTYPE.NUMBER, TXT = A.COLTYPE.TEXT;
+    const col2 = (key, label, type) => ({ key, label, type: type || TXT });
+    const pnode = (op, left, right) =>
+      ({ id: 99, type: 'aggregateRows', cfg: { op, left: left || '', right: right || '' } });
+    // Course, Passed, Enrolled. The shape a Combine set to Join produces.
+    const rate = (rows) => A.makeTable(
+      [col2('g', 'Course'), col2('a', 'Passed', NUM), col2('b', 'Enrolled', NUM)], rows);
+    const run = (op, rows, l, r) =>
+      A.applyAggregateRows(pnode(op, l || 'a', r || 'b'), rate(rows), []);
+    const vals = t => t.rows.map(r => r[r.length - 1]);
+
+    test('the arithmetic is the arithmetic', () => {
+      const rows = [['x', 80, 82]];
+      assert.close(vals(run('difference', rows))[0], -2, 1e-9);
+      assert.close(vals(run('ratio', rows))[0], 80 / 82, 1e-9);
+      assert.close(vals(run('percent', rows))[0], (80 / 82) * 100, 1e-9);
+    });
+
+    test('the order is the one you picked, not the one the columns arrived in', () => {
+      // Passed over Enrolled is a pass rate; Enrolled over Passed is not a
+      // number anybody wants, and the node must be able to tell them apart.
+      const rows = [['x', 80, 82]];
+      assert.close(vals(run('percent', rows, 'a', 'b'))[0], (80 / 82) * 100, 1e-9);
+      assert.close(vals(run('percent', rows, 'b', 'a'))[0], (82 / 80) * 100, 1e-9);
+    });
+
+    test('the column names the expression, in the incoming labels', () => {
+      assert.equal(run('difference', [['x', 1, 2]]).columns[1].label, 'Passed - Enrolled');
+      assert.equal(run('ratio',      [['x', 1, 2]]).columns[1].label, 'Passed ÷ Enrolled');
+      /* Spelled out rather than a per cent sign, because this label is exported
+         and a per cent sign starts a comment in LaTeX. See ROW_PAIR_OPS. */
+      assert.equal(run('percent',    [['x', 1, 2]]).columns[1].label,
+                   'Passed as a percentage of Enrolled');
+    });
+
+    /* THE RULES THAT STOP IT BEING QUIETLY WRONG.
+       reduceValues SKIPS a blank, which is right for a sum and fatal here:
+       80 divided by nothing would come back as 80, a number that looks like an
+       answer. These four tests are the reason pairValue() exists at all. */
+    describe('a row with no answer says so', () => {
+      test('a blank on either side is blank, never skipped', () => {
+        assert.deepEqual(vals(run('percent', [['x', null, 20]])), [null]);
+        assert.deepEqual(vals(run('percent', [['x', 7, null]])), [null]);
+        assert.deepEqual(vals(run('percent', [['x', null, null]])), [null]);
+        assert.deepEqual(vals(run('difference', [['x', null, 20]])), [null]);
+      });
+
+      test('a zero to divide by is blank, not Infinity', () => {
+        // A course with no enrolments has no pass rate, not an infinite one.
+        assert.deepEqual(vals(run('ratio', [['x', 5, 0]])), [null]);
+        assert.deepEqual(vals(run('percent', [['x', 5, 0]])), [null]);
+      });
+
+      test('but subtracting zero is ordinary arithmetic', () => {
+        assert.deepEqual(vals(run('difference', [['x', 5, 0]])), [5]);
+      });
+
+      test('something that is not a number is blank too', () => {
+        assert.deepEqual(vals(run('ratio', [['x', 'n/a', 4]])), [null]);
+      });
+
+      test('the log says how many rows had no answer', () => {
+        const log = [];
+        A.applyAggregateRows(pnode('percent', 'a', 'b'),
+          rate([['x', 80, 82], ['y', 5, 0], ['z', null, 3]]), log);
+        const said = log.map(e => e.parts.map(pp => pp.s).join(' ')).join(' | ');
+        assert.includes(said, 'no answer for');
+        assert.includes(said, '2');
+      });
+
+      test('and says nothing when every row had one', () => {
+        const log = [];
+        A.applyAggregateRows(pnode('percent', 'a', 'b'), rate([['x', 80, 82]]), log);
+        assert.excludes(log.map(e => e.parts.map(pp => pp.s).join(' ')).join(' | '),
+          'no answer for');
+      });
+
+      test('negatives are values, not errors', () => {
+        assert.close(vals(run('percent', [['x', -3, 6]]))[0], -50, 1e-9);
+      });
+    });
+
+    test('a column that is neither operand comes through', () => {
+      /* The rule is "what the measure consumes is replaced, the rest come
+         through". A reduction consumes every numeric column; this consumes
+         exactly two, so a third is carried rather than quietly dropped. */
+      const t = A.makeTable(
+        [col2('g', 'Course'), col2('a', 'Passed', NUM),
+         col2('b', 'Enrolled', NUM), col2('c', 'Withdrew', NUM)],
+        [['X', 80, 82, 2]]);
+      const out = A.applyAggregateRows(pnode('percent', 'a', 'b'), t, []);
+      assert.deepEqual(out.columns.map(c => c.label),
+        ['Course', 'Withdrew', 'Passed as a percentage of Enrolled']);
+      assert.equal(out.rows[0][1], 2, 'the value came through untouched');
+    });
+
+    test('a reduction still consumes every numeric column', () => {
+      const t = A.makeTable(
+        [col2('g', 'Course'), col2('a', 'A', NUM), col2('b', 'B', NUM)], [['X', 1, 2]]);
+      const out = A.applyAggregateRows(pnode('sum'), t, []);
+      assert.deepEqual(out.columns.map(c => c.label), ['Course', 'Sum']);
+      assert.equal(out.rows[0][1], 3);
+    });
+
+    test('with nothing numeric arriving, the column is still declared', () => {
+      const t = A.makeTable([col2('g', 'Course')], [['x']]);
+      const out = A.applyAggregateRows(pnode('percent'), t, []);
+      assert.equal(out.columns.length, 2);
+      assert.deepEqual(vals(out), [null]);
+    });
+
+    test('with one numeric column both sides resolve to it', () => {
+      // Honest and visibly useless, which beats an error: the fix is to wire
+      // in something with two numbers on a row.
+      const t = A.makeTable([col2('g', 'Course'), col2('a', 'A', NUM)], [['x', 5]]);
+      const out = A.applyAggregateRows(pnode('percent'), t, []);
+      assert.deepEqual(vals(out), [100]);
+    });
+
+    test('a saved column that no longer arrives falls back rather than failing', () => {
+      // Rewiring the node behind a different branch is enough to do this.
+      const out = A.applyAggregateRows(pnode('percent', 'gone', 'alsogone'),
+        rate([['x', 80, 82]]), []);
+      assert.deepEqual(vals(out), [(80 / 82) * 100], 'it used the first two numbers');
+    });
+
+    test('the header it declares is the header it produces', () => {
+      const tables = [
+        A.makeTable([], []),
+        A.makeTable([col2('g', 'G')], [['x']]),
+        A.makeTable([col2('a', 'A', NUM)], [[1]]),
+        rate([['x', 1, 2]])
+      ];
+      A.ROW_PAIR_OPS.forEach(op => tables.forEach((t, ti) => {
+        const n = pnode(op.key);
+        const produced = A.headerOnly(A.applyAggregateRows(n, t, []))
+          .columns.map(c => c.key + ':' + c.label);
+        const declared = A.aggregateRowsSchema(n, A.headerOnly(t))
+          .columns.map(c => c.key + ':' + c.label);
+        assert.deepEqual(produced, declared, op.key + ' on table ' + ti);
+      }));
+    });
+
+    describe('through a real graph', () => {
+      function wired(op) {
+        const h = boot();
+        const [s2, ar, o] = h.build('source', 'aggregateRows', 'output');
+        h.set(ar.id, 'op', op);
+        h.w.render();
+        return Object.assign(h, { s: s2, ar, o });
+      }
+
+      test('picking a pair measure grows two column pickers', () => {
+        const before = wired('sum');
+        const keys = id => before.qa('[data-node="' + id + '"]')
+          .map(e => e.getAttribute('data-key'));
+        assert.deepEqual(keys(before.ar.id), ['op'], 'a reduction needs no operands');
+
+        const after = wired('percent');
+        assert.deepEqual(after.qa('[data-node="' + after.ar.id + '"]')
+          .map(e => e.getAttribute('data-key')), ['op', 'left', 'right']);
+      });
+
+      test('the second picker is named after the operation', () => {
+        [['difference', 'Minus'], ['ratio', 'Divided by'], ['percent', 'As % of']]
+          .forEach(([op, label]) => {
+            const h = wired(op);
+            const txt = h.qa('[data-node="' + h.ar.id + '"]')[0]
+              .closest('.node-config').textContent.replace(/\s+/g, ' ');
+            assert.includes(txt, label, op);
+          });
+      });
+
+      test('and the panel explains what the measure is', () => {
+        A.ROW_PAIR_OPS.forEach(op => {
+          const h = wired(op.key);
+          const txt = h.qa('[data-node="' + h.ar.id + '"]')[0]
+            .closest('.node-config').textContent.replace(/\s+/g, ' ');
+          assert.includes(txt, op.hint.slice(0, 40), op.key);
+          assert.includes(txt, 'leaves that row blank', op.key);
+        });
+      });
+
+      test('the Out line states the expression, word for word', () => {
+        const h = wired('percent');
+        const txt = h.qa('[data-node="' + h.ar.id + '"]')[0]
+          .closest('.node-config').textContent.replace(/\s+/g, ' ');
+        const label = h.app.computeSchemas()[h.ar.id].columns.slice(-1)[0].label;
+        assert.includes(txt, 'Out: one row per row in, ' + label);
+      });
+
+      test('the result can be sorted by, which is the point of having it', () => {
+        /* Reading two numbers off a row works for five rows. The archive has
+           78 courses, so ranking is the whole reason this is a column and not
+           a sum the reader does in their head. */
+        const h = boot();
+        const [s2, sf, ar, so, o] =
+          h.build('source', 'selectFor', 'aggregateRows', 'sort', 'output');
+        h.set(sf.id, 'by', 'specialisation');
+        h.w.render();
+        h.app.addStat(sf.id);
+        h.w.render();
+        h.set(sf.id, 'stat.1.op', 'average');
+        h.w.render();
+        h.set(sf.id, 'stat.1.col', 'gpa');
+        h.set(ar.id, 'op', 'ratio');
+        h.w.render();
+        assert.includes(h.optionsOf(so.id, 'sort.0.col'), 'ratio',
+          'the derived column must be rankable');
+        h.set(so.id, 'sort.0.col', 'ratio');
+        h.set(so.id, 'sort.0.dir', 'desc');
+        h.w.runQuery();
+        const got = h.entry(o.id).table.rows.map(r => r[r.length - 1]);
+        assert.deepEqual(got, got.slice().sort((x, y) => y - x), 'it really did rank');
+      });
+
+      test('the measure and its two columns survive a round trip', () => {
+        const h = wired('percent');
+        h.set(h.ar.id, 'left', 'gpa');
+        h.w.render();
+        h.set(h.ar.id, 'right', 'gpa');
+        const json = JSON.stringify(h.app.serialiseGraph());
+        h.w.clearAll();
+        h.app.loadGraphFromText(json, h.doc.createElement('button'));
+        const back = h.app.nodes.find(n => n.type === 'aggregateRows');
+        assert.equal(back.cfg.op, 'percent');
+        assert.equal(back.cfg.left, 'gpa');
+        assert.equal(back.cfg.right, 'gpa');
+      });
+
+      test('a query saved before these existed still loads', () => {
+        const h = wired('sum');
+        const g = h.app.serialiseGraph();
+        g.nodes.forEach(n => {
+          if (n.type === 'aggregateRows') { delete n.cfg.left; delete n.cfg.right; }
+        });
+        h.w.clearAll();
+        h.app.loadGraphFromText(JSON.stringify(g), h.doc.createElement('button'));
+        const back = h.app.nodes.find(n => n.type === 'aggregateRows');
+        assert.equal(back.cfg.op, 'sum');
+        assert.equal(back.cfg.left, '', 'the default fills the gap');
+        assert.notOk(h.q('.error-box'));
+      });
+
+      test('a file naming a measure this build does not have falls back', () => {
+        const h = wired('sum');
+        h.app.setCfg(h.ar.id, 'op', 'cube');
+        assert.equal(h.app.rowOp(h.app.findNode(h.ar.id)).key, 'count');
+      });
     });
   });
 

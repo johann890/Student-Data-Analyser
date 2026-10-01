@@ -61,8 +61,9 @@ var NODE_TIPS = {
   aggregate: 'Reduces the whole table to one row. Add a measure for every ' +
              'figure you want on it, such as a count and an average.',
   aggregateColumns: 'One row out, with the measure applied down each column.',
-  aggregateRows:    'The measure applied across each row. Label columns come ' +
-                    'through beside it, so each answer still says which row it is.',
+  aggregateRows:    'The measure applied across each row, or two named columns ' +
+                    'as a difference, ratio or percentage. Label columns come ' +
+                    'through beside it.',
   combine:'Joins branches into one table: stack their rows, or match them up ' +
           'side by side on a shared column.',
   compare:'Puts branches side by side, one row each, so two cohorts can be read ' +
