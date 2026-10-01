@@ -120,8 +120,16 @@ function groupColumn(node, t) {
    than by adding an entry to AGG_OPS, because AGG_OPS is what the three
    Aggregate nodes offer and "share of total" is meaningless on a single table.
    A share needs the other groups to be a share OF. */
+/* `head` says "percent" rather than carrying the sign, for the reason
+   ROW_PAIR_OPS' percent measure does: this string becomes a column header in an
+   exported file, and a per cent sign starts a comment in LaTeX, so a table
+   pasted into a report lost the rest of that header line with nothing to say so.
+   The unit still has to be stated, because the cell holds 10.89 and not 0.1089,
+   so it is spelled instead of dropped. `label` is the dropdown and was always
+   free of it. */
 var SELECTFOR_OPS = AGG_OPS.concat([
-  { key:'share', label:'Share of total', verb:'Share of', needsCol:false, head:'Share %' }
+  { key:'share', label:'Share of total', verb:'Share of', needsCol:false,
+    head:'Share (percent)' }
 ]);
 
 function selectForOp(key) {

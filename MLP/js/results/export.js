@@ -162,6 +162,164 @@ function serialiseTable(t, sep, quote) {
     .join('\n');
 }
 
+/* ============================================================================
+   THE FORMATS A RESULT CAN LEAVE IN
+   ============================================================================
+   One table, four rows, because the four differ only in how a table becomes
+   text. Everything else about exporting (which table, what it is called, the
+   staleness guard, the clipboard's two attempts) is already written once and
+   does not want a copy per format.
+
+   WHY MORE THAN CSV
+   CSV reaches Excel, and Excel was the whole requirement. The other two are the
+   tools a result actually ends up in afterwards, each of which CSV reaches badly:
+
+     PowerPoint has no "convert text to table", so pasted tab separated text
+     lands as a text box and the table has to be rebuilt by hand, or routed
+     through Excel first. An HTML table pastes AS a table, because that is the
+     flavour PowerPoint and Word look for first.
+
+     LaTeX cannot read a CSV without a package, and worse, the characters this
+     tool puts in its own headers are active there. Escaping at the point of
+     export is the only place that can be got right: a CSV cannot be escaped for
+     LaTeX without breaking it for Excel, which is why this is a format rather
+     than a change to the existing one.
+
+   `flavour` is the clipboard type the text should be offered as. Only the HTML
+   format has one worth naming; the rest are plain text, and a receiving
+   application that wanted something cleverer would have asked for it.
+
+   `filePrefix` exists for exactly one member. See UTF8_BOM: the marker belongs
+   on a file and not on a clipboard, and this is the field that says so rather
+   than a branch at the call site.                                            */
+var EXPORT_FORMATS = [
+  { key:'tsv',   label:'Text (tabs)',  ext:'.tsv',
+    text: function(t){ return serialiseTable(t, '\t', true); } },
+  { key:'csv',   label:'CSV (Excel)',  ext:'.csv', filePrefix: UTF8_BOM,
+    text: function(t){ return serialiseTable(t, ',', true); } },
+  { key:'html',  label:'HTML table',   ext:'.html', flavour:'text/html',
+    text: function(t){ return htmlTable(t); } },
+  { key:'latex', label:'LaTeX table',  ext:'.tex',
+    text: function(t){ return latexTable(t); } }
+];
+
+var COPY_FORMAT_DEFAULT = 'tsv';   // what Copy has always written
+var SAVE_FORMAT_DEFAULT = 'csv';   // what Save has always written
+
+function exportFormat(key, fallback) {
+  for (var i = 0; i < EXPORT_FORMATS.length; i++) {
+    if (EXPORT_FORMATS[i].key === key) return EXPORT_FORMATS[i];
+  }
+  return exportFormat(fallback || COPY_FORMAT_DEFAULT, COPY_FORMAT_DEFAULT);
+}
+
+// The format a given Output is set to, which is the default until it is changed.
+// Read through here rather than off cfg, so an unrecognised key in a
+// hand-edited file falls back the way every other setting in this tool does.
+function copyFormatOf(node) {
+  return exportFormat(node && node.cfg ? node.cfg.copyAs : null, COPY_FORMAT_DEFAULT);
+}
+function saveFormatOf(node) {
+  return exportFormat(node && node.cfg ? node.cfg.saveAs : null, SAVE_FORMAT_DEFAULT);
+}
+
+/* AN HTML TABLE, FOR PASTING INTO A SLIDE
+   Borders as attributes rather than a stylesheet, because the receiving
+   application keeps the ones it understands and a class pointing at CSS that
+   did not travel is no border at all. Numbers are aligned right the way the
+   panel aligns them, so the pasted table reads as the one on screen did.    */
+function htmlTable(t) {
+  // A heading is aligned the way its column is, which is the rule the panel
+  // follows on screen; a right-aligned column of numbers under a left-aligned
+  // heading is the one thing that makes a pasted table look unlike the result
+  // it was copied from.
+  var alignOf = function(c) {
+    return (c.type === COLTYPE.NUMBER) ? ' align="right"' : ' align="left"';
+  };
+  var head = t.columns.map(function(c) {
+    return '<th' + alignOf(c) + '>' + esc(c.label) + '</th>';
+  }).join('');
+  var body = t.rows.map(function(r) {
+    return '<tr>' + t.columns.map(function(c, i) {
+      return '<td' + alignOf(c) + '>' + esc(exportCell(c, r[i])) + '</td>';
+    }).join('') + '</tr>';
+  }).join('\n');
+  return '<table border="1" cellspacing="0" cellpadding="4">\n' +
+         '<thead><tr>' + head + '</tr></thead>\n' +
+         '<tbody>\n' + body + '\n</tbody>\n</table>';
+}
+
+/* LATEX, WHERE EVERY CHARACTER THIS TOOL WRITES HAS TO BE ACCOUNTED FOR
+   ---------------------------------------------------------------------------
+   Ten characters are active in LaTeX, and this tool generates three of them in
+   its own column headers without anybody typing one: `#` from a node's name, `%`
+   from a measure (spelled out now, for the version of this problem that could
+   not be escaped at all) and `_` from a column key. Student data supplies more:
+   an ampersand in a course title would end a cell early.
+
+   The backslash is taken out first and put back last, through a placeholder,
+   which is the only ordering that works. Replacing it in place with
+   `\textbackslash{}` straight away looks right and is not: the brace pass that
+   follows then escapes the braces that replacement just introduced, and the
+   output reads `\textbackslash\{\}`, which typesets as a stray "{}" instead of a
+   backslash. Any NUL already in the text is dropped first so it cannot be
+   mistaken for the placeholder; the loader refuses control characters anyway, so
+   this is a guard rather than a case.
+
+   Two characters are not active but are not ASCII either, and both come from
+   this tool: the middot in a joined column's name and the division sign in the
+   ratio measure's. They are mapped to the maths this document can typeset
+   whatever its input encoding, which is what makes the output here plain ASCII
+   and so compilable in a setup that predates utf8 being the default.
+
+   A newline inside a cell becomes a space. A plain `tabular` cell cannot hold a
+   line break without a p-column, and a file that will not compile is worse than
+   one that reads a little flatter.                                           */
+var LATEX_BACKSLASH = '\u0000';
+
+function latexEscape(v) {
+  return String(v)
+    .replace(/\u0000/g, '')
+    .replace(/\\/g, LATEX_BACKSLASH)
+    .replace(/([&%$#_{}])/g, '\\$1')
+    .replace(/~/g, '\\textasciitilde{}')
+    .replace(/\^/g, '\\textasciicircum{}')
+    .replace(/\u00b7/g, '$\\cdot$')
+    .replace(/\u00f7/g, '$\\div$')
+    .replace(/[\r\n]+/g, ' ')
+    .split(LATEX_BACKSLASH).join('\\textbackslash{}');
+}
+
+/* `\hline` rather than booktabs' nicer rules, so this compiles in a document
+   that loads no packages at all. A reader who has booktabs can swap three
+   lines; a reader who does not would otherwise get an error instead of a table.
+
+   The leading comment says what the fragment is and what it needs, because this
+   is the one format whose file is not openable on its own: it is meant to be
+   pasted into a document that already exists. */
+function latexTable(t) {
+  var spec = t.columns.map(function(c) {
+    return c.type === COLTYPE.NUMBER ? 'r' : 'l';
+  }).join('');
+  var head = t.columns.map(function(c) {
+    return '\\textbf{' + latexEscape(c.label) + '}';
+  }).join(' & ');
+  var body = t.rows.map(function(r) {
+    return t.columns.map(function(c, i) {
+      return latexEscape(exportCell(c, r[i]));
+    }).join(' & ') + ' \\\\';
+  }).join('\n');
+  return '% Student Data Analyser export. Paste into a LaTeX document; ' +
+           'it needs no extra packages.\n' +
+         '\\begin{tabular}{' + spec + '}\n' +
+         '\\hline\n' +
+         head + ' \\\\\n' +
+         '\\hline\n' +
+         (body ? body + '\n' : '') +
+         '\\hline\n' +
+         '\\end{tabular}';
+}
+
 // Compare with per-branch detail exports long: one row per branch row, branch
 // name prepended. That is the shape a pivot table wants.
 function exportTableFor(e) {
@@ -244,8 +402,47 @@ function legacyCopy(text) {
   } catch (err) { return false; }
 }
 
-function writeClipboard(text, btn) {
+/* COPYING AS SOMETHING OTHER THAN PLAIN TEXT
+   ---------------------------------------------------------------------------
+   An application decides what a paste becomes by asking the clipboard which
+   flavours it holds. PowerPoint and Word ask for text/html first, which is the
+   whole reason the HTML format exists: the same table pasted as text/plain
+   arrives as a text box.
+
+   Two routes, because the modern one is not always available. ClipboardItem
+   needs a secure context, and this tool is opened off the filesystem, which is
+   exactly the case legacyCopy() was already written for. The fallback sets both
+   flavours on the copy event instead, which works wherever execCommand does.
+
+   The plain text is always offered alongside, never instead: an application with
+   no use for the markup still gets something it can paste, and that is the one
+   thing neither route is allowed to lose. */
+function richCopy(text, html) {
+  var handler = function(e) {
+    e.clipboardData.setData('text/plain', text);
+    e.clipboardData.setData('text/html', html);
+    e.preventDefault();
+  };
+  document.addEventListener('copy', handler);
+  try { return legacyCopy(text); }
+  finally { document.removeEventListener('copy', handler); }
+}
+
+function writeClipboard(text, btn, html) {
   function done(ok) { flashBtn(btn, ok ? 'Copied ✓' : 'Copy failed'); }
+
+  if (html && typeof ClipboardItem !== 'undefined' &&
+      navigator.clipboard && navigator.clipboard.write) {
+    try {
+      navigator.clipboard.write([new ClipboardItem({
+        'text/html':  new Blob([html],  { type:'text/html'  }),
+        'text/plain': new Blob([text], { type:'text/plain' })
+      })]).then(function(){ done(true); }, function(){ done(richCopy(text, html)); });
+      return;
+    } catch (err) { done(richCopy(text, html)); return; }
+  }
+  if (html) { done(richCopy(text, html)); return; }
+
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(function(){ done(true); },
                                             function(){ done(legacyCopy(text)); });
@@ -315,12 +512,18 @@ function exportEntry(id, btn) {
   return e;
 }
 
-/* Quoted now, where it used to be raw. No BOM: this is text on a clipboard
-   rather than bytes on disk, and the receiving application already knows the
-   encoding it was handed. */
+/* Quoted now, where it used to be raw. No BOM whatever the format: this is text
+   on a clipboard rather than bytes on disk, and the receiving application
+   already knows the encoding it was handed.
+
+   The format comes off the Output, so an unset one is tab separated text and
+   every query written before the dropdown existed copies what it always did. */
 function copyOutput(id, btn) {
   var e = exportEntry(id, btn);
-  if (e) writeClipboard(serialiseTable(exportTableFor(e), '\t', true), btn);
+  if (!e) return;
+  var fmt = copyFormatOf(findNode(id));
+  var text = fmt.text(exportTableFor(e));
+  writeClipboard(text, btn, fmt.flavour === 'text/html' ? text : null);
 }
 
 /* The name written is the name typed, with nothing appended. A timestamp used
@@ -337,8 +540,13 @@ function copyOutput(id, btn) {
 function saveOutput(id, btn) {
   var e = exportEntry(id, btn);
   if (!e) return;
-  var name = safeName(e.name) + '.csv';
-  flashBtn(btn, downloadFile(name, UTF8_BOM + serialiseTable(exportTableFor(e), ',', true))
+  /* The extension follows the format rather than being fixed at .csv, because
+     the extension is what decides which application opens the file, and a LaTeX
+     fragment named .csv opens in Excel. `filePrefix` carries the BOM for the one
+     format that wants one. */
+  var fmt = saveFormatOf(findNode(id));
+  var name = safeName(e.name) + fmt.ext;
+  flashBtn(btn, downloadFile(name, (fmt.filePrefix || '') + fmt.text(exportTableFor(e)))
     ? 'Saved ✓' : 'Save failed');
 }
 

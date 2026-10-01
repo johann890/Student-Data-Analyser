@@ -4,6 +4,8 @@
    ========================================================================== */
 var panelEl = document.getElementById('panelBody');
 if (panelEl) panelEl.addEventListener('input', onExportNameInput);
+// Formats are selects, so they report on change rather than on input.
+if (panelEl) panelEl.addEventListener('change', onExportFormatChange);
 
 /* The variables dock, delegated the same way the config panels are: one
    listener on the dock rather than one per field, so rebuilding the chips

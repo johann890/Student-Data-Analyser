@@ -378,8 +378,8 @@ function runQuery() {
 
       actions = '<div class="result-actions">' +
         exportNameHTML(onode, oi + 1) +
-        '<button class="rbtn" onclick="copyOutput(' + onode.id + ',this)">Copy</button>' +
-        '<button class="rbtn" onclick="saveOutput(' + onode.id + ',this)">Save</button>' +
+        exportActionHTML(onode, 'copy') +
+        exportActionHTML(onode, 'save') +
       '</div>';
     }
 
@@ -415,6 +415,65 @@ function exportNameOf(node, index) {
   return (v && String(v).trim()) ? String(v).trim() : defaultExportName(index);
 }
 
+/* COPY AND SAVE, EACH WITH THE FORMAT BESIDE IT
+   ---------------------------------------------------------------------------
+   The button is what it always was and does what it always did; the select
+   beside it says in what. Two independent choosers rather than one shared
+   setting, because the right answer differs: a result going into a slide is
+   copied as HTML, and the same result going into a repository is saved as CSV,
+   and a user doing both should not have to change the setting twice.
+
+   The format is NOT a reason to re-run. Like the file name it sits next to, it
+   changes how an answer is written down and not what the answer is, so nothing
+   here marks the results stale. That matters practically: marking stale would
+   hide the very button the user just picked a format for.
+
+   Rendered from EXPORT_FORMATS so a format added there appears in both menus
+   without this function being edited.                                        */
+function exportActionHTML(node, which) {
+  var isCopy = which === 'copy';
+  var current = (isCopy ? copyFormatOf(node) : saveFormatOf(node)).key;
+  var options = EXPORT_FORMATS.map(function(f) {
+    return '<option value="' + f.key + '"' +
+      (f.key === current ? ' selected' : '') + '>' + esc(f.label) + '</option>';
+  }).join('');
+  return '<span class="rbtn-group">' +
+    '<button class="rbtn" onclick="' + (isCopy ? 'copyOutput' : 'saveOutput') +
+      '(' + node.id + ',this)">' + (isCopy ? 'Copy' : 'Save') + '</button>' +
+    '<select class="rfmt" data-export-format="' + node.id + '" ' +
+      'data-export-which="' + which + '" ' +
+      'title="' + (isCopy ? 'What Copy puts on the clipboard'
+                          : 'What Save writes, and the file extension it uses') + '">' +
+      options +
+    '</select>' +
+  '</span>';
+}
+
+/* Delegated on the panel, which is rebuilt on every run, for the reason
+   onExportNameInput() gives. The extension beside the file name is rewritten in
+   place rather than by re-rendering the block: re-rendering would rebuild the
+   result table to change two characters, and the panel is the one part of this
+   tool whose redraw cost is visible on a long table. */
+function onExportFormatChange(e) {
+  var el = e.target;
+  if (!el || !el.getAttribute) return;
+  var id = el.getAttribute('data-export-format');
+  if (!id) return;
+  var node = findNode(parseInt(id, 10));
+  if (!node) return;
+  node.cfg = node.cfg || defaultCfg(node.type);
+
+  if (el.getAttribute('data-export-which') === 'copy') {
+    node.cfg.copyAs = el.value;
+    return;
+  }
+  node.cfg.saveAs = el.value;
+  var block = el.closest ? el.closest('.result-block') : null;
+  var ext = block ? block.querySelector('.export-ext') : null;
+  if (ext) ext.textContent = saveFormatOf(node).ext;
+  // No markStale() here, by design. See the note above.
+}
+
 function exportNameHTML(node, index) {
   return '<label class="export-name" ' +
     'title="File name for Save. Leave blank to use the default.">' +
@@ -422,7 +481,7 @@ function exportNameHTML(node, index) {
       'placeholder="' + esc(defaultExportName(index)) + '" ' +
       'value="' + esc((node.cfg && node.cfg.filename) || '') + '" ' +
       'data-export-name="' + node.id + '">' +
-    '<span class="export-ext">.csv</span>' +
+    '<span class="export-ext">' + saveFormatOf(node).ext + '</span>' +
   '</label>';
 }
 

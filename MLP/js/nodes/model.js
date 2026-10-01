@@ -358,7 +358,13 @@ function defaultCfg(type) {
      hides the block and changes no answer, which is why nothing marks the run
      stale when it changes. An Output used purely as a step in a chain is what
      it is for. */
-  if (type === 'output')  return { show:'rows', filename:'', cols:null, panel:true };
+  /* `copyAs` and `saveAs` are the export formats, empty meaning "the one this
+     tool always used": tab separated text for Copy, CSV for Save. Written out
+     rather than left absent, for the reason at the top of this function, and
+     resolved through copyFormatOf()/saveFormatOf() so an unknown value in a
+     hand-edited file falls back instead of producing no export at all. */
+  if (type === 'output')  return { show:'rows', filename:'', cols:null, panel:true,
+                                   copyAs:'', saveAs:'' };
   return {};
 }
 

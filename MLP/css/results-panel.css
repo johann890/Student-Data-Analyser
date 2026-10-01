@@ -225,6 +225,42 @@ body.panel-resizing * { cursor: col-resize !important; }
 .rbtn:hover { background: #051830; border-color: #1e7fff; color: #3db8ff; }
 .rbtn.rbtn-done { background: #0e2016; border-color: #2d6640; color: #5ec87a; }
 
+/* A button and the format it writes in, joined so they read as one control.
+   The button keeps its own left corners and the select its right ones, with the
+   seam between them square, which is what says they belong together without a
+   border running down the middle of the pair. */
+.rbtn-group { display: inline-flex; }
+.rbtn-group .rbtn { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+/* A chevron, because every select in this tool has `appearance: none` and so
+   draws no arrow of its own. The config panels get away with it: a select there
+   is full width in a labelled row, and nothing else looks like that. This one
+   sits against a button at button size, so without a mark of its own it reads as
+   a second button that does nothing when clicked. Drawn as a background image
+   rather than a glyph in the markup so it cannot be selected, copied or
+   announced as part of the value. */
+.rfmt {
+  background: #0d0d0d
+    url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%239a9a9a'/%3E%3C/svg%3E")
+    no-repeat right 5px center;
+  border: 1px solid #262626;
+  border-left: none;
+  color: #9a9a9a;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 3px 16px 3px 6px;
+  border-radius: 0 3px 3px 0;
+  cursor: pointer;
+  max-width: 9em;
+}
+.rfmt:hover {
+  background-color: #051830;
+  border-color: #1e7fff;
+  color: #3db8ff;
+}
+/* Keyboard focus has to stay visible on a control this small, and the default
+   outline is clipped by the seam it shares with the button. */
+.rfmt:focus-visible { outline: 2px solid #1e7fff; outline-offset: -1px; }
+
 /* Results no longer match the graph. Export is withdrawn until re-run */
 .stale-note {
   border: 1px solid #4a3a10;

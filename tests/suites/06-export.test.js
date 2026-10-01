@@ -2,7 +2,7 @@
    Results leave this tool as text for Excel, so the delimiting and quoting have
    to be exactly right: A single unescaped comma silently shifts a column. */
 
-const { boot } = require('../lib/harness');
+const { boot, appStyles } = require('../lib/harness');
 const { assert } = require('../lib/assert');
 
 module.exports = ({ describe, test }) => {
@@ -367,12 +367,302 @@ module.exports = ({ describe, test }) => {
 
     /* A per cent sign starts a comment in LaTeX, so a header carrying one loses
        the rest of its line when the table is pasted into a report, silently.
-       The only label this tool generated with one in it was the percent
-       measure's, and it spells the word out now. */
-    test('no generated measure label carries a per cent sign', () => {
+
+       Every measure table is swept rather than the one that was found first.
+       Checking ROW_PAIR_OPS alone is what let SelectFor's share measure keep a
+       "Share %" header through the fix that was supposed to remove exactly
+       that, and it was found by exporting every result shape rather than by
+       this test, which is the wrong way round.
+
+       The fields are the ones that can REACH a header: `head`, `label` and
+       `verb` are what selectForColumns() and Compare's measureColumns() build a
+       column name out of, and `sym` is what a pair measure names itself. `pick`
+       is deliberately not here: it names a control on the panel, is never
+       exported, and still reads "As % of" because on screen the sign is the
+       clearest thing to write. */
+    test('no measure label that can reach a column header carries a per cent sign', () => {
       const A = boot().app;
-      A.ROW_PAIR_OPS.forEach(op => assert.excludes(op.sym, '%',
-        op.key + ' puts a per cent sign in a column header'));
+      const TABLES = {
+        AGG_OPS: A.AGG_OPS, SELECTFOR_OPS: A.SELECTFOR_OPS,
+        ROW_OPS: A.ROW_OPS, ROW_PAIR_OPS: A.ROW_PAIR_OPS, MEASURES: A.MEASURES
+      };
+      const EXPORTED = ['head', 'label', 'verb', 'sym'];
+      Object.keys(TABLES).forEach(name => {
+        assert.ok(Array.isArray(TABLES[name]), name + ' should be exported for this check');
+        TABLES[name].forEach(op => EXPORTED.forEach(field => {
+          if (op[field] === undefined) return;
+          assert.excludes(String(op[field]), '%',
+            name + '.' + op.key + '.' + field + ' puts a per cent sign in a column header');
+        }));
+      });
     });
+
+    /* The other half of the same claim, made against real output rather than
+       against the tables: whatever a measure is called, the bytes that leave
+       must not carry the character. A breakdown with a share measure is the
+       shape that had it. */
+    test('a share breakdown exports without one', () => {
+      const h = boot();
+      const [s, sf, o] = h.build('source', 'selectFor', 'output');
+      h.set(sf.id, 'by', 'specialisation'); h.w.render();
+      h.set(sf.id, 'stat.0.op', 'share'); h.w.render();
+      h.w.runQuery();
+      h.w.saveOutput(o.id, h.doc.createElement('button'));
+      const csv = h.saved[h.saved.length - 1].content;
+      assert.includes(csv.split('\n')[0], 'Share');
+      assert.excludes(csv, '%');
+    });
+
+  /* ------------------------------------------------- choosing a format
+
+     Copy and Save each have the format beside them. The two defaults ARE the
+     old behaviour, which is the property most worth pinning: every query written
+     before the dropdowns existed has to copy tabs and save CSV without anyone
+     touching a control. */
+  describe('the format beside each button', () => {
+    function panelRig() {
+      const h = boot();
+      const [s, f, o] = h.build('source', 'filter', 'output');
+      h.set(f.id, 'crit.0.value:gpa', '0');
+      h.set(o.id, 'show', 'rows');
+      h.w.runQuery();
+      return { ...h, s, f, o };
+    }
+    const pick = (r, which, value) => {
+      const el = r.q('[data-export-format="' + r.o.id + '"][data-export-which="' + which + '"]');
+      assert.ok(el, 'no ' + which + ' format control in the panel');
+      el.value = value;
+      el.dispatchEvent(new r.w.Event('change', { bubbles: true }));
+      return el;
+    };
+    const save = (r) => {
+      r.w.saveOutput(r.o.id, r.doc.createElement('button'));
+      return r.saved[r.saved.length - 1];
+    };
+    const copy = (r) => {
+      r.w.copyOutput(r.o.id, r.doc.createElement('button'));
+      return r.copied[r.copied.length - 1];
+    };
+
+    test('both menus offer every declared format, in one order', () => {
+      const r = panelRig();
+      ['copy', 'save'].forEach(which => {
+        const el = r.q('[data-export-format="' + r.o.id + '"][data-export-which="' + which + '"]');
+        assert.deepEqual([...el.options].map(o => o.value),
+          r.app.EXPORT_FORMATS.map(f => f.key), which + ' offers a different set');
+      });
+    });
+
+    test('untouched, they are what Copy and Save always did', () => {
+      const r = panelRig();
+      assert.equal(r.app.copyFormatOf(r.app.findNode(r.o.id)).key, 'tsv');
+      assert.equal(r.app.saveFormatOf(r.app.findNode(r.o.id)).key, 'csv');
+      assert.includes(copy(r), '\t');
+      const f = save(r);
+      assert.includes(f.name, '.csv');
+      assert.equal(f.content.slice(0, 1), r.app.UTF8_BOM);
+    });
+
+    test('the extension follows the save format', () => {
+      const r = panelRig();
+      assert.equal(r.q('.result-block .export-ext').textContent, '.csv');
+      pick(r, 'save', 'latex');
+      assert.equal(r.q('.result-block .export-ext').textContent, '.tex');
+      assert.includes(save(r).name, '.tex');
+      pick(r, 'save', 'html');
+      assert.includes(save(r).name, '.html');
+    });
+
+    test('a LaTeX file carries no BOM, because only the CSV wants one', () => {
+      const r = panelRig();
+      pick(r, 'save', 'latex');
+      const f = save(r);
+      assert.excludes(f.content.slice(0, 1), r.app.UTF8_BOM);
+      assert.includes(f.content, '\\begin{tabular}');
+    });
+
+    /* The reason the HTML format exists. PowerPoint decides what a paste becomes
+       by asking for text/html first, so offering the markup as plain text would
+       paste the markup. Both flavours go out, and the plain one is never lost. */
+    test('copying as HTML offers text/html, with plain text alongside', () => {
+      const r = panelRig();
+      pick(r, 'copy', 'html');
+      r.w.copyOutput(r.o.id, r.doc.createElement('button'));
+      const flavours = r.copiedRich[r.copiedRich.length - 1];
+      assert.ok(flavours, 'nothing was written to the clipboard');
+      assert.includes(flavours['text/html'], '<table');
+      assert.includes(flavours['text/html'], '<th');
+      assert.ok(flavours['text/plain'] !== undefined, 'no plain text alongside the markup');
+    });
+
+    test('the other formats stay plain text, with no flavour claimed', () => {
+      const r = panelRig();
+      const before = r.copiedRich.length;
+      ['tsv', 'csv', 'latex'].forEach(k => {
+        pick(r, 'copy', k);
+        r.w.copyOutput(r.o.id, r.doc.createElement('button'));
+      });
+      assert.equal(r.copiedRich.length, before, 'a plain format should not claim a flavour');
+    });
+
+    test('copying as CSV is the file without the BOM', () => {
+      const r = panelRig();
+      pick(r, 'copy', 'csv');
+      const text = copy(r);
+      assert.excludes(text.slice(0, 1), r.app.UTF8_BOM);
+      assert.includes(text.split('\n')[0], ',');
+    });
+
+    test('a format choice does not invalidate the run', () => {
+      const r = panelRig();
+      assert.ok(r.app.resultsFresh);
+      pick(r, 'copy', 'latex');
+      pick(r, 'save', 'html');
+      assert.ok(r.app.resultsFresh, 'picking a format must not ask for a re-run');
+      // And the buttons still work, which is what staleness would have taken away.
+      assert.ok(save(r).content);
+    });
+
+    test('the choice survives a save and reload', () => {
+      const r = panelRig();
+      pick(r, 'copy', 'html');
+      pick(r, 'save', 'latex');
+      const json = JSON.stringify(r.app.serialiseGraph());
+      r.w.clearAll();
+      r.app.loadGraphFromText(json, r.doc.createElement('button'));
+      const out = r.app.nodes.filter(n => n.type === 'output')[0];
+      assert.equal(r.app.copyFormatOf(out).key, 'html');
+      assert.equal(r.app.saveFormatOf(out).key, 'latex');
+    });
+
+    test('a format name this build does not have falls back rather than failing', () => {
+      const r = panelRig();
+      const node = r.app.findNode(r.o.id);
+      node.cfg.copyAs = 'parquet';
+      node.cfg.saveAs = { not: 'a string' };
+      assert.equal(r.app.copyFormatOf(node).key, 'tsv');
+      assert.equal(r.app.saveFormatOf(node).key, 'csv');
+      assert.ok(save(r).content, 'it should still export something');
+    });
+  });
+
+  /* ------------------------------------------------------- the two new writers */
+  describe('LaTeX, where the characters matter', () => {
+    const esc = (A, v) => A.latexEscape(v);
+
+    test('every active character is escaped', () => {
+      const A = boot().app;
+      assert.equal(esc(A, 'R&D'), 'R\\&D');
+      assert.equal(esc(A, '50%'), '50\\%');
+      assert.equal(esc(A, '#3'), '\\#3');
+      assert.equal(esc(A, 'a_b'), 'a\\_b');
+      assert.equal(esc(A, '$5'), '\\$5');
+      assert.equal(esc(A, '{x}'), '\\{x\\}');
+      assert.equal(esc(A, '~'), '\\textasciitilde{}');
+      assert.equal(esc(A, '^'), '\\textasciicircum{}');
+    });
+
+    /* The ordering bug this had on the first attempt: replacing the backslash in
+       place introduced braces, and the brace pass then escaped them, so a
+       backslash typeset as a stray pair of braces. */
+    test('a backslash becomes a backslash, not an escaped pair of braces', () => {
+      const A = boot().app;
+      assert.equal(esc(A, 'a\\b'), 'a\\textbackslash{}b');
+      assert.excludes(esc(A, 'a\\b'), '\\textbackslash\\{');
+    });
+
+    /* The two non-ASCII characters this tool generates in its own headers. Mapped
+       to maths rather than passed through, which is what lets the output compile
+       in a document that does not read UTF-8. */
+    test('the characters this tool generates become maths, so the file is ASCII', () => {
+      const A = boot().app;
+      assert.equal(esc(A, 'Count \u00b7 Select For #3'), 'Count $\\cdot$ Select For \\#3');
+      assert.equal(esc(A, 'Passed \u00f7 Enrolled'), 'Passed $\\div$ Enrolled');
+      const t = A.makeTable(
+        [{ key:'a', label:'Count \u00b7 Select For #3', type:A.COLTYPE.TEXT },
+         { key:'b', label:'Passed \u00f7 Enrolled', type:A.COLTYPE.NUMBER }],
+        [['R&D 50% _x_', 1.5]]);
+      assert.notOk(/[^\x09\x0A\x20-\x7E]/.test(A.latexTable(t)),
+        'the LaTeX should be pure ASCII');
+    });
+
+    test('a newline in a cell becomes a space, because a tabular cell cannot hold one', () => {
+      const A = boot().app;
+      assert.equal(esc(A, 'line\nbreak'), 'line break');
+    });
+
+    test('the column spec aligns numbers right and everything else left', () => {
+      const A = boot().app;
+      const t = A.makeTable(
+        [{ key:'a', label:'A', type:A.COLTYPE.TEXT },
+         { key:'b', label:'B', type:A.COLTYPE.NUMBER },
+         { key:'c', label:'C', type:A.COLTYPE.NUMBER }], []);
+      assert.includes(A.latexTable(t), '\\begin{tabular}{lrr}');
+    });
+
+    test('it is a fragment with rules, and says what it is', () => {
+      const A = boot().app;
+      const t = A.makeTable([{ key:'a', label:'A', type:A.COLTYPE.TEXT }], [['x']]);
+      const tex = A.latexTable(t);
+      assert.includes(tex, '% Student Data Analyser export');
+      assert.includes(tex, '\\hline');
+      assert.includes(tex, '\\textbf{A}');
+      assert.includes(tex, 'x \\\\');
+      assert.includes(tex, '\\end{tabular}');
+    });
+  });
+
+  /* The one thing jsdom cannot see for itself. Every select in this tool sets
+     `appearance: none`, so none of them draws the browser's own arrow. A select
+     in a config panel gets away with it: it is full width in a labelled row and
+     nothing else there looks like that. These two sit against a button, at
+     button size, so with no mark of their own they read as a second button that
+     does nothing when clicked, which is the kind of thing the usability round
+     scored badly on. Asserted against the stylesheet text because jsdom does no
+     painting and would report the rule either way. */
+  describe('a format menu looks like a menu', () => {
+    test('the stylesheet gives it an arrow of its own', () => {
+      const css = appStyles();
+      const rule = css.slice(css.indexOf('.rfmt {'), css.indexOf('}', css.indexOf('.rfmt {')));
+      assert.ok(rule, 'no .rfmt rule in the stylesheet');
+      assert.includes(rule, 'svg', 'the format select draws no arrow, so it reads as a button');
+      assert.includes(rule, 'padding', 'the arrow needs room, or it sits on the text');
+    });
+  });
+
+  describe('HTML, for pasting into a slide', () => {
+    test('it is a real table, headed and escaped', () => {
+      const A = boot().app;
+      const t = A.makeTable(
+        [{ key:'a', label:'A & B', type:A.COLTYPE.TEXT }],
+        [['<script>']]);
+      const html = A.htmlTable(t);
+      assert.includes(html, '<table');
+      assert.includes(html, '<th');
+      assert.includes(html, 'A &amp; B');
+      assert.includes(html, '&lt;script&gt;');
+      assert.excludes(html, '<script>');
+    });
+
+    test('a heading is aligned the way its column is', () => {
+      const A = boot().app;
+      const t = A.makeTable(
+        [{ key:'a', label:'A', type:A.COLTYPE.TEXT },
+         { key:'b', label:'B', type:A.COLTYPE.NUMBER }],
+        [['x', 1]]);
+      const html = A.htmlTable(t);
+      assert.includes(html, '<th align="left">A</th>');
+      assert.includes(html, '<th align="right">B</th>');
+      assert.includes(html, '<td align="right">1</td>');
+    });
+
+    test('borders are attributes, so they survive the paste', () => {
+      const A = boot().app;
+      const t = A.makeTable([{ key:'a', label:'A', type:A.COLTYPE.TEXT }], [['x']]);
+      assert.includes(A.htmlTable(t), 'border="1"');
+    });
+  });
+
+
   });
 };

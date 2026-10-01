@@ -325,6 +325,9 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     // export + persistence
     serialiseTable: serialiseTable, exportTableFor: exportTableFor, safeName: safeName,
     quotedCell: quotedCell, UTF8_BOM: UTF8_BOM,
+    EXPORT_FORMATS: EXPORT_FORMATS, exportFormat: exportFormat,
+    copyFormatOf: copyFormatOf, saveFormatOf: saveFormatOf,
+    htmlTable: htmlTable, latexTable: latexTable, latexEscape: latexEscape,
     exportNameOf: exportNameOf, defaultExportName: defaultExportName, markStale: markStale,
     timeStamp: timeStamp, dateStamp: dateStamp, resultHTML: resultHTML, scalarHTML: scalarHTML, tableHTML: tableHTML,
     courseLabel: courseLabel, courseTitle: courseTitle, courseSelect: courseSelect,

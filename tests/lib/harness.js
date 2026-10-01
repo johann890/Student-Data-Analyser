@@ -271,7 +271,17 @@ function boot() {
   w.URL.createObjectURL = () => 'blob:test';
   w.URL.revokeObjectURL = () => {};
   let pendingContent = null;
-  w.Blob = class { constructor(parts) { pendingContent = parts.join(''); } };
+  /* `_text` as well as the shared pendingContent, because a rich clipboard write
+     builds TWO blobs in one call and the shared variable only remembers the
+     last. The download path still reads pendingContent; the clipboard stub
+     below reads each blob's own text. */
+  w.Blob = class {
+    constructor(parts, opts) {
+      this._text = [].concat(parts || []).join('');
+      this.type = (opts && opts.type) || '';
+      pendingContent = this._text;
+    }
+  };
   const hrefContent = (href) => {
     const comma = String(href || '').indexOf(',');
     if (!String(href).startsWith('data:') || comma === -1) return pendingContent;
@@ -289,8 +299,36 @@ function boot() {
   };
 
   // Clipboard: capture writes rather than requiring a secure context
+  /* CLIPBOARD: the plain path and the flavoured one.
+
+     `copied` keeps the text of every copy whichever route it took, so the
+     assertions written against it before flavours existed still read the last
+     thing copied. `copiedRich` keeps the flavour map as well, which is the only
+     way to assert that an HTML copy really offered text/html and did not
+     quietly fall back to pasting markup as text.
+
+     ClipboardItem is supplied because the application tests for it to decide
+     which route to take, and jsdom has neither it nor execCommand. Without it
+     every flavoured copy here would take the execCommand fallback, fail, and
+     report "Copy failed", which would test the failure rather than the feature. */
   const copied = [];
-  w.navigator.clipboard = { writeText: (t) => { copied.push(t); return Promise.resolve(); } };
+  const copiedRich = [];
+  w.ClipboardItem = class { constructor(items) { this.items = items || {}; } };
+  w.navigator.clipboard = {
+    writeText: (t) => { copied.push(t); return Promise.resolve(); },
+    write: (items) => {
+      const flavours = {};
+      [].concat(items || []).forEach(it => {
+        Object.keys(it.items || {}).forEach(type => {
+          const blob = it.items[type];
+          flavours[type] = (blob && blob._text !== undefined) ? blob._text : String(blob);
+        });
+      });
+      copiedRich.push(flavours);
+      if (flavours['text/plain'] !== undefined) copied.push(flavours['text/plain']);
+      return Promise.resolve();
+    }
+  };
 
   /* Storage: supplied, because jsdom does not supply it here.
 
@@ -339,7 +377,7 @@ function boot() {
   // redraw, so alias it here rather than exporting it from production code.
   w.render = app.render;
 
-  return { w, doc, app, saved, copied, storage,
+  return { w, doc, app, saved, copied, copiedRich, storage,
            ...helpers(w, doc, app), ...fileHelpers(w, doc, app) };
 }
 
