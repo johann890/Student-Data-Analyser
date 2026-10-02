@@ -1,7 +1,7 @@
 /* results/panel-width.js: the results panel width, its Show/Hide state and its
    drag handle.
 
-   An eighteen-column table cannot be read in 300px, but a panel permanently
+   An eighteen-column table cannot be read in 480px, but a panel permanently
    that wide leaves too little canvas. So the panel is the user's to open, close
    and size, and it opens itself when it has an answer.
 
@@ -33,7 +33,11 @@
    and the screen, not of the question. */
 
 var PANEL_MIN     = 240;   // narrower than this and the table headers wrap
-var PANEL_DEFAULT = 300;   // matches the CSS default, which is the real one
+var PANEL_DEFAULT = 480;   // matches the CSS default, which is the real one
+/* 300px showed three of the eight columns a student Source puts out, so the
+   first result anyone saw was a cut-off one. The full table measures 566px and
+   a panel that wide starves the canvas on a laptop, so this is the middle:
+   six columns, and 539px of canvas left on a 1024px window. */
 var PANEL_STRIP   = 34;    // the closed strip, and again the CSS holds the real one
 /* The canvas floor, and so the panel's ceiling: the widest the panel goes is
    whatever is left after this. Raised from 320, which let the panel take about

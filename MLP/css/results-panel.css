@@ -11,7 +11,7 @@
    its own copy of both numbers and says in results/panel-width.js that these
    are the real ones. */
 :root {
-  --panel-w: 300px;
+  --panel-w: 480px;   /* results/panel-width.js keeps the same number in PANEL_DEFAULT */
   --panel-strip-w: 34px;
 }
 .output-panel {

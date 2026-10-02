@@ -55,6 +55,31 @@ const FAMILY = {
   distribution: { colour: '#3a4a8a', types: ['selectFor', 'histogram'] }
 };
 
+/* The rules written against exactly this selector, in source order, with the
+   position each one sits at. Comments are stripped first, so a selector quoted
+   inside one cannot be read as a rule. */
+function rulesFor(selector) {
+  const css = CSS.replace(/\/\*[\s\S]*?\*\//g, '');
+  const re = /([^{}]+)\{([^}]*)\}/g;
+  const out = [];
+  let m;
+  while ((m = re.exec(css))) {
+    const sels = m[1].split(',').map(x => x.trim().replace(/\s+/g, ' '));
+    if (sels.includes(selector)) out.push({ body: m[2], at: m.index });
+  }
+  return out;
+}
+
+/* One property off the last rule for a selector, which is the one that wins
+   when nothing outranks it on specificity. */
+function declaredProp(selector, prop) {
+  const rules = rulesFor(selector);
+  if (!rules.length) return null;
+  const m = rules[rules.length - 1].body
+    .match(new RegExp('(?:^|;)\\s*' + prop + '\\s*:\\s*([^;]+)'));
+  return m ? m[1].trim() : null;
+}
+
 function declaredSize(cls) {
   const m = CSS.match(new RegExp('\\.' + cls + '[^{]*\\{[^}]*?width:\\s*(\\d+)px;\\s*height:\\s*(\\d+)px', 's'));
   return m ? { w: Number(m[1]), h: Number(m[2]) } : null;
@@ -479,6 +504,95 @@ module.exports = ({ describe, test }) => {
           assert.equal(A.LIB_INK[type].line.toLowerCase(), want.toLowerCase(),
             type + ' disagrees with .' + cls);
         });
+    });
+  });
+
+  /* WHICH NODE IS IN FRONT
+     A wire is made by dragging one node within SNAP_DIST of another, and a
+     config panel is as wide as the whole node slot, so two wired nodes always
+     overlap. With no z-index anywhere the one in front was whichever came later
+     in `nodes`, which put the Source's file pickers under the panel of the node
+     added after it. */
+
+  describe('the node being used is the node in front', () => {
+
+    const zOf = (sel) => {
+      const v = declaredProp(sel, 'z-index');
+      return v === null ? null : Number(v);
+    };
+
+    test('a node stacks by rule rather than by its place in the list', () => {
+      const base = zOf('.node');
+      assert.ok(base !== null && !Number.isNaN(base),
+        '.node declares no z-index, so what is in front is document order again');
+      assert.equal(declaredProp('.node', 'position'), 'absolute',
+        'z-index on a static element does nothing');
+      /* Also what makes each node its own stacking context, so a child cannot
+         climb out over a neighbour. .node-ports, at 20, is the one that did. */
+      assert.ok(base > 0, 'a node still has to sit over the arrows, which are at auto');
+    });
+
+    test('hover, focus and selection each lift it', () => {
+      const base = zOf('.node');
+      ['.node.selected', '.node:focus-within', '.node:hover'].forEach(sel => {
+        const z = zOf(sel);
+        assert.ok(z !== null, sel + ' declares no z-index, so it does not come forward');
+        assert.ok(z > base, sel + ' is at ' + z + ', which is not above the base ' + base);
+      });
+    });
+
+    test('the pointer outranks the other two, which it can only do by coming last', () => {
+      /* One class and one more simple selector each, so all three tie on
+         specificity and source order settles it. Someone reaching for a node
+         with the mouse means that node, whatever happens to be selected. */
+      const at = (sel) => rulesFor(sel)[0].at;
+      assert.ok(at('.node:hover') > at('.node.selected'),
+        '.node:hover is written above .node.selected, so selection takes the tie');
+      assert.ok(at('.node:hover') > at('.node:focus-within'),
+        '.node:hover is written above .node:focus-within, so focus takes the tie');
+      assert.ok(zOf('.node:hover') >= zOf('.node.selected'));
+      assert.ok(zOf('.node:hover') >= zOf('.node:focus-within'));
+    });
+
+    test('the class the selected rule needs is the class the canvas writes', () => {
+      const h = boot();
+      const [, out] = h.build('source', 'output');
+      h.app.selectOnly(out.id);
+      h.w.render();
+      assert.equal(h.qa('.node.selected').length, 1,
+        'selecting one node did not leave exactly one .node.selected');
+      assert.equal(h.qa('.node').length, 2, 'and both nodes are still drawn');
+    });
+
+    test('the panel is inside the node, which is how hover and focus reach it', () => {
+      /* Both rules are written against .node and cover the panel only while the
+         panel is a descendant of it. Lifted out into a layer of its own, they
+         would still parse and neither would ever fire. */
+      const h = boot();
+      h.w.addNode('filter');
+      const panel = h.q('.node-config');
+      assert.ok(panel, 'a node drew no config panel');
+      assert.ok(panel.closest('.node'), 'the config panel is not inside its node');
+      assert.ok(h.q('.node-shape').closest('.node'), 'the shape is not inside its node');
+    });
+  });
+
+  /* The grain badge was left at 8.5px by the September size pass and was the
+     only text in the application under the 10px floor that pass set. */
+
+  describe('the Source says its grain at a size that can be read', () => {
+    test('.node-grain is at the 10px floor or above', () => {
+      const size = declaredProp('.node-grain', 'font-size');
+      assert.ok(size, '.node-grain declares no font-size');
+      assert.ok(parseFloat(size) >= 10,
+        '.node-grain is ' + size + ', under the 10px floor the rest of the type keeps to');
+    });
+
+    test('it is still the quieter of the two words on the shape', () => {
+      // Smaller than the name above it, or the qualifier competes with it.
+      const shape = parseFloat(declaredProp('.shape-source', 'font-size'));
+      assert.ok(parseFloat(declaredProp('.node-grain', 'font-size')) < shape,
+        'the grain is set as large as the word SOURCE above it');
     });
   });
 };

@@ -265,6 +265,41 @@ module.exports = ({ describe, test }) => {
       assert.ok(A.PANEL_STRIP < A.PANEL_MIN, 'the strip is not a narrow panel, it is a strip');
     });
 
+    /* THE WIDTH IT OPENS AT
+       The stylesheet holds the real default and the script holds a copy, which
+       both files say and neither checked. They are read against each other here
+       because a drift shows up only as a panel that jumps the first time the
+       handle is double-clicked. */
+
+    test('the script and the stylesheet agree about the default width', () => {
+      const A = boot().app;
+      const m = CSS.match(/--panel-w:\s*(\d+)px/);
+      assert.ok(m, 'the stylesheet declares no --panel-w');
+      assert.equal(A.PANEL_DEFAULT, Number(m[1]),
+        'results/panel-width.js and results-panel.css disagree about the default');
+    });
+
+    test('the panel opens wide enough to read a result in', () => {
+      /* 300px showed three of the eight columns a student Source puts out, so
+         the first result a new user saw was a cut-off one. 480 shows six, and
+         the full table wants 566. This is the number that decision lives in. */
+      const A = boot().app;
+      assert.ok(A.PANEL_DEFAULT >= 480,
+        'back under the width where a multi-column result arrives truncated');
+      assert.ok(A.PANEL_DEFAULT > A.PANEL_MIN,
+        'the panel opens at its own floor, which is the width headers wrap at');
+    });
+
+    test('the default is honoured rather than clamped at the widths it is used at', () => {
+      [1024, 1280, 1440, 1920].forEach(w => {
+        const A = atWidth(w).app;
+        assert.equal(A.clampPanelWidth(A.PANEL_DEFAULT), A.PANEL_DEFAULT,
+          'at ' + w + 'px the panel cannot open at its own default');
+        assert.ok(w - A.PANEL_DEFAULT - A.HANDLE_W >= A.CANVAS_MIN,
+          'at ' + w + 'px the default panel leaves the canvas under its floor');
+      });
+    });
+
   });
 
   /* ------------------------------------------------- the panel's two states */
