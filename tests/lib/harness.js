@@ -22,9 +22,9 @@
 const fs = require('fs');
 const path = require('path');
 
-let JSDOM;
+let JSDOM, VirtualConsole;
 try {
-  ({ JSDOM } = require('jsdom'));
+  ({ JSDOM, VirtualConsole } = require('jsdom'));
 } catch (e) {
   console.error('\n  jsdom is not installed. Run `npm install` inside the tests folder.\n');
   process.exit(1);
@@ -142,7 +142,15 @@ function appStyles() {
    Read once, every window compiles from the same strings, and the cost stops
    being per-window. The files cannot change mid-run in any case: the harness
    has already resolved and validated this list before the first test. */
-const APP_SOURCE = APP_PATHS.map(p => fs.readFileSync(p, 'utf8'));
+/* Each script carries its own sourceURL, which is what gives a failure inside
+   the application a stack trace that names the file it happened in. Without it
+   every frame reads "eval at <anonymous> (harness.js:396)" with a line number
+   counted within one anonymous eval, so a test failing on a bug in
+   engine/sort-take.js pointed at the harness instead. It is also what lets a
+   coverage tool attribute anything at all to the application, since V8 keys
+   coverage of eval'd code on this name. */
+const APP_SOURCE = APP_PATHS.map(
+  p => fs.readFileSync(p, 'utf8') + '\n//# sourceURL=' + p + '\n');
 
 const DATA_DIR = path.resolve(APP_DIR, '..', 'data');
 
@@ -243,6 +251,38 @@ function memoryStorage() {
    use that window in every test it has. */
 const LIVE_WINDOWS = [];
 
+/* ERRORS THE PAGE SWALLOWS
+   ---------------------------------------------------------------------------
+   A throw inside a DOM event handler does not come back out of dispatchEvent.
+   The handler ends, jsdom reports the error to the window's virtual console as
+   a "jsdomError", and the caller carries on none the wiser. Since this suite
+   drives the application by dispatching events (set() does, and so does every
+   click a test simulates), a regression that threw inside onConfigInput would
+   print a stack trace to the terminal and still be counted as a pass. Measured:
+   a probe that threw from a click handler passed.
+
+   Collected here rather than per boot, because the runner wants to ask one
+   question between tests ("did anything throw in any window?") and a test may
+   boot more than one. The runner drains the list before and after each test
+   through takeWindowErrors(). */
+const WINDOW_ERRORS = [];
+
+function takeWindowErrors() {
+  return WINDOW_ERRORS.splice(0, WINDOW_ERRORS.length);
+}
+
+/* console.error is deliberately NOT collected. The application does not use it,
+   but jsdom reports things through it that are not the application's doing (an
+   unimplemented layout API, a CSS property it cannot parse), and failing a test
+   on those would make the suite report on jsdom rather than on the code. */
+function recordingConsole() {
+  const vc = new VirtualConsole();
+  vc.on('jsdomError', (err) => {
+    WINDOW_ERRORS.push(err instanceof Error ? err : new Error(String(err)));
+  });
+  return vc;
+}
+
 function disposeWindows() {
   while (LIVE_WINDOWS.length) {
     const w = LIVE_WINDOWS.pop();
@@ -253,7 +293,8 @@ function disposeWindows() {
 function boot() {
   const dom = new JSDOM(fs.readFileSync(APP_HTML, 'utf8'), {
     runScripts: 'outside-only',
-    pretendToBeVisual: true
+    pretendToBeVisual: true,
+    virtualConsole: recordingConsole()
   });
   LIVE_WINDOWS.push(dom.window);
   const w = dom.window;
@@ -550,4 +591,4 @@ function withoutStorage(h) {
   return h;
 }
 
-module.exports = { boot, withoutStorage, disposeWindows, appStyles, APP_DIR, APP_PATHS, APP_HTML, DATA_DIR, dataDirFile, hasDataDir };
+module.exports = { boot, withoutStorage, disposeWindows, takeWindowErrors, appStyles, APP_DIR, APP_PATHS, APP_HTML, DATA_DIR, dataDirFile, hasDataDir };
