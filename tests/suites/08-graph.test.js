@@ -244,4 +244,69 @@ module.exports = ({ describe, test }) => {
       assert.equal(h.doc.getElementById('hint').style.display, 'block');
     });
   });
+
+  /* THE CONTRACT THE REGISTRY EXISTS TO HOLD
+     Every entry in NODE_SPEC declares two things about one node: the header it
+     will produce (schema) and the rows it produces (rows/evaluate). The comment
+     at the top of specs.js says putting both against one type "lets the
+     invariant that ties the pair together be tested across every type at once".
+     It was never actually tested, so the two could drift apart for any node and
+     nothing would say so until a panel downstream offered a column that is not
+     in the data flowing past it.
+
+     This is that test. For every type in the registry it builds the smallest
+     graph the node can sit in, runs both walks over the same graph, and asks
+     whether the header the schema pass promised is the header the row pass
+     delivered. Driven off Object.keys(NODE_SPEC), so a node added later is
+     covered by being added. */
+
+  describe('every node produces the header its schema declared', () => {
+
+    /* The smallest graph each type can be evaluated in. Most need a Source and
+       nothing else; the two multi-input nodes need a second branch, or they
+       describe a node that is not wired up rather than the node. */
+    function rig(type) {
+      const h = boot();
+      const src = h.add('source');
+      if (type === 'source') return { h, src, node: src };
+      const node = h.add(type);
+      h.app.connect(src.id, node.id);
+      if (type === 'combine' || type === 'compare') {
+        const second = h.add('filter');
+        h.app.connect(src.id, second.id);
+        h.app.connect(second.id, node.id);
+      }
+      h.w.render();
+      return { h, src, node };
+    }
+
+    const labels = (t) => (t && t.columns ? t.columns.map(c => c.key + ':' + c.label) : null);
+
+    Object.keys(boot().app.NODE_SPEC).forEach(type => {
+      test(type + ' declares the header it produces', () => {
+        const { h, node } = rig(type);
+
+        const declared = h.app.computeSchemas()[node.id];
+        assert.ok(declared, type + ' has no entry in the schema walk');
+
+        const run = h.app.evaluateGraph();
+        assert.notOk(run.error, type + ' could not be evaluated: ' + run.error);
+        const produced = run.res[node.id];
+        assert.ok(produced && produced.table, type + ' produced no table');
+
+        assert.deepEqual(labels(produced.table), labels(declared),
+          type + ' produces a header its schema did not describe. The panels ' +
+          'downstream are built from the declared one, so they would offer ' +
+          'columns the rows do not have.');
+      });
+    });
+
+    test('the walk covers every type the toolbar can add, not a subset', () => {
+      // Otherwise a node could be left out of the registry and quietly skip
+      // every check above by not being iterated over.
+      const A = boot().app;
+      Object.keys(A.SHAPE).forEach(t =>
+        assert.ok(A.NODE_SPEC[t], t + ' can be drawn but has no registry entry'));
+    });
+  });
 };

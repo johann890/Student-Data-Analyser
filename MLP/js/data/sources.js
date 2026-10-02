@@ -1,38 +1,28 @@
 /* data/sources.js: Files that are not the archive, building a dataset out of what was
-   parsed, and what each Source on the canvas holds.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   READING A FILE THAT IS NOT THE ARCHIVE
-   ============================================================================
-   The other half of the supervisor's generalisation. A header that does not
-   carry the archive's columns describes an ordinary table, and this reads one:
-   whatever columns the header names, whatever rows the file holds, no folding,
-   no student, no year.
+   parsed, and what each Source on the canvas holds. */
+/* READING A FILE THAT IS NOT THE ARCHIVE
+   A header that does not carry the archive's columns describes an ordinary
+   table, and this reads one: whatever columns the header names, whatever rows
+   the file holds, no folding, no student, no year. It is what makes a list of
+   labels or a file of named bands loadable, and the route the bands on
+   SelectFor's labels port were built for.
 
-   It is what makes a list of labels or a file of named bands loadable, and it
-   is the route the bands on SelectFor's labels port were built for.
-
-   THREE THINGS IT WORKS OUT RATHER THAN DEMANDS
-   His instruction was that a mismatch should be a warning "if it can be
-   rectified by ignoring data, or otherwise automatically fixing the mismatch",
-   so each of these adapts and says so rather than refusing:
+   Three things it works out rather than demands, each adapting and saying so
+   rather than refusing:
 
      THE SEPARATOR. Tab, comma, or runs of spaces, whichever splits the first
-     row into as many fields as the header names. The archive is tabs; a band
-     file somebody typed is likelier to be spaces, and the header file itself is
-     space separated, so accepting both is the consistent answer.
+     row into as many fields as the header names. The archive is tabs, a
+     hand-typed band file is likelier to be spaces, and the header file itself
+     is space separated.
 
      RAGGED ROWS. A row with too many fields is trimmed, one with too few is
-     padded with blanks, and the count of both is reported. Refusing the file
-     was the old behaviour and it is the behaviour he objected to.
+     padded with blanks, and both counts are reported.
 
-     COLUMN TYPES. A header names columns; it does not say what is in them. A
+     COLUMN TYPES. A header names columns but does not say what is in them. A
      column whose every non-blank cell reads as a number becomes a number
-     column, and the cells become numbers. Without this a band file's minimum
-     and maximum would arrive as text, and SelectFor could not tell a band table
-     from a list of labels: the detection there reads column types. */
+     column. Without this a band file's minimum and maximum would arrive as
+     text, and SelectFor could not tell a band table from a list of labels,
+     since the detection there reads column types. */
 
 /* Whichever separator splits the sample into the width the header declares.
    Tab first because the archive uses it and because a tab-separated file that
@@ -169,7 +159,7 @@ function uniqueColumnKeys(columns) {
   return columns;
 }
 
-/* ------------------------------------------------------- BUILDING A DATASET */
+/* BUILDING A DATASET */
 
 /* One header plus any number of parsed year files. A student who appears in two
    years is two students here, because they are: a row is a student IN A YEAR,
@@ -205,22 +195,20 @@ function buildDataset(header, parsedYears) {
 }
 
 /* THE OTHER KIND OF DATASET
-   ---------------------------------------------------------------------------
    Same slot, same node, different shape. An archive dataset holds students and
    the years they belong to; a table dataset holds columns and rows and has
    neither. `kind` is what everything downstream branches on, and it is a stored
-   field rather than a guess at run time so the two walks cannot read it
+   field rather than a run-time guess so the two walks cannot read it
    differently.
 
    Table files do NOT accumulate the way year files do. A year is a slice of one
-   collection and adding another is ordinary; two arbitrary tables have no
-   reason to share a header, and stacking them silently is what Combine exists
-   to do visibly. So the last one chosen is the one held, and the panel says so.
+   collection; two arbitrary tables have no reason to share a header, and
+   stacking them silently is what Combine exists to do visibly. So the last one
+   chosen is the one held, and the panel says so.
 
    `files` keeps the archive's shape so the panel can list either without a
-   second case. `students` is absent rather than empty: an empty list would read
-   as "no students found", which is a claim about the data, and this table has
-   nothing to say about students at all. */
+   second case. `students` is absent rather than empty, since an empty list
+   would read as "no students found", a claim this table cannot make. */
 function buildTableDataset(header, parsedTable) {
   return {
     kind: 'table',
@@ -296,7 +284,7 @@ function headerFor(nodeId) {
   return (d && d.headers) || PENDING_HEADERS[nodeId] || null;
 }
 
-/* ------------------------------------------------------------- READING FILES
+/* READING FILES
 
    Callbacks rather than promises, to match the rest of the file, and because
    the failure path has to be as visible as the success one: a FileReader that
@@ -349,27 +337,22 @@ function loadHeadersFor(nodeId, file, done) {
 }
 
 /* THE YEAR STEP.
-   ---------------------------------------------------------------------------
    Year files ACCUMULATE. One header describes the shape of every year file, so
-   a Source has exactly one of those; the years themselves are a collection, and
-   choosing more adds to what is already there rather than replacing it. That is
-   what makes "2022 and 2023, then 2024 when it arrives" an ordinary afternoon
-   rather than a re-pick of all three.
+   a Source has exactly one of those; the years are a collection, and choosing
+   more adds to what is there rather than replacing it.
 
    Two rules keep the accumulation honest:
 
      ALL OR NOTHING WITHIN A PICK. A user who chooses three files and gets two
-     of them has a Source answering about a cohort they did not ask for, and no
-     wording in a notice makes that safe. If any file in the selection is
-     refused, none of them are added and whatever was already loaded is left
+     has a Source answering about a cohort they did not ask for. If any file in
+     the selection is refused, none are added and whatever was loaded is left
      exactly as it was.
 
-     ONE FILE PER YEAR. Choosing a year already held REPLACES that year, because
-     the only reason to do it is a corrected export, and holding both would mean
-     counting the cohort twice. The notice says which years were added and which
-     were replaced, so it is never a silent substitution. Two files for the SAME
-     year inside ONE pick is still refused: there is no way to tell which of them
-     was meant.                                                                */
+     ONE FILE PER YEAR. Choosing a year already held REPLACES that year, since
+     the only reason to do it is a corrected export and holding both would count
+     the cohort twice. The notice says which years were added and which
+     replaced. Two files for the SAME year inside ONE pick is still refused:
+     there is no way to tell which was meant. */
 function loadYearFilesFor(nodeId, fileList, done) {
   done = done || function(){};
   var files = Array.prototype.slice.call(fileList || []);

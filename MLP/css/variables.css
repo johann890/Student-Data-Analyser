@@ -1,23 +1,12 @@
-/* variables.css: The variables menu in the toolbar, and the operand slot a
-   variable is chosen in.
-   Part of the Student Data Analyser's stylesheet. The files load in the order
-   index.html lists them, and that order is the cascade: it must not change.
-   Last, so it can rely on the panel and control rules above it.
-   ========================================================================== */
-/* ═══════════════════════════════════════════════════════════
-   YELLOW
-   ═══════════════════════════════════════════════════════════
-   One hue for one idea, used everywhere a variable appears: the toolbar button,
-   the chips behind it, the chip on an operand, and the select that operand
-   becomes.
-   Learning it once is the whole of learning where variables are, which matters
-   because the button on an operand is small enough to be a glyph.
-
-   It is a true yellow and not the amber the range band and the stale notice
-   already wear. Those two mean "look at this", which is a different message,
-   and a panel can carry a range band and a bound operand at the same time: if
-   they were the same colour the band would look as though it were the variable.
-   Held a shade greener and brighter than the amber for exactly that reason.
+/* variables.css: the variables menu in the toolbar, and the operand slot a
+   variable is chosen in. Loaded late, so it can build on the panel and
+   control rules above it. */
+/* ── YELLOW ──────────────────────────────────────── */
+/* One hue everywhere a variable appears: the toolbar button, the chips behind
+   it, the chip on an operand, and the select that operand becomes. Kept greener
+   and brighter than the amber the range band and the stale notice wear, because
+   a panel can show a range band and a bound operand at once and the two must
+   not be mistaken for each other.
 
      #e6d24a   bright, for text and glyphs on the dark panel
      #c4b355   quieter, for the value a bound operand is carrying
@@ -29,16 +18,12 @@
 /* ── THE BUTTON AND ITS MENU ─────────────────────────────── */
 /* An .add-btn beside Reshape, Processing and Distribution, laid out the way
    those three are: inline-flex so the caret centres on the label's optical
-   midline rather than sitting on its baseline.
+   midline rather than its baseline.
 
-   It wears the hue rather than the neutral grey, which is the one thing tying
-   it to the $ chips and the yellow selects out on the panels. A user who has
-   bound an operand and then goes looking for where that value is set has only
-   the colour to go on.
-
-   Quiet until the query actually has variables, and brighter once it does. Not
-   a decoration: the bar is read at a glance, and "this query is parameterised"
-   is worth a glance's worth of difference. */
+   It wears the yellow rather than the neutral grey, which is what ties it to
+   the $ chips and the yellow selects out on the panels: somebody who has bound
+   an operand and goes looking for where that value is set has only the colour
+   to go on. Quiet until the query has variables, brighter once it does. */
 .add-btn.var-btn {
   display: inline-flex;
   align-items: center;
@@ -312,17 +297,15 @@
 
 /* WHERE THE CHIP'S WIDTH COMES FROM
    The three-column criterion row (field | operator | value) is the tightest
-   place a chip appears, and 18px had to come from somewhere. It comes from the
-   first two columns, which have slack: both hold selects whose full text is on
-   the option list anyway, and the value box is the one the user types into.
+   place a chip appears. The 18px comes off the first two columns, which have
+   slack: both hold selects whose full text is on the option list anyway.
 
-   Only while a variable exists, so a query that uses none is laid out exactly as
-   it was, and only for the three-column row: the two-column and stacked
-   variants have room already and set their own columns. They are excluded BY
-   NAME rather than left to the cascade, because this file loads last and
-   `body.has-vars .criterion-controls` outweighs `.criterion-controls.two-col`
-   on specificity. Without the exclusions a range's "in range" operator loses
-   the width that variant exists to give it and reads as "in r". */
+   Applied only while a variable exists, so a query using none is laid out as
+   before, and only to the three-column row. The two-column and stacked variants
+   are excluded BY NAME rather than left to the cascade, because this file loads
+   last and `body.has-vars .criterion-controls` outweighs
+   `.criterion-controls.two-col`. Without the exclusions a range's "in range"
+   operator loses the width that variant exists to give it. */
 body.has-vars .criterion-controls:not(.two-col):not(.stack) {
   grid-template-columns: 72px 34px 1fr;
 }

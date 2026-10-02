@@ -594,6 +594,67 @@ module.exports = ({ describe, test }) => {
     });
   });
 
+  /* WHEN "ACROSS 3 COLUMNS" IS AN OVERSTATEMENT
+     -------------------------------------------------------------------------
+     reduceValues() skips a blank, which is right (a course that did not run is
+     not an enrolment of nought), and the log used to say "average across 3
+     columns, per row" whichever rows had only two values in them. This is the
+     same failure Aggregate's usableValueCount() and SelectFor's
+     blankGroupRows() exist for, in the third sibling, and it is answered the
+     same way: the count is taken and the log says so when it differs.
+
+     Reachable through the join, which is how use case (d) is built: three
+     per-year branches with "keep unmatched rows" on give a blank wherever a
+     course did not run that year. */
+  describe('a row the measure could not fill', () => {
+    const NUM2 = A.COLTYPE.NUMBER;
+    const c = (key, label) => ({ key, label, type: NUM2 });
+    const gappy = (rows) => A.makeTable(
+      [{ key:'g', label:'Course', type: A.COLTYPE.TEXT },
+       c('y1', '2022'), c('y2', '2023'), c('y3', '2024')], rows);
+    const lines = (op, rows) => {
+      const log = [];
+      A.applyAggregateRows({ id: 99, type:'aggregateRows', cfg:{ op, left:'', right:'' } },
+                           gappy(rows), log);
+      return log.map(e => JSON.stringify(e)).join(' | ');
+    };
+
+    test('a row with a gap is averaged over what it had', () => {
+      const t = A.applyAggregateRows(
+        { id: 99, type:'aggregateRows', cfg:{ op:'average', left:'', right:'' } },
+        gappy([['COMP102', 71, 70, null]]), []);
+      // 70.5, not 47: the blank is skipped, not counted as a zero.
+      assert.close(t.rows[0][t.rows[0].length - 1], 70.5, 1e-9);
+    });
+
+    test('and the log says how many rows that happened to', () => {
+      const l = lines('average', [['a', 71, 70, null], ['b', 1, 2, 3], ['c', 5, null, null]]);
+      assert.includes(l, 'used fewer than');
+      assert.includes(l, 'columns on');
+      // two of the three rows were short, and the worst had one value.
+      assert.includes(l, '"s":2');
+      assert.includes(l, '"s":1');
+    });
+
+    test('a table with no gaps says exactly what it always did', () => {
+      const l = lines('average', [['a', 1, 2, 3], ['b', 4, 5, 6]]);
+      assert.includes(l, 'average across');
+      assert.excludes(l, 'used fewer than');
+    });
+
+    test('count is exempt, the way it is exempt in AggregateColumns', () => {
+      // "How many values are present" is a true answer whatever is missing.
+      const l = lines('count', [['a', 71, null, null]]);
+      assert.excludes(l, 'used fewer than');
+    });
+
+    test('every reducing measure reports it, not just average', () => {
+      ['sum', 'average', 'median', 'min', 'max'].forEach(op => {
+        assert.includes(lines(op, [['a', 1, null, 3]]), 'used fewer than', op);
+      });
+    });
+  });
+
   describe('the two-column measures', () => {
 
     const NUM = A.COLTYPE.NUMBER, TXT = A.COLTYPE.TEXT;

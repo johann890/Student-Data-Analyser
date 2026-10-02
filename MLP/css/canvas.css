@@ -1,7 +1,4 @@
-/* canvas.css: The canvas, a node wrapper, the node shapes and the remove button.
-   Part of the Student Data Analyser's stylesheet. The files load in the order
-   index.html lists them, and that order is the cascade: it must not change.
-   ========================================================================== */
+/* canvas.css: the canvas, the node wrapper, the node shapes and the remove button. */
 /* ── LAYOUT ──────────────────────────────────────────────── */
 .main { display: flex; flex: 1; overflow: hidden; }
 
@@ -41,8 +38,20 @@
      for the connection arrows painted underneath. Only the visible children
      (the shape and the config panel) capture input. */
   pointer-events: none;
+  /* Every node gets its own stacking context, so the order on screen is decided
+     here and not by which node happens to be later in the list. */
+  z-index: 1;
 }
 .node > * { pointer-events: auto; }
+
+/* Snapping wires two nodes that are within 160px of each other, and a config
+   panel is 250px wide, so wired neighbours always overlap. The node being used
+   comes to the front. Without this the Source's file controls sit under the
+   panel of whatever was added after it. Equal specificity, so the order of
+   these three rules is what picks the winner. */
+.node.selected     { z-index: 5; }
+.node:focus-within { z-index: 10; }
+.node:hover        { z-index: 20; }
 
 /* SHAPES */
 /* Source Circle. Kept in step with SHAPE.source in canvas/state.js, which
@@ -72,7 +81,7 @@
    two labels competing. */
 .shape-source.has-grain { flex-direction: column; gap: 4px; }
 .node-grain {
-  font-size: 8.5px;
+  font-size: 10px;  /* the floor the rest of the type scale keeps to */
   font-weight: 600;
   letter-spacing: 0.2px;
   text-transform: none;

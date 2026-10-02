@@ -11,11 +11,69 @@
 const fs = require('fs');
 const path = require('path');
 const { AssertionError, fmt } = require('./lib/assert');
-const { disposeWindows } = require('./lib/harness');
+const { disposeWindows, takeWindowErrors } = require('./lib/harness');
 
 const args = process.argv.slice(2);
 const verbose = args.includes('--verbose') || args.includes('-v');
 const filters = args.filter(a => !a.startsWith('-'));
+
+/* A CEILING ON ONE TEST
+   Without this a test that never settles ends the run, and not by hanging: an
+   await on a promise nothing resolves leaves an empty event loop, so node
+   exits, with code 0, no summary line, and every later suite unrun. A green
+   CI step for a suite that mostly did not happen is the worst failure this
+   runner can have, so every test is raced against a clock.
+
+   Thirty seconds is far above the slowest real test (the archive suites take
+   about two) and far below a wait anybody would sit through. TEST_TIMEOUT
+   overrides it for a deliberately slow run; 0 turns the race off. */
+const TIMEOUT_MS = process.env.TEST_TIMEOUT === undefined
+  ? 30000 : Number(process.env.TEST_TIMEOUT);
+
+function withTimeout(fn, label) {
+  const out = fn();
+  // A synchronous test is already finished; there is nothing to race.
+  if (!out || typeof out.then !== 'function' || !(TIMEOUT_MS > 0)) return out;
+  let timer;
+  return Promise.race([
+    Promise.resolve(out).finally(() => clearTimeout(timer)),
+    new Promise((_, reject) => {
+      timer = setTimeout(function () {
+        reject(new Error('timed out after ' + TIMEOUT_MS + 'ms: ' + label +
+          '. Something it awaited never settled.'));
+      }, TIMEOUT_MS);
+      /* Deliberately NOT unref'd. An unref'd clock does not hold the event
+         loop open, so a test awaiting something that never settles leaves
+         nothing pending and node exits before the timeout can fire, which is
+         the exact failure this exists to prevent. The timer is cleared the
+         moment the test settles, so a run that finishes is never held up by
+         one. */
+    })
+  ]);
+}
+
+/* ERRORS THAT ARRIVE FROM OUTSIDE THE TEST
+   A rejected promise nobody awaited, or a throw from a timer callback, reaches
+   node rather than the try/catch around the test. Node's default is to print a
+   raw stack and kill the process: the run dies naming no test, with no summary,
+   and whether it happens at all depends on when the microtask queue is drained,
+   so the same mistake can pass one day and end the run the next.
+
+   Caught here and attributed to whichever test was running, which turns both
+   into an ordinary failure on an ordinary line. */
+const strayErrors = [];
+
+/* Failed until proven otherwise. Every exit from here on sets this explicitly,
+   so an exit nobody planned (node running out of work while a test is still
+   outstanding, say) reports failure rather than success. A run that ends green
+   without printing a summary is the one outcome a CI step cannot catch. */
+process.exitCode = 1;
+
+function noteStray(kind, err) {
+  strayErrors.push({ kind: kind, err: err instanceof Error ? err : new Error(String(err)) });
+}
+process.on('unhandledRejection', (reason) => noteStray('unhandled rejection', reason));
+process.on('uncaughtException',  (err)    => noteStray('uncaught exception', err));
 
 const SUITES_DIR = path.join(__dirname, 'suites');
 const C = process.stdout.isTTY
@@ -82,14 +140,46 @@ async function main() {
         console.log('  ' + C.dim + t.group + C.off);
         lastGroup = t.group;
       }
+      // Anything left over from the test before belongs to the test before.
+      strayErrors.length = 0;
+      takeWindowErrors();
+
+      let err = null;
       try {
-        await t.fn();
-        passed++;
-        if (verbose) console.log('    ' + C.green + '\u2713' + C.off + ' ' + C.dim + t.name + C.off);
-      } catch (err) {
+        await withTimeout(t.fn, label + ' \u203a ' + t.name);
+      } catch (e) {
+        err = e;
+      }
+
+      /* A rejection is only known to be unhandled once the microtask queue has
+         drained, so a test that creates one on its last line would otherwise be
+         credited with a pass and the error land on whichever test came next. */
+      await new Promise(r => setImmediate(r));
+
+      /* A throw inside a DOM event handler does not propagate out of
+         dispatchEvent: jsdom reports it to the virtual console and the handler
+         simply ends. This suite drives the application through dispatched
+         events, so without this a regression that throws in onConfigInput would
+         print a stack and still be counted as a pass. */
+      if (!err) {
+        const inWindow = takeWindowErrors();
+        if (inWindow.length) {
+          err = inWindow[0];
+          err.message = 'uncaught in the page: ' + err.message;
+        }
+      }
+      if (!err && strayErrors.length) {
+        err = strayErrors[0].err;
+        err.message = strayErrors[0].kind + ': ' + err.message;
+      }
+
+      if (err) {
         failed++;
         failures.push({ suite: label, group: t.group, name: t.name, err });
         console.log('    ' + C.red + '\u2717 ' + t.name + C.off);
+      } else {
+        passed++;
+        if (verbose) console.log('    ' + C.green + '\u2713' + C.off + ' ' + C.dim + t.name + C.off);
       }
     }
 
@@ -154,7 +244,7 @@ async function main() {
   console.log('\n' + '\u2500'.repeat(46));
   const summary = passed + ' passed' + (failed ? ', ' + failed + ' failed' : '');
   console.log((failed ? C.red : C.green) + C.bold + summary + C.off + C.dim + '   ' + secs + 's' + C.off);
-  process.exit(failed ? 1 : 0);
+  process.exitCode = failed ? 1 : 0;
 }
 
 main().catch(err => {

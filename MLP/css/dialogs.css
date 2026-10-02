@@ -1,11 +1,5 @@
-/* dialogs.css: The save dialog, the help panel and the clear confirmation.
-   Part of the Student Data Analyser's stylesheet. The files load in the order
-   index.html lists them, and that order is the cascade: it must not change.
-   ========================================================================== */
-/* ═══════════════════════════════════════════════════════════
-   SAVE DIALOG
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* dialogs.css: the save dialog, the help panel and the clear confirmation. */
+/* ── SAVE DIALOG ────────────────────────────────────────── */
 
 /* Hidden by class rather than by a `hidden` attribute so the transition has
    something to run on, and so the markup reads the same as the marquee and
@@ -151,10 +145,7 @@
   outline-offset: 1px;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   HELP
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── HELP ───────────────────────────────────────────────── */
 
 /* No auto margin here: help packs left with Clear, and the gap that pushes the
    bar apart is opened by Run Query instead. */
@@ -219,24 +210,11 @@
 }
 
 /* THE HEADER BANDS.
-
-   Three places in this application name what you are looking at: the help
-   panel's title, each help section's heading, and the library panel's title
-   with the paragraph under it. All three used to be dark text blocks on the
-   same dark card as the thing they introduced, which left the reader finding
-   the boundaries by the size of the type alone. They are now a mid-grey band
-   with dark text on it, which is the one treatment in here that reverses the
-   page, so a band is never mistaken for content.
-
-   The band is near white rather than the mid grey it started as. At mid grey
-   the reversal was there but the band still sat in the same tonal region as
-   the card it headed, so the two read as one dim surface and the dark text on
-   the band lost the contrast that was the whole point of reversing it. Taking
-   it up to near white makes the reversal unmistakable and gives the text on
-   it the full range to work in.
-
-   The colour is held once, and the three bands and the text on them read it
-   from here rather than each repeating the value. */
+   The help panel's title, each help section's heading, and the library panel's
+   title all sit on a near-white band with dark text. It is the one treatment in
+   here that reverses the page, so a band is never mistaken for content, and it
+   is near white rather than mid grey so the reversal stays unmistakable against
+   the dark card it heads. Held once here, read by all three. */
 :root {
   --band-bg: #ececec;
   --band-fg: #0d0f13;
@@ -258,22 +236,14 @@
    library's heading is raised to match, in the query library block below. */
 .help-title { font-size: 20px; font-weight: 600; color: var(--band-fg); }
 /* THE CLOSE BUTTON ON A FULL PANEL.
+   Shared by Help and the query library: same control, same corner, same job.
+   Red is the toolbar Clear button's red, the only red here meaning "this
+   control ends what you are doing".
 
-   Shared by Help and the query library, because they are the same control in
-   the same corner doing the same job, and two rules for that is two things to
-   keep in step. Help used to carry a grey 26px multiplication sign instead:
-   the same dismissal offered as an icon on one panel and as a word on the
-   other, which asks the reader to learn the corner twice.
-
-   Red is the one the toolbar's Clear button uses. It is the only red in the
-   application that means "this control ends what you are doing".
-
-   flex-shrink is kept from the rule this replaces. Both headers are flex rows
-   whose other child can grow (Help's title, the library's search box), and
-   without it the button is the thing that gives way.
-
-   Written long rather than as a `border:` shorthand, for the reason recorded
-   against .shape-histogram. */
+   flex-shrink matters because both headers are flex rows whose other child can
+   grow (Help's title, the library's search box), and without it this button is
+   what gives way. Border written long, not as a `border:` shorthand, for the
+   reason recorded against .shape-histogram. */
 /* Filled rather than outlined, so it is found without being looked for. Both
    dialogs put it on the pale header band, where an outlined button is the
    faintest thing on the lightest surface in the app: the one control someone
@@ -431,6 +401,8 @@
 .help-cat-output    { color: #3db8ff; }
 
 .help-node-desc { margin-bottom: 4px; }
+/* A <p> inside .help-body, so `.help-body p` outranks this single class.
+   Same reason as the .cmp-* overrides in nodes-processing.css. */
 .help-note {
   font-size: 13px !important;
   color: #9a9a9a !important;
@@ -452,15 +424,13 @@
 }
 
 /* WORKED EXAMPLES IN THE NODE REFERENCE
-   The node panels now state roles and shapes only, so the explaining happens
-   here, in the form the supervisor asked for: what goes in, what comes out.
+   The node panels state roles and shapes only, so the explaining happens here:
+   what goes in, what comes out.
 
-   The pair wraps rather than being fixed either way. The help body is an
-   11.5px column inside a dialog whose width the user controls, so at a narrow
-   width two tables abreast would wrap every cell, and at a wide one stacking
-   them would waste the room. flex-basis decides: side by side while both fit,
-   stacked below that. The arrow carries the direction either way, which is
-   why the layout is free to change. */
+   The pair wraps rather than being fixed either way. The help body is an 11.5px
+   column in a dialog the user can resize, so two tables abreast would wrap every
+   cell when narrow and stacking would waste a wide one. flex-basis decides, and
+   the arrow carries the direction either way. */
 .help-eg {
   margin: 9px 0 2px;
   border: 1px solid #1c1c1c;
@@ -559,10 +529,7 @@
   .help-body h3 { margin: 0 -16px 12px; padding: 9px 16px; }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   SELECT FOR
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── SELECT FOR ─────────────────────────────────────────── */
 
 /* Taller than its Branches sibling because it is the only node carrying two
    labelled port stubs. The numbers here and in SHAPE are checked against each
@@ -628,10 +595,7 @@
   text-align: center;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   CLEAR CONFIRMATION
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── CLEAR CONFIRMATION ─────────────────────────────────── */
 
 /* The card, the backdrop and the entry animation are the save dialog's: the
    markup carries .save-dialog as well as this class, so everything in that

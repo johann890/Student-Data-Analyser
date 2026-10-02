@@ -1,53 +1,31 @@
-/* vars/model.js: Named values declared once and referenced by the nodes that
-   need them: the list itself, and the bindings that point at it.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   VARIABLES
-   ============================================================================
-   The problem this solves. A query that asks about one student asks about them
-   in several places: their ID goes into a Filter, and the same ID goes into
-   whatever else narrows to them. Changing the question then means finding every
-   node that carries the answer, and missing one produces a query that is
-   internally inconsistent while still running perfectly happily. A variable is
-   that value, named, declared in one place, and referenced by the nodes that
-   use it. Editing it once edits every use of it, and a value used twice cannot
-   drift apart.
+/* vars/model.js: named values declared once and referenced by the nodes that
+   need them, being the list itself and the bindings that point at it.
 
-   WHY THEY ARE NOT NODES
-   ---------------------------------------------------------------------------
-   A variable could have been a node with an edge running to each place it is
-   used, and that is the first thing anyone proposes, because everything else
-   here is a node. It was rejected for a reason that is about the picture rather
-   than about the model: a variable is used by whichever nodes happen to need
-   it, wherever they sit, so its edges run across the graph rather than along
-   it, and they cross the dataflow arrows the canvas exists to make readable.
-   The value a variable carries is also an operand and not a table, so an edge
-   into a node would mean something different from every other edge on screen.
+   A query that asks about one student asks about them in several places, so
+   changing the question means finding every node carrying the answer. Miss one
+   and the query is internally inconsistent while still running happily. A
+   variable is that value, named and declared once, so editing it edits every
+   use.
 
-   So they live off the canvas entirely, in a menu in the toolbar, and a node
-   names the one it wants instead of being wired to it. The supervisor's reading
-   of the same arrangement is worth keeping: the query is a method and the
-   variables are its formal parameters, declared above it and referred to by
-   name in the body.
+   NOT NODES
+   A variable could have been a node with an edge to each place it is used, but
+   its edges would run across the graph rather than along it, crossing the
+   dataflow arrows the canvas exists to make readable. The value is also an
+   operand rather than a table, so such an edge would mean something different
+   from every other edge on screen. They live in a toolbar menu instead, and a
+   node names the one it wants. The query is a method and the variables are its
+   formal parameters.
 
    THE REFERENCE IS THE ID, NEVER THE NAME
-   ---------------------------------------------------------------------------
-   A name is a label the user rewrites freely, and renaming one must not
-   silently unbind the three filters that were using it. So a binding stores the
-   id and the panel prints the name, which makes renaming free and costs nothing
-   anywhere else. Two variables with the same name are legal in the model for
-   the same reason (the ids stay distinct), and the menu says so on the chip
-   rather than refusing the keystroke that produced it.
+   A name is a label the user rewrites freely, and renaming one must not unbind
+   the filters using it. A binding stores the id and the panel prints the name,
+   so renaming is free. Two variables may share a name for the same reason, and
+   the menu says so on the chip rather than refusing the keystroke.
 
    A BINDING IS ALWAYS RESOLVABLE
-   ---------------------------------------------------------------------------
    Deleting a variable clears every binding that named it, and loading a file
-   drops any binding naming a variable the file does not declare. That is worth
-   the small amount of bookkeeping: nothing downstream ever has to decide what a
-   dangling reference means, so no panel, log line or evaluator carries a branch
-   for a case that cannot arise.                                              */
+   drops any binding naming a variable the file does not declare. Nothing
+   downstream then has to decide what a dangling reference means. */
 
 /* One list for the whole query, in declaration order, which is the order the
    menu shows and the order a saved file keeps. */
@@ -116,30 +94,22 @@ function nextVarName() {
   return 'v' + (variables.length + 1);
 }
 
-/* ============================================================================
-   BINDINGS
-   ============================================================================
+/* BINDINGS
    A binding says "this operand takes its value from that variable". It is
-   stored as a `vars` map beside the literal value it overrides, keyed by
-   exactly the key the literal is under:
+   stored as a `vars` map beside the literal it overrides, keyed by exactly the
+   key the literal is under:
 
      a node's own settings   node.cfg.vars      { n: 3 }          Take's count
      one filter criterion    criterion.vars     { gpa: 3 }        the operand
                                                 { 'gpa:max': 4 }  the high bound
 
-   Two levels, one shape, one pair of functions, because the level a binding
-   belongs at is decided by where the value it replaces lives. A criterion's
-   bindings sit inside the criterion and not in a map on the node, so removing
-   a criterion takes its bindings with it: keys holding a criterion index would
-   go stale the moment a middle criterion was deleted, and would then describe
-   the wrong row.
+   Two levels, one shape, one pair of functions. A criterion's bindings sit
+   inside the criterion rather than in a map on the node, so removing a
+   criterion takes its bindings with it: keys holding a criterion index would go
+   stale the moment a middle criterion was deleted.
 
-   THE LITERAL IS KEPT, NOT REPLACED
-   ---------------------------------------------------------------------------
-   Binding a variable leaves the typed value where it was and shadows it. Going
-   back to a typed value therefore finds the one that was there rather than a
-   default, which is the same continuity the range band's low bound keeps when
-   the operator changes under it.                                             */
+   THE LITERAL IS KEPT, NOT REPLACED. Binding a variable shadows the typed value
+   rather than overwriting it, so going back finds the value that was there. */
 
 /* The variable an operand is taking its value from, or null when it is typed.
    `holder` is whatever owns the value: a node's cfg, or one criterion. */
@@ -225,9 +195,7 @@ function nodeTakesVars(node) {
   return VAR_OPERANDS.some(function(o){ return o.type === node.type; });
 }
 
-/* ============================================================================
-   EDITING THE LIST
-   ============================================================================
+/* EDITING THE LIST
    Each of these ends by repainting: the chips, because the list changed, and
    the canvas, because an operand slot shows the name and the value of whatever
    it is bound to, and because the chips that offer a binding only exist while

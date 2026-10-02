@@ -1,48 +1,31 @@
-/* queries/library-thumb.js: The picture drawn on a library card from the query itself.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   THE QUERY LIBRARY: THE PICTURE ON THE CARD
-   ============================================================================
-   A name alone does not tell you which query you are looking at. "2024 grades"
-   and "2024 grades by degree" are the same line of text and two different
-   shapes, and the shape is what the user built and what they remember.
+/* queries/library-thumb.js: the picture drawn on a library card, from the
+   query itself. A name alone does not tell you which query you are looking at:
+   "2024 grades" and "2024 grades by degree" are two different shapes.
 
-   DRAWN FROM THE GRAPH, NEVER CAPTURED FROM THE SCREEN.
+   DRAWN FROM THE GRAPH, NEVER CAPTURED FROM THE SCREEN. A screenshot of the
+   canvas is wrong here for four reasons:
 
-   The obvious implementation is a screenshot of the canvas, and it is wrong
-   here for four separate reasons, the first of which would be a defect:
+     1. It can contain student records. The results panel holds rows, an
+        edge-preview tooltip holds rows, and a Source panel names files. A
+        stored query is supposed to carry the question and never the answer
+        (07-saveload and 31-library both assert it). A diagram drawn from
+        `nodes` and `connections` cannot contain a record, since it never sees
+        one.
+     2. It does not work in Safari. Rasterising DOM means <foreignObject> into a
+        canvas, which taints it in WebKit, so toDataURL() throws SecurityError.
+     3. It cannot be tested. jsdom has no 2D context, so a PNG path would need
+        the `canvas` package, a native build in a project with no build step.
+     4. It is fifty times the size: 30-80KB against a 2-10KB query, under a
+        storage ceiling of about 5MB.
 
-     1. A screenshot can contain student records. The results panel holds rows,
-        an edge-preview tooltip holds rows, and a Source panel names files. The
-        whole point of the save format is that a stored query carries the
-        QUESTION and never the ANSWER — 07-saveload asserts it, 31-library
-        asserts it again — and a picture of the screen walks straight past that
-        guarantee into the same browser storage, where nobody would think to
-        look for it. A diagram drawn from `nodes` and `connections` cannot
-        contain a record, because it never sees one.
-     2. It does not work in Safari, which is what opens this file on a Mac.
-        Rasterising DOM means <foreignObject> into a canvas, and WebKit taints
-        the canvas when it does, so toDataURL() throws SecurityError.
-     3. It cannot be tested here. jsdom has no 2D context, so a PNG path would
-        need the `canvas` package — a native build, in a project that has no
-        build step on purpose. An SVG is a string.
-     4. It is fifty times the size. A saved query is 2-10KB and a 320x170 PNG
-        is 30-80KB, against a storage ceiling of about 5MB. The difference is a
-        library that holds hundreds and one that holds dozens.
+   Nothing is stored. The picture is a pure function of the graph, drawn when
+   the grid renders and thrown away with it. That also closes an injection
+   route: a library file from elsewhere can carry a name, but no markup of its
+   is ever kept or read back.
 
-   NOTHING IS STORED. The picture is a pure function of the graph, so it is
-   drawn when the grid renders and thrown away with it. That removes the
-   storage cost, and it removes an injection route with it: a library file from
-   somewhere else can carry a name, but it cannot carry markup to be injected,
-   because no markup of its is ever kept or read back.
-
-   THE GEOMETRY IS THE CANVAS'S OWN. shapeExit() and shapeEntry() are pure
+   The geometry is the canvas's own. shapeExit() and shapeEntry() are pure
    functions of a node's type and position, so the card calls the same ones the
-   canvas does and the arrows leave and land in the same places. A second copy
-   of that arithmetic would drift, and the symptom would be a thumbnail that
-   quietly stopped resembling the query.                                      */
+   canvas does and the arrows land in the same places. */
 
 var LIB_THUMB_W = 320;
 var LIB_THUMB_H = 170;
@@ -54,8 +37,8 @@ var LIB_THUMB_MAX_NODES = 60;
 
 /* THE FIFTH WAY A NODE'S APPEARANCE CAN DISAGREE WITH ITSELF.
 
-   A node is already described in four places that have to stay in step — SHAPE,
-   the size rule, the family colour rule and the menu group — and 17-shape-
+   A node is already described in four places that have to stay in step (SHAPE,
+   the size rule, the family colour rule and the menu group), and 17-shape-
    styling exists because two of them drifted twice. This palette is a fifth,
    and it is the one with no screen to catch it: a node drawn in the wrong
    colour here appears only on a card in a dialog, next to other cards that look
@@ -137,7 +120,7 @@ function libArrowHead(x0, y0, x1, y1) {
 
    Every string that reaches the output is either a number this function
    computed or a value out of NODE_LABELS, which is a table in this file. No
-   part of a stored entry is written into the markup — not its name, not its
+   part of a stored entry is written into the markup: not its name, not its
    config, not a filename. That is worth stating because it is what makes it
    safe to inject the result with innerHTML, and because it is also a privacy
    property: a Filter can legitimately hold a typed value that identifies a
@@ -183,8 +166,8 @@ function libThumb(graph) {
   ns.forEach(function(n) { byId[n.id] = n; });
 
   /* Wires first, so a shape always sits on top of the line entering it. The
-     port is resolved exactly as the loader resolves it, so a version 1 entry —
-     which names no ports at all — draws its wires where opening it would put
+     port is resolved exactly as the loader resolves it, so a version 1 entry,
+     which names no ports at all, draws its wires where opening it would put
      them, rather than defaulting to somewhere else. */
   var wires = '';
   var cs = (graph && Array.isArray(graph.connections)) ? graph.connections : [];

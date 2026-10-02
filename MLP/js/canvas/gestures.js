@@ -1,10 +1,5 @@
-/* canvas/gestures.js: Marquee select and pan, both of which start on empty canvas.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   CANVAS GESTURES: MARQUEE SELECT AND PAN
-   ============================================================================
+/* canvas/gestures.js: Marquee select and pan, both of which start on empty canvas. */
+/* CANVAS GESTURES: MARQUEE SELECT AND PAN
    Both start with a press on empty canvas, so they are told apart by modifier
    rather than by target: plain drag selects, space or middle-button drags the
    view. That ordering is deliberate. Selection is the frequent action and gets

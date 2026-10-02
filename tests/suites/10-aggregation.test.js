@@ -191,7 +191,7 @@ module.exports = ({ describe, test }) => {
         h.set(a.id, 'stat.0.op', op);
         h.w.runQuery();
         assert.equal(h.entry(o.id).table.rows[0][0], null, op + ' of nothing is undefined');
-        assert.equal(h.bigNum(), '—', op + ' should show a dash, not a zero');
+        assert.equal(h.bigNum(), '–', op + ' should show a dash, not a zero');
       });
     });
 

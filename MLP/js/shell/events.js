@@ -1,9 +1,8 @@
-/* shell/events.js: Help, and every remaining listener: inputs, dialogs, keys, windows.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
+/* shell/events.js: Help, and every remaining listener: inputs, dialogs, keys, windows. */
 var panelEl = document.getElementById('panelBody');
 if (panelEl) panelEl.addEventListener('input', onExportNameInput);
+// Formats are selects, so they report on change rather than on input.
+if (panelEl) panelEl.addEventListener('change', onExportFormatChange);
 
 /* The variables dock, delegated the same way the config panels are: one
    listener on the dock rather than one per field, so rebuilding the chips
@@ -36,7 +35,6 @@ if (yearsInput) yearsInput.addEventListener('change', onYearFilesChosen);
    adding one would bring a submit-and-navigate default that has to be
    suppressed anyway. */
 /* HELP
-   ---------------------------------------------------------------------------
    The content is markup in the page, not a string built here, so this is only
    opening, closing and moving around it. */
 function helpDialogEl() { return document.getElementById('helpDialog'); }
@@ -209,26 +207,25 @@ if (saveNameEl) {
 document.addEventListener('click', closeProcMenu);
 
 /* DESTRUCTIVE SHORTCUTS: THREE GUARDS
-   ---------------------------------------------------------------------------
-   Backspace deletes the selection, and there is no undo, so being wrong here
-   costs the user work they cannot get back. It also cannot simply be dropped in
-   favour of Delete: on a Mac keyboard the key labelled "delete" reports as
-   Backspace, so removing it would leave those users with no shortcut at all.
+   Backspace deletes the selection and there is no undo. It cannot simply be
+   dropped in favour of Delete either: on a Mac keyboard the key labelled
+   "delete" reports as Backspace, so removing it would leave those users with no
+   shortcut at all.
 
-   One guard is not enough, because the dangerous case is not "the user is typing
-   in a field" (that is the easy case), but "the user believes they are typing
-   in a field while the browser disagrees". render() rebuilds the whole canvas,
-   and any control that triggered it is destroyed in the process; focus then
-   falls back to <body>. The panel still looks active. The next Backspace is read
-   as a canvas shortcut and deletes the node being configured.
+   One guard is not enough, because the dangerous case is not "the user is
+   typing in a field" but "the user believes they are typing in a field while
+   the browser disagrees". render() rebuilds the whole canvas, and any control
+   that triggered it is destroyed in the process; focus then falls back to
+   <body> while the panel still looks active, and the next Backspace is read as
+   a canvas shortcut.
 
-     1. isTypingTarget:   The event landed on a control, or anywhere inside a
+     1. isTypingTarget:   the event landed on a control, or anywhere inside a
                           config or results panel.
-     2. activeElement:    The same test against whatever actually holds focus,
+     2. activeElement:    the same test against whatever actually holds focus,
                           which is not always the event target.
-     3. keyboardContext:  Where the user last chose to work. Survives focus
-                          being lost to <body>, which is the case the first two
-                          cannot see.                                          */
+     3. keyboardContext:  where the user last chose to work. Survives focus
+                          being lost to <body>, which the first two cannot
+                          see. */
 
 function isTypingTarget(t) {
   if (!t || !t.tagName) return false;

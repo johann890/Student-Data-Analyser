@@ -1,101 +1,54 @@
-/* data/loading.js: Which files a Source will admit, and the parsers for the header
-   file and for a year file.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   LOADING THE ARCHIVE: Admission, parsing, and what a Source holds
-   ============================================================================
-   The tool ships with no data. A Source is handed two things, in this order:
+/* data/loading.js: which files a Source will admit, and the parsers for the
+   header file and for a year file.
+
+   A Source is handed two things, in this order:
 
      headers.txt          the column names, and the 1..N index line under them
      mcs-students-YYYY    one file per year, tab separated, one row per
-                          enrolment, with no extension at all
+                          enrolment, with no extension
 
-   Both names are fixed by the archive, and BOTH ARE ENFORCED HERE rather than
-   left to the file picker. `accept` on an <input type=file> filters what the
-   dialog shows and binds nothing: every browser offers "All files", a file can
-   be dragged in, and a file can be renamed. The same reasoning already governs
-   graphFileProblem() for saved queries; this is that rule applied to the data.
+   Both names are checked here rather than left to the file picker. `accept` on
+   an <input type=file> only filters what the dialog shows: every browser offers
+   "All files", and a file can be dragged in or renamed.
 
-   WHY ADMISSION IS A SECURITY CONCERN AND NOT MERELY TIDINESS
-   ---------------------------------------------------------------------------
-   Every cell that survives this module reaches the DOM: The results table, the
-   edge preview, a filter dropdown, an exported CSV. A file read without
-   question is arbitrary attacker-chosen content given a path to all four. The
-   checks below are therefore layered, cheapest first, and each one refuses
-   rather than repairs:
+   Every cell that gets past this module reaches the DOM, so the checks run
+   cheapest first and each refuses rather than repairs:
 
-     1. NAME      exact for headers.txt, anchored for a year file, and the year
-                  has to be a plausible calendar year. Any directory component
-                  is stripped before matching, so a hand-built object claiming
-                  "../../etc/passwd" is judged on its last segment and then
-                  refused for not being one of the two names.
-     2. SIZE      empty is refused, and so is anything past MAX_DATA_FILE_BYTES,
-                  before a single byte is read. The archive's year files are
-                  ~300 KB; the cap is a hundred times that and still far below
-                  what would hang the tab.
-     3. SHAPE     a year file's every row must carry exactly as many tab
-                  separated fields as headers.txt declares. This is the check
-                  that makes the pair a pair: a file with the right name but
-                  another archive's columns is refused on line one rather than
-                  silently read into the wrong fields.
-     4. CONTENT   NUL and other C0 control characters are refused outright. No
-                  legitimate export contains them, and they are how a payload
-                  hides from a reader. Fields are capped, rows are capped, the
-                  ID must be digits, Pts must be a small non-negative number,
-                  and the Year column must agree with the year in the FILE NAME.
-                  That last one is the integrity check with teeth: a file called
-                  mcs-students-2022 whose rows say 202301 is not the 2022 data
-                  and is not treated as though it were.
+     1. NAME     exact for headers.txt, anchored for a year file, and the year
+                 must be plausible. Directory components are stripped first, so
+                 "../../etc/passwd" is judged on its last segment.
+     2. SIZE     empty is refused, and so is anything over MAX_DATA_FILE_BYTES,
+                 before a byte is read.
+     3. SHAPE    every row of a year file must carry exactly as many tab
+                 separated fields as headers.txt declares, so a file with the
+                 right name but another archive's columns fails on line one.
+     4. CONTENT  NUL and other C0 controls are refused. Fields and rows are
+                 capped, the ID must be digits, Pts a small non-negative number,
+                 and the Year column must agree with the year in the file name.
 
-   None of this replaces escaping. Esc() still runs on every value on its way
-   into markup, because defence at the boundary and defence at the sink are
-   different jobs. What it does is keep the boundary narrow enough to describe
-   in a sentence: two file names, a fixed column count, and printable text.
+   None of this replaces escaping; esc() still runs on every value going into
+   markup.
 
-   WHY PER SOURCE
-   ---------------------------------------------------------------------------
-   A Source owns its files. Two Sources can hold two different exports and each
-   answers about its own rows, which is what makes "last year's archive against
-   this year's" a graph rather than two sessions. The registries above are the
-   union across all of them, for dropdowns only. See rebuildRegistries().
+   A Source owns its files, so two Sources can hold different exports and each
+   answers about its own rows. The registries in data/registries.js are the
+   union across all of them, for dropdowns only.
 
-   WHY THE DATA IS NEVER SAVED
-   ---------------------------------------------------------------------------
-   A saved query records the NAMES of the files a Source was given and not one
-   byte of their contents. Three reasons, and the first is sufficient on its
-   own: the archive is student records, and a query file gets emailed around.
-   The second is that a query is meant to be re-run against next year's data, so
-   baking in a snapshot defeats the point. The third is that a .json file is
-   trusted no further than any other input. Data pasted into it would arrive
-   already parsed, past every check in this module.
-
-   So loading a query re-creates the graph and clears the data, and the Source
-   panel then names the files it wants. That is not an inconvenience to be
-   engineered away; it is the file-picker grant being asked for again, by the
-   user, for files this session has not been given.                           */
+   A saved query records the file names and none of their contents, so loading
+   one clears the data and the Source panel asks for the files again. */
 
 var DATA_HEADERS_NAME = 'headers.txt';
 
 /* THE HEADER NAMING SCHEME
-   ---------------------------------------------------------------------------
-   The supervisor's, from his email of 2026-09-24:
+   Two names are accepted: the plain `headers.txt` the archive uses, and the
+   qualified `headers-<data file name>.txt`, so one directory can hold a band
+   file, a label list and the archive side by side rather than needing a
+   directory per data format.
 
-     "it might be nice to use the format 'headers-<data file name>.txt' so that
-      multiple data files and their headers could be in the same directory. If
-      every header file is named 'header.txt' then one needs one directory per
-      data format."
-
-   So both are accepted: the plain name, which the archive already uses, and the
-   qualified one, which lets a folder hold a band file, a label list and the
-   archive side by side. Which of the two a Source was handed is remembered only
-   so the panel can name it; nothing downstream cares.
+   Which of the two a Source was handed is remembered only so the panel can name
+   it; nothing downstream cares.
 
    The qualified form is NOT enforced against the data file's name. The pairing
-   is for the user's filesystem, not for this tool to police, and refusing a
-   header for being called the wrong thing is the class of refusal he asked to
-   be rid of. */
+   is for the user's filesystem, not for this tool to police. */
 var HEADER_NAME_RE = /^headers(?:-(.+))?\.txt$/i;
 
 function isHeaderFileName(name) { return HEADER_NAME_RE.test(String(name || '')); }
@@ -157,30 +110,23 @@ var MAX_COURSE_POINTS = 200;
 var REQUIRED_HEADER_COLUMNS = ['ID', 'gender', 'deg1', 'maj1', 'Year', 'Crse', 'Grade', 'Pts'];
 
 /* WHAT THIS LIST IS NOW FOR, WHICH IS NOT WHAT IT WAS FOR
-   ---------------------------------------------------------------------------
    It used to be an admission gate: a header without these columns was refused
-   as "too few to be the archive header", and that refusal is what stopped a
-   one-column list of labels being loadable at all.
+   as "too few to be the archive header", which is what stopped a one-column
+   list of labels being loadable at all.
 
-   The supervisor asked for it to go: "We do not need to cater for misshaped
-   input. The input files all come from a certain source and will always have
-   the right format", and "having just one source node that is capable of
-   reading data from a file with various numbers of columns seems more
-   parsimonious and simpler. Users would not have to wonder which node kind
-   they'll need. A single Source node kind can automatically adapt to whatever
-   the input format is."
+   The supervisor asked for that to go, on the grounds that the input files all
+   come from one source and a single Source node should adapt to whatever format
+   it is handed rather than make the user choose a node kind.
 
    So the list stops deciding whether a file may be read and starts deciding HOW
    it is read. A header carrying all of these describes the archive, and its
    rows are folded into students with their courses nested. Any other header
-   describes a table, and its rows come through as they are. One node, two
-   shapes, chosen by looking rather than by asking.
+   describes a table, and its rows come through as they are.
 
-   WHAT DID NOT GO WITH IT
    The size cap, the control-character refusal, the row and field caps and the
    path-segment stripping all stay. They do not reject a differently shaped
-   file; they reject a hostile one, and his ruling is about shape. Every cell
-   that survives this module still reaches the DOM. */
+   file, they reject a hostile one, and every cell that survives this module
+   still reaches the DOM. */
 function headerIsArchive(header) {
   if (!header || !header.byName) return false;
   return REQUIRED_HEADER_COLUMNS.every(function(c){ return c in header.byName; });
@@ -192,7 +138,6 @@ function headerIsArchive(header) {
 var CONTROL_CHAR_RE = new RegExp('[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F\\u007F]');
 
 /* PER-SOURCE STATE: Deliberately not part of the node model
-   ---------------------------------------------------------------------------
    Keyed by node id and reset by applyGraph(), so it cannot travel through a
    saved file or survive a load. Keeping it out of `node.cfg` is what makes
    "the query is saved, the data is not" true by construction rather than by
@@ -249,7 +194,7 @@ function datasetCfg(node) {
   return cfg.dataset;
 }
 
-/* ---------------------------------------------------------------- ADMISSION */
+/* ADMISSION */
 
 /* A File's name never carries a directory, but this function is also handed
    objects the tests build and, in principle, anything a future drag-and-drop
@@ -284,7 +229,6 @@ function headersFileProblem(file) {
 }
 
 /* A DATA FILE IS ANY FILE THAT IS NOT A COLUMN FILE
-   ---------------------------------------------------------------------------
    This replaces a check that required the name "mcs-students-" plus a year. The
    year is still read from the name where the name carries one, because the
    archive's files are named that way and the agreement check in parseYearFile()
@@ -335,7 +279,7 @@ function yearOfFile(file) {
   return m ? parseInt(m[1], 10) : null;
 }
 
-/* ------------------------------------------------------------------ PARSING */
+/* PARSING */
 
 function controlCharProblem(text, label) {
   if (CONTROL_CHAR_RE.test(text)) {

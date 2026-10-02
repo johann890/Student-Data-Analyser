@@ -2927,7 +2927,7 @@ function scalarHTML(t) {
     : '';
   return '<div class="result-card">' +
     '<div class="result-head">' + esc(c.label) + '</div>' +
-    '<div class="result-big"><span class="big-num">' + (blank ? '&mdash;' : esc(fmtCell(c, r[0]))) + '</span>' + extra + '</div>' +
+    '<div class="result-big"><span class="big-num">' + (blank ? '&ndash;' : esc(fmtCell(c, r[0]))) + '</span>' + extra + '</div>' +
   '</div>';
 }
 

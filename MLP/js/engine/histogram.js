@@ -1,59 +1,37 @@
-/* engine/histogram.js: Histogram: a group-by whose groups are ranges.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   HISTOGRAM: a group-by whose groups are ranges
-   ============================================================================
-   SelectFor is built on one sentence, taken from filterFields(): "grouping by a
-   column means filtering on it once per label". This node is the same sentence
-   with one word changed. A bin is the rows a Filter would keep for one RANGE,
-   and ranges are a thing the tool already has: the `between` operator, added
-   for "a mark between 70 and 80".
+/* engine/histogram.js: Histogram, a group-by whose groups are ranges. Where
+   SelectFor groups by value, a bin here is the rows a Filter would keep for one
+   range.
 
-   WHY IT IS NOT JUST SELECTFOR
-   SelectFor groups by value, which is a histogram already for any column with
-   few enough values: group by Grade and the distribution comes out, in the
-   declared A+ to D order, with no node needed here. It falls apart the moment
-   the column is continuous. The 2024 archive has 248 students and 83 distinct
-   GPAs, so grouping by GPA is 83 rows of mostly one, which is a list of
-   students wearing a summary's shape. What is missing is not a way to group. It
-   is a way to decide which values count as the same.
+   SelectFor is already a histogram for a column with few enough values: group
+   by Grade and the distribution comes out in the declared A+ to D order. It
+   falls apart on a continuous column. The 2024 archive has 248 students and 83
+   distinct GPAs, so grouping by GPA gives 83 rows of mostly one. What is
+   missing is not a way to group but a way to decide which values count as the
+   same.
 
-   THE EDGES, AND WHY THEY ARE NOT THE DATA'S
+   THE EDGES
    The first edge is a multiple of the width, not the smallest value present.
-   Anchoring to the data means two runs over two years produce bins that do not
-   line up, and a comparison between them is then quietly meaningless: 2023's
-   "4.3 to 5.3" against 2024's "4.1 to 5.1". Multiples of the width are the same
-   bins for everyone, which is what makes two histograms comparable at all.
+   Anchoring to the data would give two years bins that do not line up, so
+   2023's "4.3 to 5.3" could not be compared with 2024's "4.1 to 5.1".
 
-   THE BOUNDARY RULE, WHICH IS THE PART THAT GOES WRONG
-   `between` includes both ends: applyCriterion's band keeps 70 for "70 to 80"
-   AND for "60 to 70", which is right for a filter and fatal for a histogram,
-   where it counts one row twice and the bins no longer sum to the rows. So the
-   bins are not built out of `between`. Each row is placed by arithmetic instead,
-   floor((v - first) / width), which puts every value in exactly one bin by
-   construction rather than by a comparison that has to be got right twice. Bins
-   are therefore half-open, [lo, hi), and the last one closed so the maximum has
-   somewhere to go. A test sums the bins and compares against the rows that went
-   in, because that is the property this decision exists to protect.
+   THE BOUNDARY RULE
+   `between` includes both ends, so applyCriterion's band keeps 70 for "70 to
+   80" and for "60 to 70". That is right for a filter and wrong here, where it
+   would count a row twice and the bins would stop summing to the rows. So bins
+   are not built from `between`: each row is placed by floor((v - first) /
+   width), which puts every value in exactly one bin by construction. Bins are
+   half-open, [lo, hi), with the last closed so the maximum has somewhere to go.
+   A test sums the bins against the rows that went in.
 
-   EMPTY BINS SURVIVE
-   A gap in the middle of a distribution is the finding. Bins are generated from
-   the edges rather than discovered from the data, so a range nothing falls in
-   comes out as a zero. This is the same thing SelectFor's Labels port buys, for
-   the same reason, and is why neither node groups by "what happened to be
-   there" when it can avoid it.
+   Empty bins survive, because a gap in a distribution is the finding. Bins come
+   from the edges rather than from the data, so a range nothing falls in comes
+   out as zero.
 
-   WHAT COMES OUT
-   SelectFor's shape exactly: a label column, then one column per measure, with
-   the per-bin tables in meta.branches in Compare's format. Downstream, a
-   histogram IS a breakdown, so Sort, Take, the Output's per-group cards and the
-   long-form CSV all work without any of them learning this node exists.
-
-   Measures are the full set rather than Count alone. "Average mark per GPA
-   band" is the second question anyone asks of a distribution, and the machinery
-   for it is already here.                                                     */
+   Output is SelectFor's shape exactly: a label column, then one per measure,
+   with the per-bin tables in meta.branches in Compare's format, so Sort, Take
+   and the Output's detail cards all work unchanged. Measures are the full set
+   rather than Count alone, since "average mark per GPA band" is the second
+   question anyone asks of a distribution. */
 
 var HIST_BINS_WANTED = 10;   // roughly, when nobody has said how wide a band is
 var HIST_MAX_BINS = 200;     // past this it is not a distribution, it is the data
@@ -248,7 +226,8 @@ function applyHistogram(node, t, log) {
   if (blanks) {
     log.push(logEntry('SKIP', [
       {c:'val', s:blanks}, {s:(blanks === 1 ? 'row has' : 'rows have')},
-      {s:'no'}, {c:'val', s:col.label}, {s:'and are in no bin'}
+      {s:'no'}, {c:'val', s:col.label},
+      {s:(blanks === 1 ? 'and is in no bin' : 'and are in no bin')}
     ]));
   }
 

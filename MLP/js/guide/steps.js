@@ -1,34 +1,24 @@
-/* guide/steps.js: What the guided walkthrough says, and what it points at.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
+/* guide/steps.js: what the guided walkthrough says, and what it points at.
 
    THIS FILE IS DATA. It declares two names and no behaviour. Everything that
-   reads them is in guide/guide.js, which in turn names no step. Adding a step
-   is inserting one object into the array below, and reordering is moving it.
+   reads them is in guide/guide.js, which names no step. Adding a step is
+   inserting one object into the array below; reordering is moving it.
 
-   WHY NOTHING IS ASKED OF THE READER
-   ---------------------------------------------------------------------------
-   An earlier version of this walked somebody through BUILDING a query: click
-   Source, now load headers.txt, now drag the Output over. It watched for each
-   action and waited. That is a much larger thing to build and a much larger
-   thing to get wrong, and it fails completely for a reader who does not have
-   the archive files to hand, which is most readers the first time.
-
-   So the practice query is already built when the walkthrough starts. Every
-   step below is about something that is on the screen at the moment it is
-   read. There is nothing to wait for, nothing to detect, and no way for the
-   reader to get stuck: the only controls are Back, Next and Close.
+   Nothing is asked of the reader. An earlier version walked somebody through
+   BUILDING a query, watching for each action and waiting, which fails entirely
+   for a reader without the archive files to hand. The practice query is instead
+   already built when the walkthrough starts, so every step is about something
+   on screen at the moment it is read. The only controls are Back, Next and
+   Close.
 
    The practice query is one of the worked examples from the library, not a
-   second copy of one. If the examples change, this changes with them.
+   second copy, so if the examples change this changes with them.
 
-   THE RULE THAT KEEPS IT HONEST
-   ---------------------------------------------------------------------------
-   A step may point at things and talk about them. It may not change the query.
-   The one write the whole feature makes is loading the practice query at the
-   start, which the reader asks for by pressing the button. onEnter may touch
-   the view and the chrome (zoomToFit, showResultsPanel) and nothing else.
-   41-guide pins that by serialising the graph before and after.              */
+   THE RULE THAT KEEPS IT HONEST: a step may point at things and talk about
+   them, but may not change the query. The one write the feature makes is
+   loading the practice query at the start, which the reader asks for. onEnter
+   may touch the view and the chrome (zoomToFit, showResultsPanel) and nothing
+   else. 41-guide pins that by serialising the graph before and after. */
 
 /* Which of LIB_EXAMPLES the walkthrough is about. Resolved at start time
    through libExampleGet(), so there is one copy of the query and it is the one

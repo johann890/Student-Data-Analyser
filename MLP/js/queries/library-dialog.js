@@ -1,39 +1,28 @@
-/* queries/library-dialog.js: The library dialog: the grid of cards and everything it can do.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   THE QUERY LIBRARY: THE DIALOG
-   ============================================================================
+/* queries/library-dialog.js: The library dialog: the grid of cards and everything it can do. */
+/* THE QUERY LIBRARY: THE DIALOG
    A grid of cards over the canvas, built the way Help and the save dialog are:
-   static markup in the page, inline handlers, and one `open` class. A third
-   mechanism for raising a card over the canvas would be a third thing to keep
-   in step with the Escape handling and the shortcut suppression below.
+   static markup, inline handlers, and one `open` class. A third mechanism for
+   raising a card would be a third thing to keep in step with the Escape
+   handling and the shortcut suppression below.
 
-   TWO-STEP CONFIRMATION RATHER THAN A SECOND DIALOG.
+   TWO-STEP CONFIRMATION RATHER THAN A SECOND DIALOG. Two actions here cannot be
+   undone: opening a query replaces the canvas, and deleting one removes the
+   only copy. Both are a single click on a card, far easier to hit by accident
+   than the two-step file picker Load has always been.
 
-   Two actions here cannot be taken back: opening a query replaces the canvas,
-   and deleting one removes the only copy. Both are a single click on a card in
-   a grid, which is a far easier thing to hit by accident than the two-step file
-   picker Load has always been — that is the cost of making the library
-   convenient, and it has to be paid back somewhere.
-
-   The usual answer is a confirmation dialog, and it is the wrong one here: it
-   would be a modal over a modal, with its own focus to trap and return, over a
-   grid that is itself scrollable. So the button asks instead. The first click
+   A confirmation dialog would be a modal over a modal, with its own focus to
+   trap, over a grid that scrolls. So the button asks instead: the first click
    turns Open into "Replace?" and Delete into "Confirm?", and the second does
-   it. The question is on the control they pressed, where they are already
-   looking, and the colour switch underneath it carries the warning.
+   it. The question is on the control they pressed, and the colour switch
+   carries the warning.
 
-   Both questions are one short word because they have to fit the button on one
-   line. A label that wraps makes its row taller, and in a grid a taller row
-   takes the card beside it with it: arming one card visibly resized its
-   neighbour, which reads as a bug in the grid rather than as a question being
-   asked. The cards now hold still.
+   Both questions are one short word so they fit the button on one line. A label
+   that wraps makes its row taller, and in a grid that takes the neighbouring
+   card with it, which reads as a bug rather than a question.
 
-   Opening skips the question when the canvas is empty, because there is then
-   nothing to replace and a question with only one sensible answer teaches
-   people to click through questions.                                         */
+   Opening skips the question when the canvas is empty, since there is nothing
+   to replace and a question with one sensible answer teaches people to click
+   through questions. */
 
 var LIB_SEARCH_MIN = 6;     // cards, below which the search box is pointless
 
@@ -65,7 +54,7 @@ function openLibrary(btn) {
   if (s) s.value = '';
 
   /* The name field arrives filled, with the name this query already answers to
-     — the one it was opened under, or the one it was last saved under — and a
+     (the one it was opened under, or the one it was last saved under), and a
      timestamp only when it has never had one. Same reasoning as the save
      dialog's: the ordinary loop is save, adjust, save again, and offering a
      fresh timestamp each time leaves a grid of near-identical cards told apart
@@ -174,6 +163,24 @@ function libProblemHTML(err) {
   '</div>';
 }
 
+/* The user's own half of the dialog, under a heading of its own.
+
+   The examples arrived above this grid and took the only label in the body with
+   them: a reader looking at two grids of cards had nothing telling them which
+   ones they had saved, which is the one thing they need to know before pressing
+   Delete. The heading is drawn even when there is nothing under it, because an
+   empty labelled space says "your queries go here" and an empty dialog says
+   nothing at all. Every outcome below goes through here, so the heading cannot
+   be true of one of them and missing from another. */
+function libOwnHTML(inner) {
+  return '<div class="lib-section lib-own">' +
+    '<h4 class="lib-section-head">Your queries</h4>' +
+    '<p class="lib-section-note">Queries you built and saved yourself. Opening one puts it ' +
+      'back on the canvas and asks for its data files.</p>' +
+    inner +
+  '</div>';
+}
+
 function renderLibrary() {
   var body = document.getElementById('libBody');
   if (!body) return;
@@ -202,23 +209,27 @@ function renderLibrary() {
      search is being run against. */
   var examples = libQuery.trim() ? '' : libExamplesHTML();
 
-  if (st.error) { body.innerHTML = examples + libProblemHTML(st.error); return; }
+  if (st.error) { body.innerHTML = examples + libOwnHTML(libProblemHTML(st.error)); return; }
 
-  /* An empty library says nothing. The dialog's own heading paragraph already
-     explains what the library is for, and the name field and Save button sit
-     in plain sight at the foot, so a second block of prose in the middle was
-     repeating the two things around it. */
-  if (!st.entries.length) { body.innerHTML = examples; return; }
+  /* Three words, not a paragraph. The block of prose that used to sit here was
+     removed because the dialog's own heading explains what the library is for
+     and the Save row below is in plain sight, so it repeated both of its
+     neighbours. That still holds: what the heading above needs under it is a
+     label saying the space is empty, not the explanation again. */
+  if (!st.entries.length) {
+    body.innerHTML = examples + libOwnHTML('<div class="lib-empty">Nothing saved yet.</div>');
+    return;
+  }
 
   var q = libQuery.trim().toLowerCase();
   var shown = st.entries.filter(function(e) { return libMatches(e, q); });
   if (!shown.length) {
-    body.innerHTML = examples + '<div class="lib-empty">No saved query is called anything like ' +
-      '"' + esc(libQuery.trim()) + '".</div>';
+    body.innerHTML = examples + libOwnHTML('<div class="lib-empty">No saved query is called ' +
+      'anything like "' + esc(libQuery.trim()) + '".</div>');
     return;
   }
-  body.innerHTML = examples + '<div class="lib-grid">' +
-    shown.map(libCardHTML).join('') + '</div>';
+  body.innerHTML = examples + libOwnHTML('<div class="lib-grid">' +
+    shown.map(libCardHTML).join('') + '</div>');
 
   // A rename renders as an input and is meant to be typed into immediately.
   var ren = document.getElementById('libRenameInput');
@@ -234,7 +245,7 @@ function libSearchInput(el) {
   renderLibrary();
 }
 
-/* ------------------------------------------------------------------ opening */
+/* opening */
 
 function libOpenEntry(id, btn) {
   var text = libGraphText(id);
@@ -258,7 +269,7 @@ function libOpenEntry(id, btn) {
   if (loadGraphFromText(text, btn) && entry) lastQueryName = entry.name;
 }
 
-/* ----------------------------------------------------------------- renaming */
+/* renaming */
 
 function libStartRename(id) {
   libPending = null;
@@ -300,7 +311,7 @@ function libCommitRename(id) {
   renderLibrary();
 }
 
-/* ----------------------------------------------------------------- deleting */
+/* deleting */
 
 function libDeleteEntry(id, btn) {
   if (!(libPending && libPending.action === 'delete' && libPending.id === id)) {
@@ -326,7 +337,7 @@ function libStartOver(btn) {
   renderLibrary();
 }
 
-/* ---------------------------------------------------------------- exporting */
+/* exporting */
 
 /* One card out as a .json file, in the format Load already reads. Sharing a
    query with a colleague is this button and an email: there is no separate
@@ -344,7 +355,7 @@ function libExportEntry(id, btn) {
   flashBtn(btn, ok ? 'Saved ✓' : 'Save failed');
 }
 
-/* ------------------------------------------------- EXPORTING THE WHOLE THING
+/* EXPORTING THE WHOLE THING
 
    The only thing here that survives a cleared browser, a new laptop or a
    reinstall, which is why it sits in the footer next to the usage line rather
@@ -368,13 +379,13 @@ function libExportAll(btn) {
   flashBtn(btn, ok ? 'Saved ✓' : 'Save failed');
 }
 
-/* ------------------------------------------------------------------ IMPORTING */
+/* IMPORTING */
 
 function libPickImport(btn) {
   var input = document.getElementById('libImportFile');
   if (!input) return;
   // Reset first, or choosing the same file twice in a row fires no change
-  // event — the same reason openGraphFile() does it.
+  // event, the same reason openGraphFile() does it.
   input.value = '';
   input._btn = btn;
   input.click();
@@ -392,7 +403,7 @@ function onLibImportChosen(e) {
   var reader = new FileReader();
   reader.onload = function() {
     // A lone query file arrives with no name of its own, so it borrows the
-    // file's — which is what the user called it when they saved it.
+    // file's, which is what the user called it when they saved it.
     var r = libImportText(String(reader.result), libName(stripQueryExt(file.name)));
     if (!r.ok) {
       libSay('bad', r.error.message);
@@ -417,7 +428,7 @@ function onLibImportChosen(e) {
   reader.readAsText(file);
 }
 
-/* ------------------------------------------------------------------- saving */
+/* saving */
 
 /* The library's own way in. The Save dialog gets one too, so a user who thinks
    "save this" and a user who thinks "put this in the library" both arrive; this

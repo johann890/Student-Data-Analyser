@@ -1,7 +1,4 @@
-/* shell/toolbar-menus.js: the Reshape, Processing and Distribution dropdowns.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
+/* shell/toolbar-menus.js: the Reshape, Processing and Distribution dropdowns. */
 
 /* THE NODE MENUS
    Processing nodes are a growing family, so they live behind dropdowns rather

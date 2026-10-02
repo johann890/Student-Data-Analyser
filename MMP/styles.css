@@ -1,3 +1,7 @@
+/* styles.css: the whole interface, in the order the page is built up:
+   the toolbar, the canvas and its nodes, the config panels, the results
+   panel and the dialogs. */
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* Without this, macOS draws form controls, scrollbars and focus rings in light
@@ -70,21 +74,17 @@ body {
 }
 .clear-btn:hover { background: #240d0d; }
 
-/* ── TOOLBAR SCALE ───────────────────────────────────────
+/* ── TOOLBAR SCALE ───────────────────────────────────
    The bar can be pulled taller by the handle beneath it, and everything in it
-   grows with it: a 60px bar holding 22px buttons would read as a mistake rather
-   than as more room. One number does it. `--bar-s` multiplies every measurement
-   the bar is built from, so the controls keep their proportions to each other
-   and to the space around them at any height.
+   grows to match: a 60px bar holding 22px buttons would read as a mistake.
+   `--bar-s` multiplies every measurement the bar is built from, so the controls
+   keep their proportions at any height.
 
-   Every value below is the value that rule already had, written as a
-   multiplication instead of a constant. At --bar-s: 1 each one computes to the
-   same pixel it always did, so the default bar is unchanged by this feature
-   rather than merely close to what it was.
+   Each value below is the one that rule already had, written as a
+   multiplication. At --bar-s: 1 they compute to the same pixels as before.
 
    Scoped under .toolbar because two of these classes are shared with the save
-   dialog and the node panels, which are not part of the bar and must not move
-   when it does. */
+   dialog and the node panels, which must not move when the bar does. */
 :root { --bar-s: 1; --bar-gap: calc(8px * var(--bar-s)); --bar-fill: 0px; }
 
 .toolbar {
@@ -606,17 +606,14 @@ select option {
 }
 
 
-/* ── THE DATA FILES ON A SOURCE PANEL ─────────────────────────────────────────
-   Two numbered rows, in the order the two steps have to happen in, each showing
-   what the Source is currently holding rather than only offering a button.
+/* ── THE DATA FILES ON A SOURCE PANEL ───────────────────────
+   Two numbered rows, in the order the steps have to happen in, each showing
+   what the Source currently holds rather than only offering a button.
 
-   The step numbers are not decoration. A year file cannot be parsed without the
-   column list that names its fields, so the second button is disabled until the
-   first has succeeded, and a numbered pair is the cheapest way to say "these
-   are ordered" before the user discovers it by finding a control greyed out.
-
-   Green when loaded, matching the Source's own colour, so the panel and the
-   circle on the canvas agree at a glance about whether this node can run. */
+   The numbers are not decoration: a year file cannot be parsed without the
+   column list that names its fields, so the second button stays disabled until
+   the first succeeds. Green when loaded, matching the Source's own colour, so
+   the panel and the circle agree about whether this node can run. */
 .src-files {
   display: flex;
   flex-direction: column;
@@ -800,19 +797,14 @@ select option {
 .src-notice.ok  { border-left-color: #2d6640; color: #78a888; }
 .src-notice.bad { border-left-color: #7a2a2a; color: #e08080; }
 
-/* A Source holding no files, on the canvas. The circle keeps its shape and its
-   colour (it is still a Source), and states the difference in its outline: a
-   dashed ring in a paler green than the solid one a loaded Source wears.
+/* A Source holding no files. The circle keeps its shape and colour, and states
+   the difference in its outline: a dashed ring in a paler green than the solid
+   one a loaded Source wears.
 
-   Green rather than amber because nothing is wrong. The node is unfinished, and
-   colouring it as a warning would put it in the same register as an error while
-   the graph around it is still perfectly worth drawing. Lighter rather than
-   darker for the same reason: unfinished, not disabled.
-
-   The state is carried by the border alone, with no badge in the corner. A dot
-   there shared the spot with the delete button, which made it read as something
-   to click; the outline says the same thing around the whole shape and leaves
-   that corner to the one control that belongs in it. */
+   Green rather than amber because nothing is wrong; the node is unfinished, not
+   in error. Lighter rather than darker for the same reason. The state is
+   carried by the border alone: a corner dot shared the spot with the delete
+   button and read as something to click. */
 .shape-source.no-data {
   border-style: dashed;
   border-color: #6aa87e;
@@ -1127,10 +1119,7 @@ body.panel-resizing * { cursor: col-resize !important; }
   opacity: 0.7;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   PROCESSING FAMILY: Toolbar dropdown + Compare node
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── PROCESSING FAMILY: Toolbar dropdown + Compare node ─── */
 
 /* ── PROCESSING DROPDOWN ─────────────────────────────────── */
 .proc-wrap { position: relative; display: inline-flex; }
@@ -1382,10 +1371,7 @@ th.cmp-num { color: #383838 !important; }
   gap: 4px;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   TAKE NODE
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── TAKE NODE ──────────────────────────────────────────── */
 
 /* Same palette as Compare (both are Processing-family nodes and arrive from
    the same dropdown), but a squatter shape with its own glyph, so the two are
@@ -1414,10 +1400,7 @@ th.cmp-num { color: #383838 !important; }
   margin: 1px 0;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   SORT NODE
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── SORT NODE ──────────────────────────────────────────── */
 
 .shape-sort {
   width: 106px; height: 72px;
@@ -1494,10 +1477,7 @@ th.cmp-num { color: #383838 !important; }
 .sort-nodel { display: block; }
 .add-criterion-btn.sort-add:hover { border-color: #5a3a7a; color: #b48ce0; }
 
-/* ═══════════════════════════════════════════════════════════
-   CANVAS NAVIGATION + MULTI-SELECT
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── CANVAS NAVIGATION + MULTI-SELECT ───────────────────── */
 
 /* ── SCALED WORLD LAYER ──────────────────────────────────── */
 /* The world is a fixed logical area, larger than any viewport, and the whole
@@ -1594,15 +1574,13 @@ th.cmp-num { color: #383838 !important; }
 }
 
 /* ── SELECTION ACTION BAR ────────────────────────────────── */
-/* ── VIEW DOCK ───────────────────────────────────────────
-   Zoom and Fit, docked on the canvas rather than filed in the toolbar. Same
-   treatment as the selection bar, because they are the same kind of thing: a
-   small panel floating over the canvas rather than part of the page around it,
-   and reading as one family is what stops the second one looking like a
-   mistake. More rounded than the bar's controls, because a floating panel with
-   square corners reads as a fragment of the layout that has come loose.
+/* ── VIEW DOCK ─────────────────────────────────
+   Zoom and Fit, docked on the canvas rather than in the toolbar. Same treatment
+   as the selection bar, since both are small panels floating over the canvas.
+   More rounded than the toolbar's controls, so a floating panel does not read
+   as a loose fragment of the layout.
 
-   Bottom left is the only free corner. Bottom centre belongs to the selection
+   Bottom left is the only free corner: bottom centre belongs to the selection
    bar, and the two appear together more often than not. */
 .view-dock {
   position: absolute;
@@ -1682,10 +1660,7 @@ th.cmp-num { color: #383838 !important; }
 .canvas.selecting,
 .canvas.selecting * { user-select: none; -webkit-user-select: none; }
 
-/* ═══════════════════════════════════════════════════════════
-   AGGREGATE / AGGREGATE COLUMNS
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── AGGREGATE / AGGREGATE COLUMNS ──────────────────────── */
 
 /* ── PROCESSING MENU GROUPS ──────────────────────────────── */
 /* Five flat items in one dropdown is a list to read; three labelled groups is
@@ -1762,10 +1737,7 @@ th.cmp-num { color: #383838 !important; }
   background: #b48ce0; margin-top: 1px;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   COMBINE
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── COMBINE ────────────────────────────────────────────── */
 
 .shape-combine {
   width: 106px; height: 72px;
@@ -1810,10 +1782,7 @@ th.cmp-num { color: #383838 !important; }
 }
 .cmb-check input { width: auto; margin: 0; cursor: pointer; }
 
-/* ═══════════════════════════════════════════════════════════
-   UNIQUE NODE
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── UNIQUE NODE ────────────────────────────────────────── */
 
 /* Geometry only. The colour comes from the PROCESSING CATEGORY COLOURS block at
    the foot of this file, where Unique is grouped with Sort and Take as a
@@ -1847,10 +1816,7 @@ th.cmp-num { color: #383838 !important; }
 }
 .shape-select:active { cursor: grabbing; }
 
-/* ═══════════════════════════════════════════════════════════
-   INPUT PORTS
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── INPUT PORTS ────────────────────────────────────────── */
 
 /* Drawn only on nodes with more than one input, where the user has to be able
    to tell them apart. The markers sit on the shape's left edge at the same
@@ -1912,18 +1878,11 @@ th.cmp-num { color: #383838 !important; }
 .cmp-measure.locked { opacity: 0.75; cursor: default; }
 .cmp-measure.locked input { cursor: default; }
 
-/* ═══════════════════════════════════════════════════════════
-   PROCESSING CATEGORY COLOURS
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── PROCESSING CATEGORY COLOURS ────────────────────────── */
 
-/* Until now every processing node was one violet, and the glyph carried the
-   whole burden of telling them apart. That worked while there were four; with
-   seven it does not, and it also threw away information the toolbar already
-   knows. The menu has grouped these nodes for some time, and the canvas said
-   nothing about it.
-
-   Colour now carries the category and the glyph carries the node:
+/* Colour carries the category, the glyph carries the node. Seven processing
+   nodes in one violet was too many to tell apart by glyph alone, and the
+   dropdown had already grouped them by what they do to the table's shape:
 
      Reshape rows  violet   Sort, Take, Unique
                             same rows or fewer, header untouched
@@ -1932,14 +1891,8 @@ th.cmp-num { color: #383838 !important; }
      Branches      rose     Combine, Compare
                             several tables in, one out
 
-   The split is by what a node does to the shape of the table, which is the
-   axis the supervisor proposed and the one the dropdown groups already follow.
-   A reader who learns the three colours once can then read an unfamiliar graph
-   at a glance: where it narrows, where it collapses, where branches meet.
-
-   Only the palette lives here. The shapes themselves keep their own geometry
-   and glyphs above, so recolouring a category is three values in one place and
-   adding a node to one is a class, not a new block. */
+   Only the palette is here. The shapes keep their geometry and glyphs above, so
+   recolouring a category is three values, and adding a node to one is a class. */
 
 /* ── RESHAPE ROWS ── violet ─────────────────────────────── */
 .shape-sort,
@@ -2169,10 +2122,7 @@ th.cmp-num { color: #383838 !important; }
    empty space hanging under a button narrower than it. */
 #distMenu { min-width: 176px; }
 
-/* ═══════════════════════════════════════════════════════════
-   SAVE DIALOG
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── SAVE DIALOG ────────────────────────────────────────── */
 
 /* Hidden by class rather than by a `hidden` attribute so the transition has
    something to run on, and so the markup reads the same as the marquee and
@@ -2312,10 +2262,7 @@ th.cmp-num { color: #383838 !important; }
   outline-offset: 1px;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   HELP
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── HELP ───────────────────────────────────────────────── */
 
 /* No auto margin here: help packs left with Clear, and the gap that pushes the
    bar apart is opened by Run Query instead. */
@@ -2582,10 +2529,7 @@ th.cmp-num { color: #383838 !important; }
   .help-body { padding: 14px 16px 30px; }
 }
 
-/* ═══════════════════════════════════════════════════════════
-   SELECT FOR
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── SELECT FOR ─────────────────────────────────────────── */
 
 /* Taller than its Branches sibling because it is the only node carrying two
    labelled port stubs. The numbers here and in SHAPE are checked against each
@@ -2650,10 +2594,7 @@ th.cmp-num { color: #383838 !important; }
   text-align: center;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   CLEAR CONFIRMATION
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── CLEAR CONFIRMATION ─────────────────────────────────── */
 
 /* The card, the backdrop and the entry animation are the save dialog's: the
    markup carries .save-dialog as well as this class, so everything in that

@@ -1,62 +1,43 @@
-/* results/panel-width.js: The results panel width, its Show/Hide state and its
+/* results/panel-width.js: the results panel width, its Show/Hide state and its
    drag handle.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   RESULTS PANEL WIDTH AND VISIBILITY
-   ============================================================================
-   A results table with eighteen columns cannot be read in 300px, but a panel
-   permanently wide enough for eighteen columns leaves too little canvas to lay
-   a graph out in. So the panel is neither fixed nor always there: it is the
-   user's to open, close and size, and it opens itself when it has an answer.
 
-   The panel starts open. It is where the tool's answers appear, and a feature
-   that is not on screen when someone first opens the application is a feature
-   they have to be told about: closed by default, the panel's whole existence
-   rests on a reader noticing a 34px strip and guessing what is behind it.
-   Open, it explains itself, and closing it is then something the user does
-   once they know what they are giving up.
+   An eighteen-column table cannot be read in 480px, but a panel permanently
+   that wide leaves too little canvas. So the panel is the user's to open, close
+   and size, and it opens itself when it has an answer.
 
-   Open and shut is one control, and width is another. They do not overlap:
+   It starts open, because a feature that is not on screen when the application
+   first opens is one the user has to be told about.
 
-     Hide / Show:  The only way in and out by hand. Either button names the
-                   press rather than the state, so neither has to be read twice.
-     the handle:   Width, and nothing else. It sets any width between the
-                   minimum and whatever the canvas floor leaves, and it stops
-                   there: pushed to the end of its range it stays at the end of
-                   its range. It does not shut the panel and it is not there to
-                   drag open.
-     Run Query:    The panel is where the answer appears, so asking for the
-                   answer is asking for the panel. See runQuery().
+   Open/shut and width are separate controls:
 
-   The two were briefly one gesture, with the handle opening and shutting the
-   panel if it was dragged far enough past either end. It is separated again
-   because the two readings of a drag that runs out of room are not
-   distinguishable while it is happening: someone pushing the panel as narrow as
-   it goes and someone closing it do the same thing with the mouse, and only one
-   of them wants the panel to disappear. A drag that can destroy the thing being
-   dragged has to be a drag people aim, and nobody aims a resize. So the handle
-   is inert while the panel is shut and cannot shut it while it is open, and the
-   button is the only thing that changes the state.
+     Hide / Show   the only way in and out by hand. Either button names the
+                   press rather than the state.
+     the handle    width only, between PANEL_MIN and whatever the canvas floor
+                   leaves. Pushed to the end of its range it stays there: it
+                   cannot shut the panel and cannot drag one open.
+     Run Query     opens the panel, since that is where the answer appears.
 
-   Closed is a strip rather than nothing. A panel that vanishes leaves no way
-   back that does not involve knowing about a keyboard shortcut or guessing
-   that the window edge is draggable, and the strip is what makes the closed
-   state look like a state rather than like a missing feature.
+   The two were briefly one gesture, with the handle shutting the panel if
+   dragged far enough. They are separate again because someone pushing the panel
+   as narrow as it goes and someone closing it do the same thing with the mouse,
+   and only one of them wants it to disappear.
 
-   Opening and closing narrows the canvas rather than floating over it. The
-   alternative (an overlay) would hide whatever node happened to be under it,
-   and the pan clamp would still be working from the old, larger canvas box.
-   Shrinking keeps one source of truth for how much canvas there is.
+   Closed is a 34px strip rather than nothing, so there is always a way back
+   that does not need a keyboard shortcut.
 
-   None of this is written into a saved query. A .json file records the
-   question; how wide someone likes their panel, and whether they keep it open,
-   is a property of the person and the screen, not of the query, and a graph
-   emailed to a supervisor should not rearrange his interface when he opens it. */
+   Opening and closing narrows the canvas rather than floating over it: an
+   overlay would hide whatever node sat under it, and the pan clamp would still
+   be working from the old canvas box.
+
+   None of this is saved with a query. Panel width is a property of the person
+   and the screen, not of the question. */
 
 var PANEL_MIN     = 240;   // narrower than this and the table headers wrap
-var PANEL_DEFAULT = 300;   // matches the CSS default, which is the real one
+var PANEL_DEFAULT = 480;   // matches the CSS default, which is the real one
+/* 300px showed three of the eight columns a student Source puts out, so the
+   first result anyone saw was a cut-off one. The full table measures 566px and
+   a panel that wide starves the canvas on a laptop, so this is the middle:
+   six columns, and 539px of canvas left on a 1024px window. */
 var PANEL_STRIP   = 34;    // the closed strip, and again the CSS holds the real one
 /* The canvas floor, and so the panel's ceiling: the widest the panel goes is
    whatever is left after this. Raised from 320, which let the panel take about

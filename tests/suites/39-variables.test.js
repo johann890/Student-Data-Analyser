@@ -477,6 +477,68 @@ module.exports = ({ describe, test }) => {
     });
   });
 
+  /* ══ 5b. WHAT THE CHIP SAYS IT REACHES ════════════════════════════════════ */
+
+  /* The note under a variable names the kinds of node it reaches, not which
+     ones. The ids used to be in there and were dropped: the canvas already
+     points at the individual nodes, by drawing each bound setting in the
+     variable's own colour, so the note's job is the shorter one of saying what
+     sort of thing is downstream of an edit. */
+  describe('the note names kinds of node, not individual ones', () => {
+
+    const noteFor = (h, v) => h.q('[data-var-note="' + v.id + '"]').textContent;
+
+    test('one Filter reads as the kind, with no number after it', () => {
+      const h = boot();
+      const [, f] = h.build('source', 'filter', 'output');
+      h.set(f.id, 'crit.0.field', 'gpa');
+      const v = declare(h, 'cut', '5');
+      pressChip(h, f.id, 'crit.0.var:gpa');
+      assert.includes(noteFor(h, v), 'Used by Filter');
+      assert.excludes(noteFor(h, v), '#', 'the node id is back in the note');
+    });
+
+    /* The case the de-duplication was always written for and never reached:
+       with ids in the label, two Filters were two different strings. */
+    test('two Filters are one word, not a list of the same word', () => {
+      const h = boot();
+      const [s, f1] = h.build('source', 'filter', 'output');
+      const f2 = h.add('filter');
+      h.app.connect(s.id, f2.id);
+      h.w.render();
+      h.set(f1.id, 'crit.0.field', 'gpa');
+      h.set(f2.id, 'crit.0.field', 'gpa');
+      const v = declare(h, 'cut', '5');
+      pressChip(h, f1.id, 'crit.0.var:gpa');
+      pressChip(h, f2.id, 'crit.0.var:gpa');
+      const note = noteFor(h, v);
+      assert.includes(note, 'Filter');
+      assert.excludes(note, 'Filter and Filter', 'the same kind is listed twice');
+      assert.excludes(note, '#', 'the node ids are back in the note');
+    });
+
+    test('two different kinds are still both named', () => {
+      const h = boot();
+      const [s, tk] = h.build('source', 'take', 'output');
+      const hg = h.add('histogram');
+      h.app.connect(s.id, hg.id);
+      h.w.render();
+      const v = declare(h, 'n', '3');
+      pressChip(h, tk.id, 'var:n');
+      pressChip(h, hg.id, 'var:width');
+      const note = noteFor(h, v);
+      assert.includes(note, 'Take', 'the Take it reaches went missing');
+      assert.includes(note, 'Histogram', 'the Histogram it reaches went missing');
+      assert.excludes(note, '#', 'the node ids are back in the note');
+    });
+
+    test('a variable nothing reads says so instead', () => {
+      const h = boot();
+      const v = declare(h, 'spare', '1');
+      assert.includes(noteFor(h, v), 'Not used yet');
+    });
+  });
+
   /* ══ 6. WHERE A VARIABLE MAY NOT GO ═══════════════════════════════════════ */
   describe('the boundary, which is as deliberate as the inclusions', () => {
 
@@ -543,7 +605,9 @@ module.exports = ({ describe, test }) => {
       assert.equal(h.app.variables.length, 1, 'still there');
       assert.equal(h.app.varPendingNow(), v.id);
       const note = h.q('[data-var-note="' + v.id + '"]').textContent;
-      assert.includes(note, 'Filter #' + f.id, 'it names what it would change');
+      assert.includes(note, 'Filter', 'it names what it would change');
+      assert.excludes(note, '#' + f.id,
+        'the note names the kind of node, not which one: the canvas already points at that');
 
       h.w.requestRemoveVariable(v.id);
       assert.equal(h.app.variables.length, 0, 'the second press does it');

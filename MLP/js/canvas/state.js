@@ -1,25 +1,6 @@
-/* canvas/state.js: Graph state, the world/zoom/pan transform, and selection.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   UI: The canvas, the panels, persistence, and every event wired to them
-   ============================================================================
-   Graph state, the view transform, selection, ports and port geometry; the
-   config panels and results panel; export, save/load, canvas gestures, and the
-   listeners that connect them. Loads last: the event wiring and the first
-   paint at the foot of this file need the other two files already parsed.
-   ============================================================================
-   Part of the query builder. LOAD ORDER MATTERS, and the order is the script
-   list at the foot of index.html. These are deliberately NOT ES modules; the tool is
-   opened from Finder at file://, where module scripts are fetched with CORS
-   against an opaque origin and refused. Classic scripts sharing one global
-   scope are what works there, which is why nothing here is wrapped in an IIFE
-   and why a name declared in one file is visible in the next.                */
+/* canvas/state.js: Graph state, the world/zoom/pan transform, and selection. */
 
-/* ============================================================================
-   STATE
-   ============================================================================
+/* STATE
    Every node owns its own configuration in node.cfg. Previously the config
    lived in the DOM and was scraped back by a saveState() pass before each
    re-render, which meant an unrendered panel read as "nothing set" (hence the
@@ -74,26 +55,23 @@ var SHAPE = {
   output:  { w:106, h:66 }
 };
 
-/* ============================================================================
-   VIEW: WORLD COORDINATES, ZOOM AND PAN
-   ============================================================================
-   Node x/y were previously viewport pixels: a node's position meant "this many
-   pixels from the top-left of the visible canvas", so the reachable area was
-   whatever the window happened to be, and a node dragged to the edge of a small
-   window was at a different logical place than the same drag in a large one.
+/* VIEW: WORLD COORDINATES, ZOOM AND PAN
+   Node x/y were previously viewport pixels, so the reachable area was whatever
+   the window happened to be, and a node dragged to the edge of a small window
+   was at a different logical place than the same drag in a large one.
 
    They are now world coordinates in a fixed logical area, and the view is a
    separate concern: a scale plus a translation applied to one wrapper element.
-   The model never knows what is on screen. That is what makes zoom possible
-   without touching the graph, and it means a saved query means the same thing
-   on any display, so the file format is untouched by this change.
+   The model never knows what is on screen, which is what makes zoom possible
+   without touching the graph and means a saved query means the same thing on
+   any display.
 
        screen = world * z + pan            (pan is in screen px)
        world  = (screen - pan) / z
 
    Every conversion goes through toWorld/toScreen. Reading node positions
-   straight off clientX again is the one way to reintroduce the bug this
-   replaces, because it silently works at 100% and only skews at other zooms. */
+   straight off clientX is the one way to reintroduce the bug this replaces,
+   because it works at 100% and only skews at other zooms. */
 
 var WORLD_W = 5000, WORLD_H = 3500;
 var MIN_ZOOM = 0.3, MAX_ZOOM = 2;
@@ -218,9 +196,7 @@ function zoomToFit() {
   applyView();
 }
 
-/* ============================================================================
-   SELECTION
-   ============================================================================
+/* SELECTION
    Selection is transient view state keyed by node id, deliberately outside the
    graph model: it is not serialised, and it survives a render() because ids
    survive a render(). Changing it must not rebuild the canvas (a rebuild

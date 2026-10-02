@@ -86,10 +86,9 @@
   </div>
   <!-- The third menu. Histogram is not Reshape (it does not keep the rows) and
        it is not one of Processing's three families either: it neither multiplies
-       rows, nor collapses them to one, nor joins branches. It answers a
-       different kind of question, "how are these spread out", and a menu of its
-       own is how the toolbar says so. One item today; percentiles and
-       cumulative counts are the same kind of question if they are ever wanted. -->
+       rows, collapses them to one, nor joins branches. It answers "how are these
+       spread out", and a menu of its own is how the toolbar says so. One item
+       today; percentiles and cumulative counts would belong here too. -->
   <div class="proc-wrap">
     <button class="add-btn distribution" onclick="toggleProcMenu(event, 'distMenu')">Distribution <span class="caret">&#9662;</span></button>
     <div class="proc-menu" id="distMenu" onclick="event.stopPropagation()">
@@ -102,12 +101,11 @@
   <button class="add-btn output" onclick="addNode('output')">Output</button>
   </div>
   <!-- Where the bar breaks when it needs a second row, rather than wherever the
-       row happens to run out. Left to flex, the break lands on whichever control
-       crosses the edge first, so growing the bar walks through states like Run
-       Query alone on a line with everything else above it. This puts the break
-       in one place: Add on the first row, everything from Query onwards on the
-       second. It is a full-width flex item with no height, inert until the bar
-       is stacked. -->
+       row runs out. Left to flex, the break lands on whichever control crosses
+       the edge first, so growing the bar walks through odd states such as Run
+       Query alone on a line. This fixes it in one place: Add on the first row,
+       Query onwards on the second. A full-width flex item with no height, inert
+       until the bar is stacked. -->
   <div class="tbreak" aria-hidden="true"></div>
   <div class="sep"></div>
   <div class="tgroup">
@@ -119,23 +117,21 @@
   <!-- The two data pickers, shared by every Source on the canvas: which node
        asked is carried on the element by pickHeadersFile()/pickYearFiles().
 
-       `accept` is a courtesy to the dialog and is trusted by nothing. The year
-       input carries none at all, because the archive's year files have no
-       extension for a filter to match on, which is precisely why the name
-       rules live in data.js, where the file is actually taken, rather than in an
-       attribute a rename walks straight past. -->
+       `accept` only hints to the file dialog and nothing here trusts it. The
+       year input has none, because the archive's year files have no extension
+       to match on. That is why the name rules live in data.js, where the file
+       is actually read, rather than in an attribute a rename defeats. -->
   <input type="file" id="headersFile" accept="text/plain,.txt" hidden>
   <input type="file" id="yearFiles" multiple hidden>
   </div>
   <div class="sep"></div>
   <div class="tgroup">
   <button class="clear-btn" onclick="requestClearAll(this)">Clear</button>
-  <!-- Help sits with Clear at the end of the left-hand run of controls. Both are
-       things you reach for occasionally rather than while building, so they read
-       as one group. Run Query alone is pushed to the right edge by its auto
-       margin, anchoring the corner where the eye finishes, and the empty gap in
-       between keeps the destructive Clear well away from the button people press
-       constantly. -->
+  <!-- Help sits with Clear at the end of the left-hand run of controls: both
+       are reached for occasionally rather than while building, so they read as
+       one group. Run Query is pushed to the right edge by its auto margin, and
+       the gap between keeps the destructive Clear away from the button that
+       gets pressed constantly. -->
   <button class="help-btn" onclick="openHelp(this)" title="How to use this tool  ( ? )" aria-label="Help">?</button>
   </div>
   <button class="run-btn" onclick="runQuery()">Run Query</button>
@@ -168,13 +164,11 @@
 
     <!-- The view controls sit on the thing they act on. In the bar they were
          filed with Save and Load, which are about the query; zoom and Fit are
-         about nothing but this canvas, and are the one group whose effect is
-         entirely visible from where they now are.
+         about this canvas only.
 
-         Bottom left, because bottom centre is the selection bar's and the two
-         must never cover each other: that bar appears exactly when nodes are
-         selected, which is exactly when someone is likely to be zooming to
-         look at them. -->
+         Bottom left, because bottom centre belongs to the selection bar and the
+         two must not cover each other: that bar appears when nodes are
+         selected, which is when someone is most likely to be zooming. -->
     <div class="view-dock" id="viewDock" aria-label="View controls">
       <div class="zoom-group">
         <button class="zoom-btn" onclick="zoomOut()" title="Zoom out  ( -  or scroll )">&minus;</button>
@@ -184,13 +178,12 @@
       <button class="file-btn" onclick="zoomToFit()" title="Fit every node on screen  ( F )">Fit</button>
     </div>
   </div>
-  <!-- The panel is deliberately narrow by default: a wide results column is a
-       narrow canvas, and most of the time the canvas is what is being worked on.
-       Two ways to widen it, because they answer different needs. The handle is
-       for settling on a width and leaving it there. The Wide button is for the
-       one table with too many columns to read at the default width: one click
-       out, one click back, with the chosen handle width remembered underneath so
-       returning does not lose it. The label flips to Thin while the panel is
+  <!-- The panel starts narrow: a wide results column is a narrow canvas, and
+       most of the time the canvas is what is being worked on. Two ways to widen
+       it, for different needs. The handle is for settling on a width and leaving
+       it. The Wide button is for the one table with too many columns to read at
+       the default width: one click out, one click back, with the chosen handle
+       width remembered underneath. The label flips to Thin while the panel is
        wide, so it always names the press rather than the state. -->
   <div class="panel-resize" id="panelResize" role="separator" aria-orientation="vertical"
        tabindex="0" aria-label="Resize the results panel"
@@ -209,15 +202,14 @@
 
 
 <!-- HELP DIALOG
-     Content lives here in markup rather than in a JavaScript string, so it can
-     be read, corrected and translated without touching the application logic.
-     The script only opens, closes and scrolls it.
+     Content is markup here rather than a JavaScript string, so it can be read
+     and corrected without touching the application logic. The script only
+     opens, closes and scrolls it.
 
-     The figures are drawn, not captured. Each is inline SVG in the interface's
-     own palette, which means it scales with the page, needs no image files
-     alongside the HTML, and cannot rot into a stale screenshot of an older
-     build the way a PNG would. Numbered badges on the drawing key into the
-     numbered list beneath it, so the explanations stay selectable text. -->
+     The figures are inline SVG in the interface's own palette, so they scale
+     with the page, need no image files, and cannot rot into a screenshot of an
+     older build. Numbered badges key into the list beneath, which keeps the
+     explanations as selectable text. -->
 <div class="help-dialog" id="helpDialog" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
   <div class="help-card">
 
@@ -958,12 +950,11 @@
 
 <!-- CLEAR CONFIRMATION
      The save dialog's card, reused rather than rebuilt: both are one fixed
-     shape the toolbar raises over the canvas, and a second mechanism for the
-     same thing is one more to keep in step. Only the accent differs, because
-     the confirming button here throws work away rather than writing it out.
+     shape raised over the canvas. Only the accent differs, because the
+     confirming button here throws work away rather than writing it out.
 
-     role="alertdialog" rather than "dialog": the screen reader should read the
-     question on open, not wait to be asked what the card says.
+     role="alertdialog" rather than "dialog", so a screen reader reads the
+     question on open instead of waiting to be asked.
 
      The checkbox is answered in ui.js and lasts the session. Nothing about it
      is written to disk. -->

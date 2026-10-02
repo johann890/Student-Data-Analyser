@@ -386,8 +386,12 @@ module.exports = ({ describe, test }) => {
       h.set(a.id, 'stat.0.op', 'average');
       h.set(a.id, 'stat.0.col', 'gradePoints');
       h.w.runQuery();
+      /* gradePoints, which is what the Aggregate above is set to average. This
+         read `c.mark`, a property a course does not have, so every entry was
+         undefined and the expectation was NaN, which the comparison accepted. */
       const marks = [];
-      S.forEach(x => x.courses.forEach(c => { if (c.code === CODE) marks.push(c.mark); }));
+      S.forEach(x => x.courses.forEach(c => { if (c.code === CODE) marks.push(c.gradePoints); }));
+      assert.ok(marks.length, 'the expected average is computed from no enrolments');
       assert.close(h.entry(o.id).table.rows[0][0],
         marks.reduce((x, y) => x + y, 0) / marks.length, 1e-9);
     });

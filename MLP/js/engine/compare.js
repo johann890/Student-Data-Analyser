@@ -1,10 +1,5 @@
-/* engine/compare.js: Compare, whose groups are wired by hand rather than named.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   COMPARE
-   ============================================================================
+/* engine/compare.js: Compare, whose groups are wired by hand rather than named. */
+/* COMPARE
    NOTE: superseded by the planned SelectFor / Histogram node. Compare is a
    group-by whose groups are wired by hand. The user builds each branch as a
    separate Filter chain instead of naming a column to split on. It is kept

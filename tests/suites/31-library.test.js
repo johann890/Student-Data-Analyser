@@ -19,7 +19,7 @@
    otherwise swallow every access and let this whole suite pass by doing
    nothing. */
 
-const { boot, withoutStorage, hasDataDir } = require('../lib/harness');
+const { boot, withoutStorage, hasDataDir, appStyles } = require('../lib/harness');
 const { assert } = require('../lib/assert');
 
 const KIND = 'student-data-analyser-query';
@@ -1105,6 +1105,109 @@ module.exports = ({ describe, test }) => {
       h.w.libOpenExample(h.app.LIB_EXAMPLES[0].id, null);
       assert.notOk(h.app.lastQueryName(),
         'saving would offer to overwrite a file named after something the user did not write');
+    });
+  });
+
+  /* THE READER'S OWN HALF, UNDER A HEADING OF ITS OWN.
+
+     The examples put a second grid of cards in this dialog, and for a while the
+     user's own grid was the one without a label: two sets of cards, one caption,
+     and nothing saying which ones were yours. That matters more here than it
+     would elsewhere, because one of these grids has a Delete on every card and
+     the other does not.
+
+     What is asserted is the invariant rather than the wording: wherever the
+     dialog puts anything in its body, the reader's section is labelled. The
+     copy itself is free to change. */
+  describe('the user\'s own queries are labelled too', () => {
+
+    const ownHead = (h) => {
+      const sec = h.q('#libBody .lib-own');
+      const hd = sec && sec.querySelector('.lib-section-head');
+      return hd && hd.textContent.trim();
+    };
+
+    test('the heading sits below the examples, not above them', () => {
+      const h = built();
+      h.w.libSaveCurrent(null);
+      h.w.openLibrary(null);
+      const heads = h.qa('#libBody .lib-section-head').map(e => e.textContent.trim());
+      assert.deepEqual(heads, ['Examples', 'Your queries'],
+        'the reader meets their own queries before the worked ones, or not at all');
+    });
+
+    test('a saved card lands under that heading and not among the examples', () => {
+      const h = built();
+      h.w.libSaveCurrent(null);
+      h.w.openLibrary(null);
+      assert.equal(h.qa('#libBody .lib-own .lib-card:not(.lib-example)').length, 1,
+        'the saved query is not in the reader\'s own section');
+      assert.equal(h.qa('#libBody .lib-own .lib-example').length, 0,
+        'an example wandered into the section with the Delete buttons on it');
+    });
+
+    /* The same three early returns the examples have to survive. A heading that
+       is true of one outcome and missing from another is worse than no heading,
+       because the reader learns to look for it. */
+    test('the heading is drawn when nothing has been saved', () => {
+      const h = boot();
+      h.w.openLibrary(null);
+      assert.equal(ownHead(h), 'Your queries', 'an empty library drops the label');
+      assert.ok(h.q('#libBody .lib-own .lib-empty'), 'and says nothing in the space either');
+    });
+
+    test('and when a search matches none of them', () => {
+      const h = built();
+      h.w.libSaveCurrent(null);
+      h.w.openLibrary(null);
+      h.app.libSearchInput({ value: 'zzzz-nothing-matches' });
+      assert.equal(ownHead(h), 'Your queries', 'a search that found nothing dropped the label');
+      assert.ok(h.q('#libBody .lib-empty'), 'the no-match message went missing');
+    });
+
+    test('and when the store cannot be read at all', () => {
+      const h = boot();
+      h.storage.setItem(STORE, 'not json');
+      h.w.openLibrary(null);
+      assert.equal(ownHead(h), 'Your queries', 'a broken store took the label with it');
+      assert.ok(h.q('#libBody .lib-own .lib-problem'), 'the store error left its own section');
+    });
+
+    test('the section note is prose, and follows the house rule on dashes', () => {
+      const h = boot();
+      h.w.openLibrary(null);
+      const note = h.q('#libBody .lib-own .lib-section-note').textContent;
+      assert.ok(note.length > 20, 'the heading has no sentence under it');
+      assert.excludes(note, '\u2014', 'the section note');
+    });
+  });
+
+  /* The examples are marked by their border and nothing else: no badge, no
+     word. That makes the border load-bearing, and `.lib-card:hover` is a class
+     plus a pseudo-class, so it outranks a bare `.lib-example` and used to
+     repaint the mark away under the pointer. */
+  describe('an example is marked by its border', () => {
+
+    const ruleFor = (sel) => {
+      const css = appStyles();
+      const at = css.indexOf(sel + ' {');
+      return at === -1 ? '' : css.slice(at, css.indexOf('}', at));
+    };
+
+    test('the resting border is its own, not the ordinary card grey', () => {
+      const rest = ruleFor('.lib-example');
+      assert.ok(rest, 'no .lib-example rule in the stylesheet');
+      assert.includes(rest, 'border-color',
+        'the example card is drawn exactly like a saved one, so nothing says it is not yours');
+      assert.excludes(rest, '#2a2a2a', 'the mark is the same grey every other card already has');
+    });
+
+    test('and hovering one does not throw that mark away', () => {
+      const hover = ruleFor('.lib-example:hover');
+      assert.ok(hover,
+        '.lib-card:hover is a class plus a pseudo-class and outranks .lib-example on its own, ' +
+        'so without a rule at matching weight the mark vanishes under the pointer');
+      assert.includes(hover, 'border-color', 'the hover rule sets something other than the border');
     });
   });
 };

@@ -54,7 +54,13 @@ module.exports = ({ describe, test }) => {
       const t = h.entry(o.id).table;
       assert.equal(t.columns.length, 1);
       assert.equal(t.rows.length, 1);
-      const want = h.app.STUDENTS.filter(x => x.gpa > 70);
+      /* The Filter is left at its default, which is gpa > 5. This read `> 70`
+         and so matched nobody, and 0/0 is NaN: the comparison below was against
+         NaN and passed whatever the node produced. The length is asserted first
+         so an expectation computed from no rows fails as an empty sample rather
+         than as a tolerance. */
+      const want = h.app.STUDENTS.filter(x => x.gpa > 5);
+      assert.ok(want.length, 'the expected average is computed from no students');
       assert.close(t.rows[0][0], want.reduce((a2, x) => a2 + x.gpa, 0) / want.length, 1e-9);
       // point 11: a count and an average must not look alike
       assert.includes(t.columns[0].label, 'Average');
@@ -160,7 +166,7 @@ module.exports = ({ describe, test }) => {
       h.set(f.id, 'crit.0.value:gpa', '500');   // matches nobody
       h.set(a.id, 'stat.0.op', 'average');
       h.w.runQuery();
-      assert.equal(h.bigNum(), '\u2014', 'showing 0 would assert something false about the data');
+      assert.equal(h.bigNum(), '\u2013', 'showing 0 would assert something false about the data');
     });
 
     test('count of zero rows really is zero', () => {

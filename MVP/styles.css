@@ -1,3 +1,6 @@
+/* styles.css: the toolbar, the canvas and its three node types, the config
+   panels and the results panel. */
+
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 body {
@@ -93,8 +96,8 @@ body {
   width: 220px; /* matches config panel width so shape centering is predictable */
   /* The wrapper is 220px wide but the shape inside is only ~100px, leaving wide
      transparent gutters. Without this those gutters swallow pointer events meant
-     for the connection arrows painted underneath. Only the visible children —
-     the shape and the config panel — capture input. */
+     for the connection arrows painted underneath. Only the visible children,
+     the shape and the config panel, capture input. */
   pointer-events: none;
 }
 .node > * { pointer-events: auto; }
@@ -132,7 +135,7 @@ body {
   display: contents;
 }
 
-/* Output: rounded rectangle — vivid electric blue */
+/* Output: rounded rectangle, vivid electric blue */
 .shape-output {
   width: 106px; height: 66px;
   border-radius: 10px;
@@ -150,7 +153,7 @@ body {
 /* ── REMOVE BUTTON ───────────────────────────────────────── */
 /* Sits just inside the shape's top-right corner. It must not overhang into the
    wrapper gutter: .node is pointer-events:none, and only the button's own
-   painted pixels re-enable events — any overhang beyond the shape lands on dead
+   painted pixels re-enable events; any overhang beyond the shape lands on dead
    space and can't be clicked. Positive insets keep the whole button on the
    shape. */
 .node-remove {
@@ -189,7 +192,7 @@ body {
   gap: 5px;
 }
 
-/* Field label — slightly brighter than before */
+/* Field label, slightly brighter than before */
 .cfg-label {
   font-size: 9px;
   color: #888888;
@@ -228,7 +231,7 @@ select:focus, input:focus { outline: none; border-color: #2a5aaa; }
 .criterion-controls {
   display: grid;
   gap: 4px;
-  /* field | op | value — fixed columns so nothing clips */
+  /* field | op | value: fixed columns so nothing clips */
   grid-template-columns: 80px 38px 1fr;
   align-items: center;
 }
@@ -335,7 +338,7 @@ select:focus, input:focus { outline: none; border-color: #2a5aaa; }
 .rbtn:hover { background: #051830; border-color: #1e7fff; color: #3db8ff; }
 .rbtn.rbtn-done { background: #0e2016; border-color: #2d6640; color: #5ec87a; }
 
-/* Results no longer match the graph — export is withdrawn until re-run */
+/* Results no longer match the graph, so export is withdrawn until re-run */
 .stale-note {
   border: 1px solid #4a3a10;
   background: #191305;

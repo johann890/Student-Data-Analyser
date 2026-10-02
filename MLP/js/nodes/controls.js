@@ -1,11 +1,6 @@
 /* nodes/controls.js: The controls inside a config panel: criteria rows, operators,
-   range bands and list bands.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   RENDER: CONFIG PANELS
-   ============================================================================
+   range bands and list bands. */
+/* RENDER: CONFIG PANELS
    Controls carry data-node / data-key and are read by one delegated listener.
    Nothing here reads the DOM back: render() is a pure function of the model,
    which is what makes the drag fast path and save/load safe.                  */
@@ -127,24 +122,21 @@ function rangeBandHTML(nid, ci, cur, c, renderBound) {
 }
 
 /* THE LIST BAND
-   The range band's sibling, and deliberately built to the same pattern: it
-   appears only while its operator is chosen, it is banded down the left so it
-   reads as part of the criterion rather than as a criterion of its own, and it
-   carries a one-line note saying what the current setting actually keeps.
+   The range band's sibling, built to the same pattern: it appears only while its
+   operator is chosen, it is banded down the left so it reads as part of the
+   criterion rather than a criterion of its own, and it carries a one-line note
+   saying what the current setting keeps.
 
-   It is a different colour from the range band. Both are bands under a
-   criterion and a reader glancing at a panel should be able to tell which one
-   they are looking at without reading the tag, so the range keeps the amber it
-   had and the list takes the violet this interface already uses for the
-   measure tick boxes it borrows its controls from.
+   A different colour from the range band, so a reader can tell which band they
+   are looking at without reading the tag. The range keeps its amber; the list
+   takes the violet this interface uses for the measure tick boxes it borrows
+   its controls from.
 
-   TICK BOXES RATHER THAN A MULTI-SELECT.
-   A native <select multiple> is the obvious control and the wrong one: it
-   needs ctrl-click to choose a second value, which is undiscoverable, and it
-   silently discards the whole selection when a plain click lands in it. Tick
-   boxes cost more pixels and cannot be got wrong. They are also the control
-   this panel already uses for "choose several of these" in the Select and
-   Compare panels, so it is not a new idea, only a new place.
+   TICK BOXES RATHER THAN A MULTI-SELECT. A native <select multiple> needs
+   ctrl-click to choose a second value, which is undiscoverable, and it silently
+   discards the whole selection when a plain click lands in it. Tick boxes cost
+   more pixels and cannot be got wrong, and the Select and Compare panels
+   already use them for "choose several of these".
 
    A column with no declared values (a name, a free number) has nothing to tick,
    so it gets a text box and the list is split on commas. */
@@ -461,7 +453,6 @@ function upstreamLabel(node) {
 }
 
 /* THE FILE SECTION ON A SOURCE PANEL
-   ---------------------------------------------------------------------------
    Two rows, in the order the two steps have to happen in, each showing what is
    currently held rather than only offering a button. A Source that says
    "headers.txt, 27 columns" and "mcs-students-2022, 2170 rows" is a Source
@@ -473,7 +464,6 @@ function upstreamLabel(node) {
    no names on it), so the control says so by being unavailable, and the hint
    underneath says why. */
 /* WHAT A ROW MEANS HERE, IN THIS SOURCE'S OWN NUMBERS
-   ---------------------------------------------------------------------------
    Project's panel "states the multiplication" rather than describing the
    setting, because the number is the part that goes wrong quietly. This is that
    sentence for the Source, and it is built from the files this Source is

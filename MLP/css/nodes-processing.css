@@ -1,12 +1,5 @@
-/* nodes-processing.css: The Processing dropdown, Compare, save and export, and the Take,
-   Sort and Reverse nodes.
-   Part of the Student Data Analyser's stylesheet. The files load in the order
-   index.html lists them, and that order is the cascade: it must not change.
-   ========================================================================== */
-/* ═══════════════════════════════════════════════════════════
-   PROCESSING FAMILY: Toolbar dropdown + Compare node
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* nodes-processing.css: the Processing dropdown, Compare, save and export, and
+   the Take, Sort and Reverse nodes. */
 
 /* ── PROCESSING DROPDOWN ─────────────────────────────────── */
 .proc-wrap { position: relative; display: inline-flex; }
@@ -119,6 +112,10 @@
 .cmp-table { table-layout: fixed; }
 .cmp-table th { background: #060606; }
 
+/* These classes sit on cells inside table.rtable, so `.rtable td` in
+   results-panel.css outranks a single class and would win on colour and
+   padding. !important rather than longer selectors, which would mean repeating
+   the table class on every rule here. */
 .cmp-cell-label {
   color: #8a8a8a !important;
   white-space: nowrap;
@@ -132,15 +129,13 @@
   width: 58px;
 }
 /* A numeric heading sits over its own numbers.
-   The alignment above is the cell's, and `.rtable th` in results-panel.css set
-   every heading to the left with a selector of equal weight, so the two halves
-   of a numeric column were set in opposite directions: GPA at the left of the
-   column, 5.53 at the right of it. That is the second half of what made a
-   single average unreadable, and it is fixed here rather than by loosening the
-   heading rule, which is right for the text columns it also covers.
+   `.rtable th` in results-panel.css sets every heading left with a selector of
+   equal weight, which left GPA at the left of its column and 5.53 at the right.
+   Fixed here rather than by loosening that rule, which is right for the text
+   columns it also covers.
 
-   This file is linked after results-panel.css, which is what lets a selector
-   of the same weight win. That order is load-bearing and index.html says so. */
+   This file is linked after results-panel.css, which is what lets a selector of
+   the same weight win. That order is load-bearing and index.html says so. */
 th.cmp-num { color: #8a8a8a !important; text-align: right; }
 .cmp-empty {
   padding: 8px 11px;
@@ -269,10 +264,7 @@ th.cmp-num { color: #8a8a8a !important; text-align: right; }
   gap: 4px;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   TAKE NODE
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── TAKE NODE ──────────────────────────────────────────── */
 
 /* Same palette as Compare (both are Processing-family nodes and arrive from
    the same dropdown), but a squatter shape with its own glyph, so the two are
@@ -301,10 +293,7 @@ th.cmp-num { color: #8a8a8a !important; text-align: right; }
   margin: 1px 0;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   SORT NODE
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── SORT NODE ──────────────────────────────────────────── */
 
 .shape-sort {
   width: 106px; height: 72px;

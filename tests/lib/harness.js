@@ -22,9 +22,9 @@
 const fs = require('fs');
 const path = require('path');
 
-let JSDOM;
+let JSDOM, VirtualConsole;
 try {
-  ({ JSDOM } = require('jsdom'));
+  ({ JSDOM, VirtualConsole } = require('jsdom'));
 } catch (e) {
   console.error('\n  jsdom is not installed. Run `npm install` inside the tests folder.\n');
   process.exit(1);
@@ -142,7 +142,15 @@ function appStyles() {
    Read once, every window compiles from the same strings, and the cost stops
    being per-window. The files cannot change mid-run in any case: the harness
    has already resolved and validated this list before the first test. */
-const APP_SOURCE = APP_PATHS.map(p => fs.readFileSync(p, 'utf8'));
+/* Each script carries its own sourceURL, which is what gives a failure inside
+   the application a stack trace that names the file it happened in. Without it
+   every frame reads "eval at <anonymous> (harness.js:396)" with a line number
+   counted within one anonymous eval, so a test failing on a bug in
+   engine/sort-take.js pointed at the harness instead. It is also what lets a
+   coverage tool attribute anything at all to the application, since V8 keys
+   coverage of eval'd code on this name. */
+const APP_SOURCE = APP_PATHS.map(
+  p => fs.readFileSync(p, 'utf8') + '\n//# sourceURL=' + p + '\n');
 
 const DATA_DIR = path.resolve(APP_DIR, '..', 'data');
 
@@ -243,6 +251,38 @@ function memoryStorage() {
    use that window in every test it has. */
 const LIVE_WINDOWS = [];
 
+/* ERRORS THE PAGE SWALLOWS
+   ---------------------------------------------------------------------------
+   A throw inside a DOM event handler does not come back out of dispatchEvent.
+   The handler ends, jsdom reports the error to the window's virtual console as
+   a "jsdomError", and the caller carries on none the wiser. Since this suite
+   drives the application by dispatching events (set() does, and so does every
+   click a test simulates), a regression that threw inside onConfigInput would
+   print a stack trace to the terminal and still be counted as a pass. Measured:
+   a probe that threw from a click handler passed.
+
+   Collected here rather than per boot, because the runner wants to ask one
+   question between tests ("did anything throw in any window?") and a test may
+   boot more than one. The runner drains the list before and after each test
+   through takeWindowErrors(). */
+const WINDOW_ERRORS = [];
+
+function takeWindowErrors() {
+  return WINDOW_ERRORS.splice(0, WINDOW_ERRORS.length);
+}
+
+/* console.error is deliberately NOT collected. The application does not use it,
+   but jsdom reports things through it that are not the application's doing (an
+   unimplemented layout API, a CSS property it cannot parse), and failing a test
+   on those would make the suite report on jsdom rather than on the code. */
+function recordingConsole() {
+  const vc = new VirtualConsole();
+  vc.on('jsdomError', (err) => {
+    WINDOW_ERRORS.push(err instanceof Error ? err : new Error(String(err)));
+  });
+  return vc;
+}
+
 function disposeWindows() {
   while (LIVE_WINDOWS.length) {
     const w = LIVE_WINDOWS.pop();
@@ -253,7 +293,8 @@ function disposeWindows() {
 function boot() {
   const dom = new JSDOM(fs.readFileSync(APP_HTML, 'utf8'), {
     runScripts: 'outside-only',
-    pretendToBeVisual: true
+    pretendToBeVisual: true,
+    virtualConsole: recordingConsole()
   });
   LIVE_WINDOWS.push(dom.window);
   const w = dom.window;
@@ -271,7 +312,17 @@ function boot() {
   w.URL.createObjectURL = () => 'blob:test';
   w.URL.revokeObjectURL = () => {};
   let pendingContent = null;
-  w.Blob = class { constructor(parts) { pendingContent = parts.join(''); } };
+  /* `_text` as well as the shared pendingContent, because a rich clipboard write
+     builds TWO blobs in one call and the shared variable only remembers the
+     last. The download path still reads pendingContent; the clipboard stub
+     below reads each blob's own text. */
+  w.Blob = class {
+    constructor(parts, opts) {
+      this._text = [].concat(parts || []).join('');
+      this.type = (opts && opts.type) || '';
+      pendingContent = this._text;
+    }
+  };
   const hrefContent = (href) => {
     const comma = String(href || '').indexOf(',');
     if (!String(href).startsWith('data:') || comma === -1) return pendingContent;
@@ -289,8 +340,36 @@ function boot() {
   };
 
   // Clipboard: capture writes rather than requiring a secure context
+  /* CLIPBOARD: the plain path and the flavoured one.
+
+     `copied` keeps the text of every copy whichever route it took, so the
+     assertions written against it before flavours existed still read the last
+     thing copied. `copiedRich` keeps the flavour map as well, which is the only
+     way to assert that an HTML copy really offered text/html and did not
+     quietly fall back to pasting markup as text.
+
+     ClipboardItem is supplied because the application tests for it to decide
+     which route to take, and jsdom has neither it nor execCommand. Without it
+     every flavoured copy here would take the execCommand fallback, fail, and
+     report "Copy failed", which would test the failure rather than the feature. */
   const copied = [];
-  w.navigator.clipboard = { writeText: (t) => { copied.push(t); return Promise.resolve(); } };
+  const copiedRich = [];
+  w.ClipboardItem = class { constructor(items) { this.items = items || {}; } };
+  w.navigator.clipboard = {
+    writeText: (t) => { copied.push(t); return Promise.resolve(); },
+    write: (items) => {
+      const flavours = {};
+      [].concat(items || []).forEach(it => {
+        Object.keys(it.items || {}).forEach(type => {
+          const blob = it.items[type];
+          flavours[type] = (blob && blob._text !== undefined) ? blob._text : String(blob);
+        });
+      });
+      copiedRich.push(flavours);
+      if (flavours['text/plain'] !== undefined) copied.push(flavours['text/plain']);
+      return Promise.resolve();
+    }
+  };
 
   /* Storage: supplied, because jsdom does not supply it here.
 
@@ -339,7 +418,7 @@ function boot() {
   // redraw, so alias it here rather than exporting it from production code.
   w.render = app.render;
 
-  return { w, doc, app, saved, copied, storage,
+  return { w, doc, app, saved, copied, copiedRich, storage,
            ...helpers(w, doc, app), ...fileHelpers(w, doc, app) };
 }
 
@@ -512,4 +591,4 @@ function withoutStorage(h) {
   return h;
 }
 
-module.exports = { boot, withoutStorage, disposeWindows, appStyles, APP_DIR, APP_PATHS, APP_HTML, DATA_DIR, dataDirFile, hasDataDir };
+module.exports = { boot, withoutStorage, disposeWindows, takeWindowErrors, appStyles, APP_DIR, APP_PATHS, APP_HTML, DATA_DIR, dataDirFile, hasDataDir };

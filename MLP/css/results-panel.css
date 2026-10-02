@@ -1,7 +1,5 @@
-/* results-panel.css: The results panel, hovering a connection, and why a drop did not wire.
-   Part of the Student Data Analyser's stylesheet. The files load in the order
-   index.html lists them, and that order is the cascade: it must not change.
-   ========================================================================== */
+/* results-panel.css: the results panel, hovering a connection, and the note
+   shown when a drop will not wire. */
 /* OUTPUT PANEL */
 /* The width is a custom property rather than a fixed value so the drag handle
    and the arrow keys can both drive it by writing one number, and so the
@@ -13,7 +11,7 @@
    its own copy of both numbers and says in results/panel-width.js that these
    are the real ones. */
 :root {
-  --panel-w: 300px;
+  --panel-w: 480px;   /* results/panel-width.js keeps the same number in PANEL_DEFAULT */
   --panel-strip-w: 34px;
 }
 .output-panel {
@@ -28,14 +26,12 @@
 
 /* SHUT.
    One class on <body>, not on the panel, because closing it changes how much
-   canvas there is and the canvas is the panel's sibling rather than its child.
+   canvas there is and the canvas is the panel's sibling, not its child.
 
-   The head and the body are taken out of the layout rather than hidden inside
-   it: display:none also takes them out of the accessibility tree and out of
-   the tab order, which is what stops the shut panel's Hide button being a
-   thing a keyboard can reach and press. The strip's own button is the one
-   that answers in this state, and it is display:none the rest of the time for
-   the same reason. */
+   Head and body are taken out of the layout rather than hidden in it:
+   display:none also removes them from the accessibility tree and the tab order,
+   so a shut panel's Hide button is not reachable by keyboard. The strip's own
+   button answers in that state, and is display:none the rest of the time. */
 .panel-strip { display: none; }
 
 body.panel-hidden .output-panel { width: var(--panel-strip-w); }
@@ -158,15 +154,13 @@ body.panel-resizing * { cursor: col-resize !important; }
 .op { color: #f0b96a; }
 
 /* An Output hidden from the panel is drawn and then taken out of sight, never
-   left out of the run, so that ticking it back on is a class change rather than
+   left out of the run, so ticking it back on is a class change rather than
    another evaluation of the whole graph.
 
    Compound selectors, not a bare `.result-hidden`. Both things this hides set
-   their own `display`, and a single class would tie with them on specificity
-   and then lose to whichever rule the file happens to declare last. That is not
-   a hypothetical: the bare version was written first and was beaten by
-   `.result-block { display: flex }` twenty lines below, so the class went on,
-   the block stayed on screen, and only the rendered page showed it. */
+   their own `display`, so a single class ties on specificity and loses to
+   whichever rule is declared last. The bare version was written first and was
+   beaten by `.result-block { display: flex }` twenty lines below. */
 .result-block.result-hidden,
 .all-hidden-note.result-hidden { display: none; }
 
@@ -225,6 +219,42 @@ body.panel-resizing * { cursor: col-resize !important; }
 .rbtn:hover { background: #051830; border-color: #1e7fff; color: #3db8ff; }
 .rbtn.rbtn-done { background: #0e2016; border-color: #2d6640; color: #5ec87a; }
 
+/* A button and the format it writes in, joined so they read as one control.
+   The button keeps its own left corners and the select its right ones, with the
+   seam between them square, which is what says they belong together without a
+   border running down the middle of the pair. */
+.rbtn-group { display: inline-flex; }
+.rbtn-group .rbtn { border-top-right-radius: 0; border-bottom-right-radius: 0; }
+/* A chevron, because every select in this tool has `appearance: none` and so
+   draws no arrow of its own. The config panels get away with it: a select there
+   is full width in a labelled row, and nothing else looks like that. This one
+   sits against a button at button size, so without a mark of its own it reads as
+   a second button that does nothing when clicked. Drawn as a background image
+   rather than a glyph in the markup so it cannot be selected, copied or
+   announced as part of the value. */
+.rfmt {
+  background: #0d0d0d
+    url("data:image/svg+xml;charset=UTF-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5' viewBox='0 0 8 5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%239a9a9a'/%3E%3C/svg%3E")
+    no-repeat right 5px center;
+  border: 1px solid #262626;
+  border-left: none;
+  color: #9a9a9a;
+  font-family: inherit;
+  font-size: 11px;
+  padding: 3px 16px 3px 6px;
+  border-radius: 0 3px 3px 0;
+  cursor: pointer;
+  max-width: 9em;
+}
+.rfmt:hover {
+  background-color: #051830;
+  border-color: #1e7fff;
+  color: #3db8ff;
+}
+/* Keyboard focus has to stay visible on a control this small, and the default
+   outline is clipped by the seam it shares with the button. */
+.rfmt:focus-visible { outline: 2px solid #1e7fff; outline-offset: -1px; }
+
 /* Results no longer match the graph. Export is withdrawn until re-run */
 .stale-note {
   border: 1px solid #4a3a10;
@@ -278,16 +308,14 @@ body.panel-resizing * { cursor: col-resize !important; }
 }
 .rtable tr:last-child td { border-bottom: none; }
 
-/* The empty column at the end of every result table, from tableHTML(), which
-   explains why it is there. This is the whole of what it does: asking for all
-   of the width is what makes the browser give the real columns their contents'
-   width and hand the remainder to this one, instead of sharing the remainder
-   out among the columns and pushing each value away from its own heading.
+/* The empty column at the end of every result table, from tableHTML(). Asking
+   for all of the width is what makes the browser give the real columns their
+   contents' width and hand the remainder to this one, rather than sharing that
+   remainder out and pushing each value away from its own heading.
 
-   It collapses to nothing on its own when the real columns already fill the
-   panel, so a wide table is drawn exactly as it was before. No padding, so it
-   is not a column of blank space at the end of a table that needs every pixel:
-   the heading band and the row rules run through it, and nothing else does. */
+   It collapses to nothing when the real columns already fill the panel. No
+   padding, so the heading band and row rules run through it and nothing else
+   does. */
 .rtable .rt-fill { width: 100%; padding: 0; }
 
 .error-box {

@@ -1,8 +1,5 @@
 /* shell/boot.js: What the inline handlers call, the test hook, and the first paint.
-   Loads last, because it paints.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
+   Loads last, because it paints. */
 /* GLOBALS: Referenced by inline onclick handlers in the toolbar and panels */
 window.addNode = addNode;
 window.addProcNode = addProcNode;
@@ -325,6 +322,9 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     // export + persistence
     serialiseTable: serialiseTable, exportTableFor: exportTableFor, safeName: safeName,
     quotedCell: quotedCell, UTF8_BOM: UTF8_BOM,
+    EXPORT_FORMATS: EXPORT_FORMATS, exportFormat: exportFormat,
+    copyFormatOf: copyFormatOf, saveFormatOf: saveFormatOf,
+    htmlTable: htmlTable, latexTable: latexTable, latexEscape: latexEscape,
     exportNameOf: exportNameOf, defaultExportName: defaultExportName, markStale: markStale,
     timeStamp: timeStamp, dateStamp: dateStamp, resultHTML: resultHTML, scalarHTML: scalarHTML, tableHTML: tableHTML,
     courseLabel: courseLabel, courseTitle: courseTitle, courseSelect: courseSelect,
@@ -379,6 +379,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     // the worked examples, which are in the page and never in the store
     LIB_EXAMPLES: LIB_EXAMPLES, libExampleGet: libExampleGet,
     libExampleCardHTML: libExampleCardHTML, libExamplesHTML: libExamplesHTML,
+    libOwnHTML: libOwnHTML,
     libOpenExample: libOpenExample,
 
     // export / import

@@ -1,10 +1,4 @@
-/* results/panel.js: The results panel: one renderer for every table.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   RESULTS PANEL: One renderer for every table
-   ============================================================================
+/* results/panel.js: the results panel, with one renderer for every table.
    Previously there was a card per output type, plus a separate Compare path.
    They rendered the same kinds of thing in slightly different ways and had to
    be kept in step by hand. Every result is now a table, so there is one
@@ -17,25 +11,21 @@ var DISPLAY_ROW_LIMIT = 50;
 var DISPLAY_CARD_LIMIT = 10;
 
 /* THE SLACK COLUMN
-   ---------------------------------------------------------------------------
-   The table fills the panel, and until now the columns shared whatever width
-   was left over. Two columns in a wide panel therefore sat half a panel apart,
-   and a number, which is set to the right of its column so that the digits of
-   a column of numbers line up, ended up at the far right of a cell whose
-   heading was at the far left. The supervisor's average GPA was a lone "5.53"
-   against the panel's edge with the word GPA a few hundred pixels away from it.
+   The table fills the panel, and the columns used to share whatever width was
+   left over. Two columns in a wide panel therefore sat half a panel apart, and
+   a number, set to the right of its column so a column of digits lines up,
+   ended at the far right of a cell whose heading was at the far left: an
+   average GPA was a lone "5.53" against the panel edge with the word GPA
+   hundreds of pixels away.
 
-   The width had to go somewhere, so it is given a column of its own at the end
+   The width has to go somewhere, so it goes to a column of its own at the end
    that holds nothing. The real columns then take the width their contents need
-   and no more, which puts every value back beside its own heading, and the
-   leftover lands in a cell nobody reads. The alternative, letting the table
-   shrink to its contents, stops the heading band and the row rules short of
-   the card's edge and reads as a half-drawn table.
+   and no more, and the leftover lands in a cell nobody reads. Letting the table
+   shrink to its contents instead would stop the heading band and row rules
+   short of the card's edge.
 
-   It is empty and it is not data, so it is hidden from the accessibility tree:
-   a screen reader announcing a blank cell at the end of all 280 rows is a
-   worse bargain than the one it is paying for. The class is what the panel
-   suites filter it out by, so it is not a decorative detail. */
+   It is empty and it is not data, so it is hidden from the accessibility tree.
+   The class is what the panel suites filter it out by. */
 var FILL_TH = '<th class="rt-fill" aria-hidden="true"></th>';
 var FILL_TD = '<td class="rt-fill" aria-hidden="true"></td>';
 
@@ -97,12 +87,12 @@ function card(title, body, badge) {
 function scalarHTML(t) {
   var c = t.columns[0], r = t.rows[0] || [];
   /* The mean of nothing is undefined, not zero. Printing "0" asserts something
-     false about the data; an em dash says there was nothing to average.
+     false about the data; a dash says there was nothing to average.
 
      reduceValues() returns null for exactly that case, and now that any 1x1
      table reaches this renderer an aggregate over no rows arrives here rather
      than as a blank table cell. An empty headline is as uninformative as a
-     wrong one, so the same em dash covers it. */
+     wrong one, so the same dash covers it. */
   var blank = r[0] === null || r[0] === undefined ||
               (c.key === 'average' && t.columns.length > 1 && Number(r[1]) === 0);
   var extra = t.columns.length > 1
@@ -110,7 +100,7 @@ function scalarHTML(t) {
     : '';
   return '<div class="result-card">' +
     '<div class="result-head">' + esc(c.label) + '</div>' +
-    '<div class="result-big"><span class="big-num">' + (blank ? '&mdash;' : esc(fmtCell(c, r[0]))) + '</span>' + extra + '</div>' +
+    '<div class="result-big"><span class="big-num">' + (blank ? '&ndash;' : esc(fmtCell(c, r[0]))) + '</span>' + extra + '</div>' +
   '</div>';
 }
 
@@ -174,7 +164,6 @@ function resultHTML(node, r) {
 }
 
 /* SHOWING AN OUTPUT IN THE PANEL
-   ---------------------------------------------------------------------------
    Now that a node can be wired after an Output, an Output is often a step
    rather than an answer: someone wanting the 2024 rows of a result wants that
    result narrowed, not the whole result and the narrowed one stacked above each
@@ -262,24 +251,19 @@ function outputFeedsAnother(node) {
 }
 
 /* TICKING A COLUMN ON AN OUTPUT
-   ---------------------------------------------------------------------------
-   The one group of tick boxes in the tool that changes what is on screen and
-   computes nothing, and therefore the one group that must not ask for a run.
-   Which columns are looked at is a property of the view: engine/output.js says so
-   where outputTable() narrows, and the panel hint beside the boxes promises
-   that Copy and Save follow them. A box that answers only after Run Query
-   breaks both promises, and it is what the supervisor hit. His words were that
-   the ticks changed and the output did not, and he was right to read that as
-   the boxes not being for anything.
+   The one group of tick boxes that changes what is on screen and computes
+   nothing, so the one group that must not ask for a run. Which columns are
+   looked at is a property of the view: outputTable() in engine/output.js
+   narrows there, and the hint beside the boxes promises Copy and Save follow
+   them. A box that answers only after Run Query breaks both promises.
 
    So the block is re-dressed from the table the run already kept. No walk of
    the graph, no re-evaluation, and the export entry is updated in the same
-   breath so that Copy and Save stay true to what is drawn rather than to what
-   was drawn when Run was last pressed.
+   breath so Copy and Save stay true to what is drawn.
 
    Returns whether it managed it. False means there is nothing on screen to
    re-dress (never run, or the block belongs to an older run), and the caller
-   falls back to the stale note, which is the honest thing to say then. */
+   falls back to the stale note. */
 function refreshOutputView(node) {
   var entry = exportData[node.id];
   if (!entry || !entry.arrived) return false;
@@ -378,8 +362,8 @@ function runQuery() {
 
       actions = '<div class="result-actions">' +
         exportNameHTML(onode, oi + 1) +
-        '<button class="rbtn" onclick="copyOutput(' + onode.id + ',this)">Copy</button>' +
-        '<button class="rbtn" onclick="saveOutput(' + onode.id + ',this)">Save</button>' +
+        exportActionHTML(onode, 'copy') +
+        exportActionHTML(onode, 'save') +
       '</div>';
     }
 
@@ -415,6 +399,64 @@ function exportNameOf(node, index) {
   return (v && String(v).trim()) ? String(v).trim() : defaultExportName(index);
 }
 
+/* COPY AND SAVE, EACH WITH THE FORMAT BESIDE IT
+   The button is what it always was and does what it always did; the select
+   beside it says in what. Two independent choosers rather than one shared
+   setting, because the right answer differs: a result going into a slide is
+   copied as HTML, and the same result going into a repository is saved as CSV,
+   and a user doing both should not have to change the setting twice.
+
+   The format is NOT a reason to re-run. Like the file name it sits next to, it
+   changes how an answer is written down and not what the answer is, so nothing
+   here marks the results stale. That matters practically: marking stale would
+   hide the very button the user just picked a format for.
+
+   Rendered from EXPORT_FORMATS so a format added there appears in both menus
+   without this function being edited.                                        */
+function exportActionHTML(node, which) {
+  var isCopy = which === 'copy';
+  var current = (isCopy ? copyFormatOf(node) : saveFormatOf(node)).key;
+  var options = EXPORT_FORMATS.map(function(f) {
+    return '<option value="' + f.key + '"' +
+      (f.key === current ? ' selected' : '') + '>' + esc(f.label) + '</option>';
+  }).join('');
+  return '<span class="rbtn-group">' +
+    '<button class="rbtn" onclick="' + (isCopy ? 'copyOutput' : 'saveOutput') +
+      '(' + node.id + ',this)">' + (isCopy ? 'Copy' : 'Save') + '</button>' +
+    '<select class="rfmt" data-export-format="' + node.id + '" ' +
+      'data-export-which="' + which + '" ' +
+      'title="' + (isCopy ? 'What Copy puts on the clipboard'
+                          : 'What Save writes, and the file extension it uses') + '">' +
+      options +
+    '</select>' +
+  '</span>';
+}
+
+/* Delegated on the panel, which is rebuilt on every run, for the reason
+   onExportNameInput() gives. The extension beside the file name is rewritten in
+   place rather than by re-rendering the block: re-rendering would rebuild the
+   result table to change two characters, and the panel is the one part of this
+   tool whose redraw cost is visible on a long table. */
+function onExportFormatChange(e) {
+  var el = e.target;
+  if (!el || !el.getAttribute) return;
+  var id = el.getAttribute('data-export-format');
+  if (!id) return;
+  var node = findNode(parseInt(id, 10));
+  if (!node) return;
+  node.cfg = node.cfg || defaultCfg(node.type);
+
+  if (el.getAttribute('data-export-which') === 'copy') {
+    node.cfg.copyAs = el.value;
+    return;
+  }
+  node.cfg.saveAs = el.value;
+  var block = el.closest ? el.closest('.result-block') : null;
+  var ext = block ? block.querySelector('.export-ext') : null;
+  if (ext) ext.textContent = saveFormatOf(node).ext;
+  // No markStale() here, by design. See the note above.
+}
+
 function exportNameHTML(node, index) {
   return '<label class="export-name" ' +
     'title="File name for Save. Leave blank to use the default.">' +
@@ -422,7 +464,7 @@ function exportNameHTML(node, index) {
       'placeholder="' + esc(defaultExportName(index)) + '" ' +
       'value="' + esc((node.cfg && node.cfg.filename) || '') + '" ' +
       'data-export-name="' + node.id + '">' +
-    '<span class="export-ext">.csv</span>' +
+    '<span class="export-ext">' + saveFormatOf(node).ext + '</span>' +
   '</label>';
 }
 

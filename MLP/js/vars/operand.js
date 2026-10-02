@@ -1,37 +1,26 @@
 /* vars/operand.js: One settable value in a config panel, which is either typed
-   or taken from a variable.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   THE OPERAND SLOT
-   ============================================================================
+   or taken from a variable. */
+/* THE OPERAND SLOT
    Every place a variable may be used goes through here, so the gesture is the
    same on a filter's threshold, on either end of a range, on a Take's row count
    and on a Histogram's band width. A panel asks for the slot and hands it the
    control it would otherwise have drawn; the slot decides whether to draw it.
 
    TWO STATES, ONE CELL
-   ---------------------------------------------------------------------------
    Typed:  the panel's own control, with a small yellow chip beside it. The chip
-           is the only new thing on a panel, and it is only there while there is
-           a variable to bind, so a query that uses none looks exactly as it did.
+           is only there while there is a variable to bind, so a query using
+           none looks exactly as it did.
    Bound:  a select naming the variables, in the control's place, with the value
-           it currently carries underneath it. The control is replaced rather
-           than disabled beside it, because two boxes offering the same number
-           leave the user to work out which one is being obeyed.
+           it carries underneath. The control is replaced rather than disabled
+           beside it, since two boxes offering the same number leave the user to
+           work out which is being obeyed.
 
-   Unbinding is the first option in that select rather than a second button. It
-   is the same control answering the same question ("where does this value come
-   from"), and the typed value is still in the model, so going back finds what
-   was there rather than a default.
+   Unbinding is the first option in that select rather than a second button: it
+   is the same control answering the same question. The typed value stays in the
+   model, so going back finds what was there rather than a default.
 
-   WHY THE VALUE IS PRINTED UNDER THE SELECT
-   ---------------------------------------------------------------------------
-   The name alone does not say what the node will do, and the menu that does say
-   is shut nearly all the time. A panel here states what it is about to do
-   everywhere else, and an operand reading "v1" with no number beside it would
-   be the one control that does not.                                    */
+   The value is printed under the select because the name alone does not say
+   what the node will do, and the menu that would is shut nearly all the time. */
 
 /* nodeId   the node whose panel this is
    holder   where the binding lives: the node's cfg, or one criterion

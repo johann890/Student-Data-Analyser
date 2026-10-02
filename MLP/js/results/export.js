@@ -1,39 +1,27 @@
-/* results/export.js: Copy, download and the one serialiser behind both.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   EXPORT: One serialiser, because there is one data shape
-   ============================================================================ */
+/* results/export.js: Copy, download, and the one serialiser behind both,
+   because there is one data shape. */
 
 /* THE PANEL NEVER OUTLIVES THE GRAPH IT DESCRIBES
-   ---------------------------------------------------------------------------
-   Deleting nodes used to leave whatever was in the results panel exactly where
-   it was. A tester loaded a saved query, deleted every node, and was left with
-   "Loaded 4 nodes and 3 connections. ... Press Run Query to evaluate it."
-   beside a canvas reading "Add nodes using the toolbar above": the two halves
-   of the screen disagreeing about whether there was a query at all, and the
-   half that was wrong being the one holding the instruction.
+   Deleting nodes used to leave the results panel untouched. A tester loaded a
+   saved query, deleted every node, and was left with "Loaded 4 nodes and 3
+   connections. ... Press Run Query to evaluate it." beside a canvas reading
+   "Add nodes using the toolbar above".
 
-   markStale() could not catch it. It returns early once the results are already
-   stale, which is the right shortcut for the note it adds and the wrong one for
-   everything else in the panel. A load message was never fresh to begin with,
-   so nothing was watching it.
+   markStale() could not catch it: it returns early once the results are already
+   stale, which is right for the note it adds and wrong for everything else in
+   the panel. A load message was never fresh, so nothing was watching it.
 
-   Two rules, both about ownership rather than about staleness:
+   Two rules, both about ownership rather than staleness:
 
      A block belongs to an Output. When that Output is gone the block is an
      answer attributed to a node that does not exist, so it goes, and its export
-     entry goes with it: Copy and Save must not write out a table whose node was
-     deleted.
+     entry with it: Copy and Save must not write out a deleted node's table.
 
-     An empty canvas has no query to be stale about. There is nothing left to
-     re-run, so the panel goes back to the line it opens with rather than asking
-     for a run that cannot happen.
+     An empty canvas has no query to be stale about, so the panel goes back to
+     the line it opens with rather than asking for a run that cannot happen.
 
-   A graph that still has nodes in it keeps its message. "Loaded 4 nodes" is a
-   statement about something that happened, and deleting one of them afterwards
-   does not make it untrue.                                                   */
+   A graph that still has nodes keeps its message. "Loaded 4 nodes" is a
+   statement about something that happened. */
 var PANEL_START = 'Run a query to see results';
 
 function panelStartHTML() { return '<div class="placeholder">' + PANEL_START + '</div>'; }
@@ -108,24 +96,20 @@ function timeStamp(fileSafe) {
 }
 
 /* QUOTING IS DECIDED AGAINST THE SEPARATOR, NOT AGAINST A COMMA
-   ---------------------------------------------------------------------------
    This used to test for a comma whatever it was separating with, which was
    right for the file and wrong for the clipboard. Copy writes tab separated
-   text, so a cell containing a TAB split into two cells and a cell containing a
-   newline split into two rows, and the paste landed in Excel or Word one column
-   out from there on with nothing to show why.
+   text, so a cell containing a TAB split into two cells and one containing a
+   newline split into two rows, and the paste landed in Excel or Word a column
+   out from there on.
 
-   It is reachable without any odd data: an input name is typed into a text box
-   and becomes a column header, and a name pasted in from somewhere else can
-   carry a tab. A three-column table came out with rows of four, one and three
-   fields.
+   It is reachable without odd data: an input name is typed into a text box and
+   becomes a column header, and a name pasted from elsewhere can carry a tab. A
+   three-column table came out with rows of four, one and three fields.
 
    So the rule is RFC 4180's, asked about whatever is actually dividing the
    cells: quote when the cell holds the separator, a quote mark or a line break,
    and double the quote marks inside. A cell with none of those is untouched,
-   which is nearly all of them, so an ordinary copy is byte for byte what it was.
-   Excel, Word and Numbers all honour quotes in pasted text, so the quoting
-   survives the one trip it has to. */
+   which is nearly all of them. */
 function quotedCell(v, sep) {
   var s = String(v);
   var needs = s.indexOf(sep) !== -1 || s.indexOf('"') !== -1 ||
@@ -138,7 +122,6 @@ function quotedCell(v, sep) {
 function csvCell(v) { return quotedCell(v, ','); }
 
 /* THE BYTE ORDER MARK, AND WHY ONLY THE CSV GETS ONE
-   ---------------------------------------------------------------------------
    Excel on Windows reads a .csv as the machine's own code page unless the file
    says otherwise, and the only thing it accepts as saying otherwise is a UTF-8
    BOM. Without one, a name carrying a macron or an accent arrives mojibaked,
@@ -160,6 +143,149 @@ function serialiseTable(t, sep, quote) {
       return t.columns.map(function(c, i){ return cell(exportCell(c, r[i])); }).join(sep);
     }))
     .join('\n');
+}
+
+/* THE FORMATS A RESULT CAN LEAVE IN
+   One table, four rows, because the four differ only in how a table becomes
+   text. Everything else about exporting (which table, what it is called, the
+   staleness guard, the clipboard's two attempts) is written once elsewhere.
+
+   CSV reaches Excel, which was the requirement. The other two are where a
+   result usually ends up, and CSV reaches both badly:
+
+     PowerPoint has no "convert text to table", so pasted tab separated text
+     lands as a text box. An HTML table pastes AS a table, because that is the
+     flavour PowerPoint and Word look for first.
+
+     LaTeX cannot read a CSV without a package, and the characters this tool
+     puts in its own headers are active there. A CSV cannot be escaped for LaTeX
+     without breaking it for Excel, which is why this is a separate format.
+
+   `flavour` is the clipboard type the text should be offered as. Only the HTML
+   format has one worth naming.
+
+   `filePrefix` exists for one member: see UTF8_BOM, where the marker belongs on
+   a file and not on a clipboard. */
+var EXPORT_FORMATS = [
+  { key:'tsv',   label:'Text (tabs)',  ext:'.tsv',
+    text: function(t){ return serialiseTable(t, '\t', true); } },
+  { key:'csv',   label:'CSV (Excel)',  ext:'.csv', filePrefix: UTF8_BOM,
+    text: function(t){ return serialiseTable(t, ',', true); } },
+  { key:'html',  label:'HTML table',   ext:'.html', flavour:'text/html',
+    text: function(t){ return htmlTable(t); } },
+  { key:'latex', label:'LaTeX table',  ext:'.tex',
+    text: function(t){ return latexTable(t); } }
+];
+
+var COPY_FORMAT_DEFAULT = 'tsv';   // what Copy has always written
+var SAVE_FORMAT_DEFAULT = 'csv';   // what Save has always written
+
+function exportFormat(key, fallback) {
+  for (var i = 0; i < EXPORT_FORMATS.length; i++) {
+    if (EXPORT_FORMATS[i].key === key) return EXPORT_FORMATS[i];
+  }
+  return exportFormat(fallback || COPY_FORMAT_DEFAULT, COPY_FORMAT_DEFAULT);
+}
+
+// The format a given Output is set to, which is the default until it is changed.
+// Read through here rather than off cfg, so an unrecognised key in a
+// hand-edited file falls back the way every other setting in this tool does.
+function copyFormatOf(node) {
+  return exportFormat(node && node.cfg ? node.cfg.copyAs : null, COPY_FORMAT_DEFAULT);
+}
+function saveFormatOf(node) {
+  return exportFormat(node && node.cfg ? node.cfg.saveAs : null, SAVE_FORMAT_DEFAULT);
+}
+
+/* AN HTML TABLE, FOR PASTING INTO A SLIDE
+   Borders as attributes rather than a stylesheet, because the receiving
+   application keeps the ones it understands and a class pointing at CSS that
+   did not travel is no border at all. Numbers are aligned right the way the
+   panel aligns them, so the pasted table reads as the one on screen did.    */
+function htmlTable(t) {
+  // A heading is aligned the way its column is, which is the rule the panel
+  // follows on screen; a right-aligned column of numbers under a left-aligned
+  // heading is the one thing that makes a pasted table look unlike the result
+  // it was copied from.
+  var alignOf = function(c) {
+    return (c.type === COLTYPE.NUMBER) ? ' align="right"' : ' align="left"';
+  };
+  var head = t.columns.map(function(c) {
+    return '<th' + alignOf(c) + '>' + esc(c.label) + '</th>';
+  }).join('');
+  var body = t.rows.map(function(r) {
+    return '<tr>' + t.columns.map(function(c, i) {
+      return '<td' + alignOf(c) + '>' + esc(exportCell(c, r[i])) + '</td>';
+    }).join('') + '</tr>';
+  }).join('\n');
+  return '<table border="1" cellspacing="0" cellpadding="4">\n' +
+         '<thead><tr>' + head + '</tr></thead>\n' +
+         '<tbody>\n' + body + '\n</tbody>\n</table>';
+}
+
+/* LATEX, WHERE EVERY CHARACTER THIS TOOL WRITES HAS TO BE ACCOUNTED FOR
+   Ten characters are active in LaTeX, and this tool generates three of them in
+   its own column headers without anybody typing one: `#` from a node's name,
+   `%` from a measure (spelled out now) and `_` from a column key. Student data
+   supplies more: an ampersand in a course title would end a cell early.
+
+   The backslash is taken out first and put back last, through a placeholder,
+   which is the only ordering that works. Replacing it in place with
+   `\textbackslash{}` means the brace pass that follows escapes the braces that
+   replacement just introduced, and the output typesets as a stray "{}". Any NUL
+   already in the text is dropped first so it cannot be mistaken for the
+   placeholder.
+
+   Two characters are not active but are not ASCII either, both from this tool:
+   the middot in a joined column's name and the division sign in the ratio
+   measure's. They are mapped to maths the document can typeset whatever its
+   input encoding, which keeps the output plain ASCII.
+
+   A newline inside a cell becomes a space, since a plain `tabular` cell cannot
+   hold a line break without a p-column. */
+var LATEX_BACKSLASH = '\u0000';
+
+function latexEscape(v) {
+  return String(v)
+    .replace(/\u0000/g, '')
+    .replace(/\\/g, LATEX_BACKSLASH)
+    .replace(/([&%$#_{}])/g, '\\$1')
+    .replace(/~/g, '\\textasciitilde{}')
+    .replace(/\^/g, '\\textasciicircum{}')
+    .replace(/\u00b7/g, '$\\cdot$')
+    .replace(/\u00f7/g, '$\\div$')
+    .replace(/[\r\n]+/g, ' ')
+    .split(LATEX_BACKSLASH).join('\\textbackslash{}');
+}
+
+/* `\hline` rather than booktabs' nicer rules, so this compiles in a document
+   that loads no packages at all. A reader who has booktabs can swap three
+   lines; a reader who does not would otherwise get an error instead of a table.
+
+   The leading comment says what the fragment is and what it needs, because this
+   is the one format whose file is not openable on its own: it is meant to be
+   pasted into a document that already exists. */
+function latexTable(t) {
+  var spec = t.columns.map(function(c) {
+    return c.type === COLTYPE.NUMBER ? 'r' : 'l';
+  }).join('');
+  var head = t.columns.map(function(c) {
+    return '\\textbf{' + latexEscape(c.label) + '}';
+  }).join(' & ');
+  var body = t.rows.map(function(r) {
+    return t.columns.map(function(c, i) {
+      return latexEscape(exportCell(c, r[i]));
+    }).join(' & ') + ' \\\\';
+  }).join('\n');
+  return '% Student Data Analyser export. Paste into a LaTeX document; ' +
+           'it needs no extra packages.\n' +
+         '\\begin{tabular}{' + spec + '}\n' +
+         '\\hline\n' +
+         head + ' \\\\\n' +
+         '\\hline\n' +
+         (body ? body + '\n' : '') +
+         '\\hline\n' +
+         '\\end{tabular}';
 }
 
 // Compare with per-branch detail exports long: one row per branch row, branch
@@ -244,8 +370,46 @@ function legacyCopy(text) {
   } catch (err) { return false; }
 }
 
-function writeClipboard(text, btn) {
+/* COPYING AS SOMETHING OTHER THAN PLAIN TEXT
+   An application decides what a paste becomes by asking the clipboard which
+   flavours it holds. PowerPoint and Word ask for text/html first, which is the
+   whole reason the HTML format exists: the same table pasted as text/plain
+   arrives as a text box.
+
+   Two routes, because the modern one is not always available. ClipboardItem
+   needs a secure context, and this tool is opened off the filesystem, which is
+   exactly the case legacyCopy() was already written for. The fallback sets both
+   flavours on the copy event instead, which works wherever execCommand does.
+
+   The plain text is always offered alongside, never instead: an application with
+   no use for the markup still gets something it can paste, and that is the one
+   thing neither route is allowed to lose. */
+function richCopy(text, html) {
+  var handler = function(e) {
+    e.clipboardData.setData('text/plain', text);
+    e.clipboardData.setData('text/html', html);
+    e.preventDefault();
+  };
+  document.addEventListener('copy', handler);
+  try { return legacyCopy(text); }
+  finally { document.removeEventListener('copy', handler); }
+}
+
+function writeClipboard(text, btn, html) {
   function done(ok) { flashBtn(btn, ok ? 'Copied ✓' : 'Copy failed'); }
+
+  if (html && typeof ClipboardItem !== 'undefined' &&
+      navigator.clipboard && navigator.clipboard.write) {
+    try {
+      navigator.clipboard.write([new ClipboardItem({
+        'text/html':  new Blob([html],  { type:'text/html'  }),
+        'text/plain': new Blob([text], { type:'text/plain' })
+      })]).then(function(){ done(true); }, function(){ done(richCopy(text, html)); });
+      return;
+    } catch (err) { done(richCopy(text, html)); return; }
+  }
+  if (html) { done(richCopy(text, html)); return; }
+
   if (navigator.clipboard && navigator.clipboard.writeText) {
     navigator.clipboard.writeText(text).then(function(){ done(true); },
                                             function(){ done(legacyCopy(text)); });
@@ -255,36 +419,29 @@ function writeClipboard(text, btn) {
 }
 
 /* WRITING A FILE FROM A PAGE THAT IS NOT BEING SERVED.
-
-   This tool is opened from a file:// URL with no build step, and that makes
-   saving harder than it looks. Three separate things went wrong here, and the
-   first two fixes each traded one failure for another:
+   The tool is opened from a file:// URL with no build step. Three things went
+   wrong here, and the first two fixes each traded one failure for another:
 
    1. The anchor was removed and the object URL revoked 1s after .click().
       WebKit starts a download asynchronously and reads the blob AFTER the
-      handler returns, so a revoke on a timer is a race against the browser.
-      Losing it produces exactly "WebKitBlobResource error 1" on a blob:null
-      URL:  The blob is not missing because the origin is opaque, it is missing
-      because we threw it away while WebKit was still fetching it.
+      handler returns, so a revoke on a timer races the browser. Losing that
+      race gives "WebKitBlobResource error 1" on a blob:null URL.
 
-   2. Swapping the blob for a data: URI avoided the race but introduced a size
-      ceiling. A saved query is 2-10KB and rode under it; a CSV export of a year
-      file is ~320KB, and ~460KB once percent-encoded into a URL. That is why
-      Save Query worked and Save CSV did not. The same code, told to carry
-      fifty times as much.
+   2. A data: URI avoided the race but introduced a size ceiling. A saved query
+      is 2-10KB and rode under it; a CSV export of a year file is ~320KB, and
+      ~460KB once percent-encoded. That is why Save Query worked and Save CSV
+      did not.
 
    3. A CSV announced as text/csv is something Safari knows how to display, so
-      it displays it: the tab fills with rows and no file is written. WebKit
-      weighs its own idea of the type against the download attribute and wins.
+      it displays it: the tab fills with rows and no file is written.
 
    So: a blob, which has no size ceiling and does not inflate; typed as
-   application/octet-stream, which leaves nothing to render, so a download is
-   the only thing left to do with the bytes; and torn down long after the click
-   rather than in a race with it. The 40 second delay is what FileSaver.js
-   settled on for the same reason.
+   application/octet-stream, which leaves nothing to render; and torn down long
+   after the click rather than in a race with it. The 40 seconds is what
+   FileSaver.js settled on for the same reason.
 
    Nothing downstream reads that type. The extension on the download attribute
-   decides the file on disk and what opens it, and that is still .csv. */
+   decides the file on disk, and that is still .csv. */
 var FORCE_DOWNLOAD_TYPE = 'application/octet-stream';
 var DOWNLOAD_TEARDOWN_MS = 40000;
 
@@ -315,12 +472,18 @@ function exportEntry(id, btn) {
   return e;
 }
 
-/* Quoted now, where it used to be raw. No BOM: this is text on a clipboard
-   rather than bytes on disk, and the receiving application already knows the
-   encoding it was handed. */
+/* Quoted now, where it used to be raw. No BOM whatever the format: this is text
+   on a clipboard rather than bytes on disk, and the receiving application
+   already knows the encoding it was handed.
+
+   The format comes off the Output, so an unset one is tab separated text and
+   every query written before the dropdown existed copies what it always did. */
 function copyOutput(id, btn) {
   var e = exportEntry(id, btn);
-  if (e) writeClipboard(serialiseTable(exportTableFor(e), '\t', true), btn);
+  if (!e) return;
+  var fmt = copyFormatOf(findNode(id));
+  var text = fmt.text(exportTableFor(e));
+  writeClipboard(text, btn, fmt.flavour === 'text/html' ? text : null);
 }
 
 /* The name written is the name typed, with nothing appended. A timestamp used
@@ -337,8 +500,13 @@ function copyOutput(id, btn) {
 function saveOutput(id, btn) {
   var e = exportEntry(id, btn);
   if (!e) return;
-  var name = safeName(e.name) + '.csv';
-  flashBtn(btn, downloadFile(name, UTF8_BOM + serialiseTable(exportTableFor(e), ',', true))
+  /* The extension follows the format rather than being fixed at .csv, because
+     the extension is what decides which application opens the file, and a LaTeX
+     fragment named .csv opens in Excel. `filePrefix` carries the BOM for the one
+     format that wants one. */
+  var fmt = saveFormatOf(findNode(id));
+  var name = safeName(e.name) + fmt.ext;
+  flashBtn(btn, downloadFile(name, (fmt.filePrefix || '') + fmt.text(exportTableFor(e)))
     ? 'Saved ✓' : 'Save failed');
 }
 

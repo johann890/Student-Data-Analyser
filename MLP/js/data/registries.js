@@ -1,21 +1,5 @@
 /* data/registries.js: The dataset registries, the grade scale, and the deterministic
-   cohort the test hook installs in place of real files.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   DATA: The archive, and the one type that travels on a wire
-   ============================================================================
-   The dataset registries, file admission, the parser, what a Source holds, and
-   the Table type every node hands to the next. Nothing in here touches the DOM
-   except failSource(), which asks for a repaint after it has said no.
-   ============================================================================
-   Part of the query builder. LOAD ORDER MATTERS, and the order is the script
-   list at the foot of index.html. These are deliberately NOT ES modules; the tool is
-   opened from Finder at file://, where module scripts are fetched with CORS
-   against an opaque origin and refused. Classic scripts sharing one global
-   scope are what works there, which is why nothing here is wrapped in an IIFE
-   and why a name declared in one file is visible in the next.                */
+   cohort the test hook installs in place of real files. */
 
 /* PALETTE OF EDGE COLOURS (one per source/path) */
 var EDGE_PALETTE = ['#ffffff','#30d87a','#4aaff0','#e060b0','#a0d040','#9080e0'];
@@ -26,26 +10,22 @@ var EDGE_PALETTE = ['#ffffff','#30d87a','#4aaff0','#e060b0','#a0d040','#9080e0']
 var EDGE_OFF_COLOR = '#6a6a72';
 var edgeColorIndex = 0;
 
-/* ============================================================================
-   THE DATASET REGISTRIES
-   ============================================================================
+/* THE DATASET REGISTRIES
    Six arrays and one map, declared empty and filled from whatever files the
-   Source nodes are given. Nothing is generated at start-up any more: the tool
-   opens with no data at all, and a Source that has not been handed its files
-   refuses to run rather than quietly answering about a fictional cohort.
+   Source nodes are given. Nothing is generated at start-up: the tool opens with
+   no data, and a Source that has not been handed its files refuses to run
+   rather than answering about a fictional cohort.
 
-   They are MUTATED IN PLACE, never reassigned, and that is load-bearing.
    STUDENT_COLUMNS captures `values:SPECS` and `values:YEARS` by reference, and
    enrolmentColumns() captures SUBJECTS and COURSES the same way, so a Filter
-   dropdown offers whatever is currently loaded without a single one of those
-   definitions knowing that data arrives from a file. Reassigning would leave
-   every column pointing at the empty array it was built from.
+   dropdown offers whatever is loaded without those definitions knowing the data
+   came from a file. Reassigning would leave every column pointing at the empty
+   array it was built from.
 
-   They are the UNION across every Source. Rows stay per-Source (two Sources
-   holding two different exports each answer about their own), but a dropdown
-   that offered only one Source's courses would be wrong for the graph as a
-   whole, and the alternative (a per-node schema pass) buys nothing: offering a
-   course no rows contain costs an empty result, which is the honest answer.  */
+   They are the UNION across every Source. Rows stay per-Source, but a dropdown
+   offering only one Source's courses would be wrong for the graph as a whole,
+   and offering a course no rows contain costs an empty result, which is the
+   honest answer. */
 var STUDENTS       = [];   // every loaded student, all Sources
 var SPECS          = [];   // maj1 codes, as the archive writes them
 var DEGREES        = [];   // deg1 codes: BSC, BEHONS, BCA
@@ -137,7 +117,6 @@ function courseLevel(code) {
 }
 
 /* SYNTHETIC DATASET: Reachable only from the test harness
-   ---------------------------------------------------------------------------
    This was the dataset the tool shipped with, and it is now what the suites run
    against: several hundred assertions are written in terms of its forty
    students a year, its six specialisation names and its seeded GPAs, and

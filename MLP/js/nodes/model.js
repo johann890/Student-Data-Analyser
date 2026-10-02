@@ -1,31 +1,24 @@
 /* nodes/model.js: Input ports and their geometry, node defaults, and adding,
-   removing and clearing nodes.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   INPUT PORTS
-   ============================================================================
-   A connection now names the input it lands on, not just the node. Previously
-   two wires into one node were silently unioned: the merge happened in
-   evaluateGraph, was invisible on the canvas, and (as the histogram case
-   showed) could discard rows without saying so. A node now declares its
-   inputs, and each wire occupies one.
+   removing and clearing nodes. */
+/* INPUT PORTS
+   A connection names the input it lands on, not just the node. Previously two
+   wires into one node were silently unioned: the merge happened in
+   evaluateGraph, was invisible on the canvas, and could discard rows without
+   saying so. A node declares its inputs and each wire occupies one.
 
    Two arities:
-     single:  Exactly one wire. A second is refused at the point of wiring.
-     multi:   Many wires, because taking several tables IS the node's job.
+     single:  exactly one wire. A second is refused at the point of wiring.
+     multi:   many wires, because taking several tables IS the node's job.
               Combine and Compare, and nothing else.
 
    The implicit union is gone with it: a node with one input has one table, so
    there is nothing to reconcile. Where several tables must become one, the user
-   says so by wiring a Combine, which is the node whose settings decide how.
+   wires a Combine, whose settings decide how.
 
-   Declaring ports as data rather than as branches is what lets the geometry,
-   the wiring rules, the evaluator and the schema pass all agree about a node
-   they have never heard of. SelectFor (data + labels) and any future two-input
-   node are an entry in this table plus their implementation: Nothing here
-   changes.                                                                   */
+   Ports are data rather than branches, which is what lets the geometry, the
+   wiring rules, the evaluator and the schema pass all agree about a node they
+   have never heard of. A future two-input node is an entry in this table plus
+   its implementation. */
 
 var SINGLE_IN = [{ key:'in', label:'In' }];
 
@@ -102,9 +95,7 @@ function freePortsOn(node) {
   });
 }
 
-/* ============================================================================
-   PORT GEOMETRY
-   ============================================================================
+/* PORT GEOMETRY
    Ports are spaced down the left edge of the shape. One port sits at mid-height,
    which is exactly where the single entry point used to be, so a one-input node
    is pixel-identical to what it was before this change, and every existing
@@ -164,30 +155,26 @@ function resolveDirection(a, b) {
 }
 
 /* WHY A DROP DID NOT WIRE
-   ---------------------------------------------------------------------------
-   Refusing in silence was the complaint. Two nodes are dragged together, nothing
-   happens, and the tool gives no account of itself, so the user cannot tell
-   whether they missed, whether the pair is illegal, or whether the thing is
-   broken. The ghost arrow already answers the case that WILL wire, before the
-   drop. The case with no feedback at all was the one that needed it.
+   Refusing in silence was the complaint: two nodes are dragged together, nothing
+   happens, and the user cannot tell whether they missed, whether the pair is
+   illegal, or whether the tool is broken. The ghost arrow already answers the
+   case that WILL wire.
 
-   The reasons are ordered by what the user can act on rather than by how the
-   check happens to be written:
+   The reasons are ordered by what the user can act on:
 
-     1. Already wired. The wire is on screen saying so, which is a better answer
-        than any sentence, so this one is left unsaid. The exception is Combine
-        and Compare, whose ports accept more wires: there a ghost arrow appears
-        and the drop is still refused as a duplicate, so the preview made a
-        promise that has to be explained. onUp() says that one.
-     2. Every input is taken. The types are compatible, so what the user needs
-        is which input is occupied and how to free it.
-     3. Nothing wires into a Source. The only type rule anyone meets in practice,
-        phrased as what a Source is rather than as a quotation of the rule.
+     1. Already wired. The wire on screen says so, so this one is left unsaid.
+        The exception is Combine and Compare, whose ports accept more wires:
+        there a ghost arrow appears and the drop is still refused as a
+        duplicate, so the preview made a promise that needs explaining. onUp()
+        says that one.
+     2. Every input is taken. The types are compatible, so what is needed is
+        which input is occupied and how to free it.
+     3. Nothing wires into a Source. Phrased as what a Source is rather than as
+        a quotation of the rule.
      4. Anything else, named plainly. A guard for a node type added later.
 
-   Written as a function returning a sentence rather than as branches inside the
-   drop handler, so a test can ask for the reason without simulating a pointer,
-   and so the wording sits beside the rules it is explaining.                 */
+   A function returning a sentence rather than branches inside the drop handler,
+   so a test can ask for the reason without simulating a pointer. */
 
 /* How far apart the two shapes' wiring points are, ignoring which ports are
    free. nearestFreePort() cannot answer for a pair that has no free port, and a
@@ -358,7 +345,13 @@ function defaultCfg(type) {
      hides the block and changes no answer, which is why nothing marks the run
      stale when it changes. An Output used purely as a step in a chain is what
      it is for. */
-  if (type === 'output')  return { show:'rows', filename:'', cols:null, panel:true };
+  /* `copyAs` and `saveAs` are the export formats, empty meaning "the one this
+     tool always used": tab separated text for Copy, CSV for Save. Written out
+     rather than left absent, for the reason at the top of this function, and
+     resolved through copyFormatOf()/saveFormatOf() so an unknown value in a
+     hand-edited file falls back instead of producing no export at all. */
+  if (type === 'output')  return { show:'rows', filename:'', cols:null, panel:true,
+                                   copyAs:'', saveAs:'' };
   return {};
 }
 
@@ -416,23 +409,20 @@ function rangeKey(field) { return field + ':max'; }
 
 /* THE CHOSEN LIST
    Stored under a derived key in the same per-field map the second bound uses
-   ("courses.code" holds the single value and "courses.code:list" the chosen
-   set), for the same three reasons: no change to the criterion shape, none to
-   the save format, and none to the guard in mergeCfg, which only requires that
-   `values` be an object and passes whatever is under it through untouched.
+   ("courses.code" holds the single value, "courses.code:list" the chosen set).
+   That means no change to the criterion shape, none to the save format, and
+   none to the guard in mergeCfg, which only requires `values` to be an object.
 
    Keeping the single value under the plain key is what makes switching
-   operators continuous, exactly as it is for a range. Picking three courses,
-   going back to "is", then returning to "is one of" finds the three still
-   ticked rather than a cleared band.
+   operators continuous, exactly as for a range: picking three courses, going
+   back to "is", then returning to "is one of" finds the three still ticked.
 
    Two shapes are accepted on the way in. An ARRAY is what the tick boxes write.
    A STRING is what the free-text control writes, stored as typed and split on
    read, the same arrangement Histogram uses for its bin width and Take for its
    N: a half-typed "COMP103, SW" has to survive in the model or the field
    re-renders under the user mid-word. It also makes a hand-edited query file
-   forgiving, which matters because this is the one setting somebody might
-   plausibly want to paste a list into. */
+   forgiving. */
 function listKey(field) { return field + ':list'; }
 
 function critList(c, field, col) {
@@ -670,25 +660,21 @@ function freeSpotNear(cx, cy) {
 }
 
 /* THE OFF SWITCH
-   ---------------------------------------------------------------------------
-   A node that is off stays wired and keeps its settings; it simply stops doing
-   its job and passes its input straight through. The alternative people reach
-   for is deleting the node, which loses the settings and leaves two loose ends
-   to reconnect, so the question "what does this look like without the filter"
-   costs a rebuild to ask and another to undo. It should cost one keystroke.
+   A node that is off stays wired and keeps its settings, and passes its input
+   straight through. The alternative is deleting it, which loses the settings
+   and leaves two loose ends, so "what does this look like without the filter"
+   costs a rebuild to ask and another to undo.
 
    Source is refused. Every other type has an input to pass through, so "off"
-   has one obvious meaning; a Source has none, and the only thing it could mean
-   there is "emit nothing", which is the broken query the switch exists to
-   avoid. Refusing it is better than offering a switch that breaks the graph.
+   has one obvious meaning; for a Source it could only mean "emit nothing",
+   which is the broken query the switch exists to avoid.
 
-   Output is allowed and means something slightly different: it drops out of the
-   results panel. That is the same idea read at the end of a chain rather than
-   in the middle of one, and it is how a whole branch gets switched off.
+   Output is allowed and means it drops out of the results panel, which is how a
+   whole branch gets switched off.
 
    Stored as a flag that is absent when false, so a query saved before this
-   existed loads with every node on, and a saved file does not grow a line of
-   "off": false for every node in it. */
+   existed loads with every node on, and a saved file does not grow an
+   "off": false line per node. */
 function nodeCanBeOff(node) {
   return !!node && node.type !== 'source';
 }
@@ -796,7 +782,6 @@ function clearAll() {
   setOutput(panelStartHTML());
 }
 /* CLEAR CONFIRMATION
-   ---------------------------------------------------------------------------
    Clear is the only control in the bar that destroys work with no way back:
    the graph goes, and the loaded data goes with it, because the Sources
    holding it stop existing. It also sits in the same run of buttons as Help
@@ -956,7 +941,7 @@ function removeStat(nodeId, idx) {
   focusCfg(nodeId);
 }
 
-/* ---------------------------------------------------- THE PICKERS THEMSELVES
+/* THE PICKERS THEMSELVES
 
    Two inputs, not one, because the two steps are genuinely ordered: a year file
    cannot be parsed without the column list. `accept` is set on the header input

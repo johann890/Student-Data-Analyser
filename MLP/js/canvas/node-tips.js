@@ -1,35 +1,22 @@
-/* canvas/node-tips.js: What a node does, after a deliberate hover on its shape.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   WHAT IS THIS NODE
-   ============================================================================
-   A node is a coloured shape with one word on it, and one word is not enough to
-   tell Aggregate Columns from Aggregate Rows, or Select from Select For, on a
-   canvas somebody else built. The menus say what each one does at the moment it
-   is added and then that sentence is gone; this is the same sentence, available
-   later, at the node itself.
+/* canvas/node-tips.js: What a node does, after a deliberate hover on its shape. */
+/* WHAT IS THIS NODE
+   A node is a coloured shape with one word on it, and one word does not separate
+   Aggregate Columns from Aggregate Rows, or Select from Select For, on a canvas
+   somebody else built. The menus say what each does as it is added and then that
+   sentence is gone; this is the same sentence, at the node, later.
 
-   THREE SECONDS
-   ---------------------------------------------------------------------------
-   Long, deliberately, and much longer than the 450ms the edge preview waits on.
-   The edge preview answers a question the user went looking for, by resting on
-   a line they had to aim at. A node shape is the thing they drag, double-click
-   and cross constantly on the way to somewhere else, so a short delay would put
-   a panel over the canvas during ordinary work. Three seconds is longer than
-   any of that: a pointer still on a shape after three seconds is not passing
-   through it.
+   THREE SECONDS, much longer than the 450ms the edge preview waits. The edge
+   preview answers a question the user went looking for by resting on a line
+   they had to aim at. A node shape is dragged, double-clicked and crossed
+   constantly on the way to somewhere else, so a short delay would put a panel
+   over the canvas during ordinary work. A pointer still on a shape after three
+   seconds is not passing through it. That is also why there is no fade:
+   something that took three seconds to ask for should appear when asked for.
 
-   It is also why there is no fade and no animation. Something that took three
-   seconds to ask for should appear when it is asked for.
-
-   A SIBLING OF THE SCALED LAYER
-   ---------------------------------------------------------------------------
-   Like the edge preview and the refusal note, and for the same reason: the tip
-   has to stay readable at 30% zoom, which is exactly the zoom at which a shape
-   is too small to read and the question is most likely to be asked. The cost is
-   that its anchor is in world coordinates and has to be projected.            */
+   A sibling of the scaled layer, like the edge preview and the refusal note, so
+   it stays readable at 30% zoom, which is exactly where a shape is too small to
+   read. The cost is that its anchor is in world coordinates and has to be
+   projected. */
 
 var NODE_TIP_DELAY = 3000;
 
@@ -162,7 +149,6 @@ function placeNodeTip() {
 }
 
 /* ONE LISTENER, NOT TWO PER SHAPE PER RENDER
-   ---------------------------------------------------------------------------
    Delegated from the canvas for the reason onConfigInput is: render() throws
    every shape away, and listeners attached to them go with it, so a rebuild
    under a stationary pointer would leave the tip armed against an element that
