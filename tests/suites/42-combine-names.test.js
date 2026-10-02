@@ -215,6 +215,116 @@ module.exports = ({ describe, test }) => {
     });
   });
 
+  /* WHAT THE HEADER CANNOT SAY, THE LOG SAYS
+     -------------------------------------------------------------------------
+     Three per-year branches joined on course give three columns that all began
+     as Count, and the header keeps them apart asymmetrically: the base's stays
+     bare while the others take their node's automatic name. Renaming the base's
+     would make them symmetric and would also change the header of every saved
+     query that joined unnamed inputs, which is the one thing the block above
+     exists to prevent. So the log points at the control that fixes it instead,
+     and these tests pin that the nudge appears exactly when naming would help. */
+  describe('the log names what the header cannot', () => {
+    const joinLog = h => {
+      h.w.runQuery();
+      return h.entry(h.o.id).log.join(' | ');
+    };
+
+    test('unnamed inputs sharing a label are named in the log', () => {
+      const l = joinLog(wired(null, { branches: 3 }));
+      assert.includes(l, '3 columns came from Count');
+      assert.includes(l, 'name the inputs');
+    });
+
+    test('naming every input silences it', () => {
+      const l = joinLog(wired(['2022', '2023', '2024'], { branches: 3 }));
+      assert.excludes(l, 'came from Count');
+      assert.excludes(l, 'name the inputs');
+    });
+
+    test('one input still unnamed is still worth saying', () => {
+      const l = joinLog(wired(['2022', null], { branches: 2 }));
+      assert.includes(l, 'came from Count');
+    });
+
+    test('inputs that share no label are left alone', () => {
+      // Count against Count+Average: the labels differ, so nothing is ambiguous
+      // about the ones that do not collide.
+      const h = wired(null, { branches: 2 });
+      const l = joinLog(h);
+      assert.excludes(l, 'came from Specialisation',
+        'the shared key belongs to no input and is never ambiguous');
+    });
+
+    test('the punctuation reads as a sentence', () => {
+      // logHTML joins parts with a space, so the semicolon has to ride inside
+      // the part before it.
+      const l = joinLog(wired(null, { branches: 3 }));
+      assert.includes(l, 'Count; name the inputs');
+      assert.excludes(l, 'Count ; name');
+    });
+  });
+
+  /* HOW MANY THINGS, AS AGAINST HOW MANY ROWS
+     -------------------------------------------------------------------------
+     Intersect returns the base's rows, and where the base holds more than one
+     row per key it returns more rows than keys. A migration query is exactly
+     that shape: the "before" branch spans several years, so three students who
+     moved come back as six rows. Six is a true count of rows and a false answer
+     to "how many students", and every one of those rows is real, so nothing on
+     screen distinguishes the two readings. */
+  describe('a set operation on a key that repeats', () => {
+    const NUM2 = A.COLTYPE.NUMBER;
+    const idcol = col('id', 'ID', NUM2, { });
+    // Two rows per student in the base (one per year), one in the other input.
+    const base = A.makeTable([idcol, col('y', 'Year', NUM2)],
+      [[1, 2022], [1, 2023], [2, 2022], [2, 2023], [3, 2022]]);
+    const other = A.makeTable([idcol, col('y', 'Year', NUM2)], [[1, 2024], [2, 2024]]);
+    const runMode = (mode) => {
+      const log = [];
+      const node = { id: 99, type:'combine',
+        cfg: { mode, dedupe: false, base: '', key: 'id', labels: {} } };
+      const out = A.combineTables(node, [base, other], log, ['a', 'b'], [1, 2]);
+      // Engine-level entries are logEntry objects, not the rendered strings the
+      // Output panel holds, so they are stringified rather than joined.
+      return { rows: out.table.rows, log: log.map(e => JSON.stringify(e)).join(' | ') };
+    };
+
+    test('intersect says how many distinct keys its rows cover', () => {
+      const r = runMode('intersect');
+      assert.equal(r.rows.length, 4, 'two students, two years each');
+      assert.includes(r.log, 'those');
+      assert.includes(r.log, '"s":4');
+      assert.includes(r.log, 'distinct');
+      assert.includes(r.log, '"s":2');
+    });
+
+    test('difference says it too', () => {
+      const r = runMode('difference');
+      assert.equal(r.rows.length, 1);
+      // One row, one key: nothing to disambiguate, so nothing is said.
+      assert.excludes(r.log, 'distinct');
+    });
+
+    test('a base with one row per key says nothing extra', () => {
+      const log = [];
+      const uniq = A.makeTable([idcol, col('y', 'Year', NUM2)], [[1, 2022], [2, 2022]]);
+      const node = { id: 99, type:'combine',
+        cfg: { mode:'intersect', dedupe: false, base: '', key: 'id', labels: {} } };
+      A.combineTables(node, [uniq, other], log, ['a', 'b'], [1, 2]);
+      assert.excludes(log.map(e => JSON.stringify(e)).join(' | '), 'distinct');
+    });
+
+    test('it is counted over the rows that came out, not the ones that went in', () => {
+      // The base holds three students; only two survive the intersect, so the
+      // line has to say 2, not 3.
+      const l = runMode('intersect').log;
+      assert.includes(l, 'rows cover');
+      assert.includes(l, '"s":2');
+      assert.excludes(l, '"s":3', 'three students went in, two came out');
+    });
+  });
+
   describe('a named input', () => {
     test('bringing one column is headed by the name alone', () => {
       const h = wired(['2022', '2023']);

@@ -304,6 +304,44 @@ function joinTables(node, tables, labels, log, ids) {
       {s:'(first match used)'}]));
   }
 
+  /* WHEN THE HEADER CANNOT SAY WHICH INPUT A COLUMN CAME FROM
+     -------------------------------------------------------------------------
+     Three per-year branches joined on course give three columns that all began
+     life as Count. The header keeps them apart, because it has to, but it keeps
+     them apart asymmetrically: the base's stays bare Count while the others pick
+     up the automatic name of the node they came from. Nothing in
+     "Count, Count · Select For #5, Count · Select For #7" says which year is
+     which, and the reader most likely to need that is the one reading the CSV a
+     week later.
+
+     Named rather than fixed, deliberately. Renaming the base's column would make
+     the three symmetric, and would also change the header of every saved query
+     that ever joined unnamed inputs; an input nobody named behaving exactly as
+     it always did is the guarantee this whole naming feature was built around.
+     So the log says what the header cannot, and points at the control that does
+     fix it. An input the user HAS named needs none of this, which is why only
+     the unnamed ones are counted.                                            */
+  var sharedFrom = {};
+  tables.forEach(function(t, i) {
+    var named = !!(ids && ids.length > i && combineLabelOf(node, ids[i]));
+    t.columns.forEach(function(c) {
+      if (c.key === keyCol.key) return;
+      var e = sharedFrom[c.label] || (sharedFrom[c.label] = { n: 0, bare: 0 });
+      e.n++;
+      if (!named) e.bare++;
+    });
+  });
+  var ambiguous = Object.keys(sharedFrom).filter(function(l) {
+    return sharedFrom[l].n > 1 && sharedFrom[l].bare > 0;
+  });
+  if (ambiguous.length) {
+    /* The semicolon rides inside the part before it, because logHTML joins parts
+       with a space and "came from Count ; name the inputs" is not a sentence. */
+    log.push(logEntry('COMBINE', [{c:'val', s:ambiguous.map(function(l) {
+      return sharedFrom[l].n + ' columns came from ' + l;
+    }).join(', ') + ';'}, {s:'name the inputs to say which is which'}]));
+  }
+
   // meta describes the base's rows against the base's header, which the join has
   // widened. Dropped for the same reason Select drops it.
   return { table: makeTable(cols, rows) };
@@ -382,6 +420,33 @@ function combineTables(node, tables, log, labels, ids) {
 
   log.push(logEntry('COMBINE', [{s:mode.key + ' on'}, {c:'val', s:keyCol.label},
     {s:'→'}, {c:'val', s:out.length}, {s:'of'}, {c:'val', s:base.rows.length}, {s:'base rows'}]));
+
+  /* HOW MANY THINGS, AS AGAINST HOW MANY ROWS
+     -------------------------------------------------------------------------
+     The line above counts rows, which is what came out, and says nothing about
+     how many distinct keys those rows cover. Where the base holds one row per
+     key the two numbers are the same and this says nothing.
+
+     Where it does not, the gap is the whole answer. A migration query asks which
+     students were in one major before a date and another after it: the "before"
+     branch spans several years, so it holds a row per student per year, and an
+     intersect on ID returns six rows for three students. Six is a true count of
+     rows and a false answer to the question that was asked, and nothing else on
+     screen distinguishes them, since every one of those rows is a real row the
+     reader can see.
+
+     Counted over the rows that came out rather than the rows that went in,
+     because the result is what gets read, exported and quoted.              */
+  var distinct = {}, nDistinct = 0;
+  out.forEach(function(r) {
+    var k = 'k' + String(r[ki]);
+    if (!distinct[k]) { distinct[k] = true; nDistinct++; }
+  });
+  if (nDistinct !== out.length) {
+    log.push(logEntry('COMBINE', [{s:'those'}, {c:'val', s:out.length},
+      {s:'rows cover'}, {c:'val', s:nDistinct}, {s:'distinct'},
+      {c:'val', s:keyCol.label}]));
+  }
 
   return { table: makeTable(base.columns, out, base.meta) };
 }

@@ -136,13 +136,24 @@ function varChipHTML(v) {
   '</div>';
 }
 
-/* The nodes a variable reaches, as a sentence. Named by node rather than by
-   setting once a node holds more than one binding, because "Filter #3" twice
-   over reads as a mistake in the tool. */
+/* What a variable reaches, as a sentence: the KINDS of node, not which ones.
+
+   This used to name each node, number and all, and the number was the part
+   that did not earn its place. A reader asking "what does changing this break"
+   wants the sort of thing it reaches, and the canvas already shows them which
+   nodes those are: a bound setting is drawn in the variable's own colour, so
+   the nodes are pointed at by the thing they are bound to. Printing the ids as
+   well made the note grow with the query ("Filter #3, Filter #7 and Filter
+   #11") to say one thing: Filter.
+
+   Dropping the number is also what makes the de-duplication below mean
+   something. It was already here, but two Filters had two different labels, so
+   it only ever collapsed the same node bound twice. On the type it collapses
+   the case it was written for. */
 function varUseWords(uses) {
   var seen = [], out = [];
   uses.forEach(function(u) {
-    var label = upstreamLabel(u.node);
+    var label = NODE_LABELS[u.node.type] || u.node.type;
     if (seen.indexOf(label) !== -1) return;
     seen.push(label);
     out.push(label);

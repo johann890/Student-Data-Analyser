@@ -512,6 +512,32 @@ function aggregateRowsIdx(node, t) {
   return idx;
 }
 
+/* HOW MANY OF A ROW'S CELLS THE MEASURE COULD ACTUALLY USE
+   ---------------------------------------------------------------------------
+   usableValueCount() answers this down a column, for Aggregate and
+   AggregateColumns. This is the same question along a row, and it exists for the
+   same reason: reduceValues() skips a blank, and "average across 3 columns" is
+   what the log said when one of those three was empty and the mean was taken
+   over two.
+
+   It is the join that makes this reachable rather than theoretical. Three
+   per-year branches joined with "keep unmatched rows" on give a blank wherever a
+   course did not run that year, and the average of the two years it did run is
+   the right answer to report as such, not as an average across three.
+
+   Matches reduceValues()' test exactly, for the reason usableValueCount() does:
+   a blank is skipped there and here, and a non-numeric string is skipped there
+   for every measure but count and skipped here for the same ones.            */
+function usableCellCount(opKey, values) {
+  var n = 0;
+  for (var i = 0; i < values.length; i++) {
+    var v = values[i];
+    if (isBlank(v)) continue;
+    if (opKey === 'count' || isFinite(Number(v))) n++;
+  }
+  return n;
+}
+
 function applyAggregateRows(node, t, log) {
   var op   = rowOp(node);
   var cols = aggregateRowsColumns(node, t);
@@ -521,6 +547,7 @@ function applyAggregateRows(node, t, log) {
   var ri = pair && pair.right ? colIndex(t, pair.right.key) : -1;
   var idx = op.pair ? [] : aggregateRowsIdx(node, t);
   var blanks = 0;
+  var short = 0, fewest = idx.length;
 
   var rows = t.rows.map(function(r) {
     var value;
@@ -528,7 +555,10 @@ function applyAggregateRows(node, t, log) {
       value = (li === -1 || ri === -1) ? null : pairValue(op.key, r[li], r[ri]);
       if (value === null) blanks++;
     } else {
-      value = reduceValues(op.key, idx.map(function(i){ return r[i]; }));
+      var cells = idx.map(function(i){ return r[i]; });
+      var used = usableCellCount(op.key, cells);
+      if (used < idx.length) { short++; if (used < fewest) fewest = used; }
+      value = reduceValues(op.key, cells);
     }
     return keep.map(function(i){ return r[i]; }).concat([value]);
   });
@@ -550,6 +580,23 @@ function applyAggregateRows(node, t, log) {
     log.push(logEntry('AGGREGATE ROWS', [{s:op.label.toLowerCase() + ' across'},
                                          {c:'val', s:idx.length},
                                          {s:'column' + (idx.length === 1 ? '' : 's') + ', per row'}]));
+    /* The rows the line above overstates. Said here rather than left to be
+       noticed, because a per-row average is the one measure with nothing on
+       screen to disagree with it: the blank cell it skipped is in the row the
+       reader is looking at, two columns to the left, and the result still reads
+       as an average across every column in the header.
+
+       Count is exempt for the reason it is exempt in AggregateColumns: "how
+       many values are present" is a true answer whatever is missing, and is the
+       one measure for which a blank is the subject rather than an obstacle. A
+       table with no gaps logs exactly what it always did.                    */
+    if (op.key !== 'count' && short > 0) {
+      log.push(logEntry('SKIP', [
+        {s:op.label.toLowerCase() + ' used fewer than'}, {c:'val', s:idx.length},
+        {s:'columns on'}, {c:'val', s:short}, {s:'of'}, {c:'val', s:t.rows.length},
+        {s:'row' + (t.rows.length === 1 ? '' : 's') + '; as few as'}, {c:'val', s:fewest}
+      ]));
+    }
   }
   if (keep.length > 0) {
     log.push(logEntry('AGGREGATE ROWS', [{s:'carried'}, {c:'val', s:keep.length},

@@ -174,6 +174,24 @@ function libProblemHTML(err) {
   '</div>';
 }
 
+/* The user's own half of the dialog, under a heading of its own.
+
+   The examples arrived above this grid and took the only label in the body with
+   them: a reader looking at two grids of cards had nothing telling them which
+   ones they had saved, which is the one thing they need to know before pressing
+   Delete. The heading is drawn even when there is nothing under it, because an
+   empty labelled space says "your queries go here" and an empty dialog says
+   nothing at all. Every outcome below goes through here, so the heading cannot
+   be true of one of them and missing from another. */
+function libOwnHTML(inner) {
+  return '<div class="lib-section lib-own">' +
+    '<h4 class="lib-section-head">Your queries</h4>' +
+    '<p class="lib-section-note">Queries you built and saved yourself. Opening one puts it ' +
+      'back on the canvas and asks for its data files.</p>' +
+    inner +
+  '</div>';
+}
+
 function renderLibrary() {
   var body = document.getElementById('libBody');
   if (!body) return;
@@ -202,23 +220,27 @@ function renderLibrary() {
      search is being run against. */
   var examples = libQuery.trim() ? '' : libExamplesHTML();
 
-  if (st.error) { body.innerHTML = examples + libProblemHTML(st.error); return; }
+  if (st.error) { body.innerHTML = examples + libOwnHTML(libProblemHTML(st.error)); return; }
 
-  /* An empty library says nothing. The dialog's own heading paragraph already
-     explains what the library is for, and the name field and Save button sit
-     in plain sight at the foot, so a second block of prose in the middle was
-     repeating the two things around it. */
-  if (!st.entries.length) { body.innerHTML = examples; return; }
+  /* Three words, not a paragraph. The block of prose that used to sit here was
+     removed because the dialog's own heading explains what the library is for
+     and the Save row below is in plain sight, so it repeated both of its
+     neighbours. That still holds: what the heading above needs under it is a
+     label saying the space is empty, not the explanation again. */
+  if (!st.entries.length) {
+    body.innerHTML = examples + libOwnHTML('<div class="lib-empty">Nothing saved yet.</div>');
+    return;
+  }
 
   var q = libQuery.trim().toLowerCase();
   var shown = st.entries.filter(function(e) { return libMatches(e, q); });
   if (!shown.length) {
-    body.innerHTML = examples + '<div class="lib-empty">No saved query is called anything like ' +
-      '"' + esc(libQuery.trim()) + '".</div>';
+    body.innerHTML = examples + libOwnHTML('<div class="lib-empty">No saved query is called ' +
+      'anything like "' + esc(libQuery.trim()) + '".</div>');
     return;
   }
-  body.innerHTML = examples + '<div class="lib-grid">' +
-    shown.map(libCardHTML).join('') + '</div>';
+  body.innerHTML = examples + libOwnHTML('<div class="lib-grid">' +
+    shown.map(libCardHTML).join('') + '</div>');
 
   // A rename renders as an input and is meant to be typed into immediately.
   var ren = document.getElementById('libRenameInput');

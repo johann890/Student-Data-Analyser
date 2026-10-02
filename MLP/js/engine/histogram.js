@@ -248,7 +248,8 @@ function applyHistogram(node, t, log) {
   if (blanks) {
     log.push(logEntry('SKIP', [
       {c:'val', s:blanks}, {s:(blanks === 1 ? 'row has' : 'rows have')},
-      {s:'no'}, {c:'val', s:col.label}, {s:'and are in no bin'}
+      {s:'no'}, {c:'val', s:col.label},
+      {s:(blanks === 1 ? 'and is in no bin' : 'and are in no bin')}
     ]));
   }
 

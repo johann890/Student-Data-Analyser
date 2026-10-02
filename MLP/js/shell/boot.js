@@ -382,6 +382,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     // the worked examples, which are in the page and never in the store
     LIB_EXAMPLES: LIB_EXAMPLES, libExampleGet: libExampleGet,
     libExampleCardHTML: libExampleCardHTML, libExamplesHTML: libExamplesHTML,
+    libOwnHTML: libOwnHTML,
     libOpenExample: libOpenExample,
 
     // export / import

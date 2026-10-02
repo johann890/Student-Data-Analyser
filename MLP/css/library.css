@@ -374,8 +374,20 @@
 
 /* One button instead of four, so the card is shorter than a saved one and the
    sentence has somewhere to go. The tint is what says "not yours" at a glance,
-   without a badge to read. */
-.lib-example { background: #14171c; border-color: #2b3340; }
+   without a badge to read.
+
+   The border is a muted gold rather than a bright yellow: it has to read as a
+   deliberate marking from across the grid while sitting next to white text on
+   near-black, and a saturated yellow at this weight glows and pulls the eye off
+   the name it is meant to be framing.
+
+   The hover rule is not decoration. `.lib-card:hover` is a class plus a
+   pseudo-class and so outranks `.lib-example` on its own, which meant hovering
+   an example repainted its border the ordinary grey and threw away the one
+   thing marking it as not the reader's. This matches that specificity and
+   lifts the gold instead. */
+.lib-example { background: #14171c; border-color: #8c7430; }
+.lib-example:hover { border-color: #b39a45; }
 .lib-why {
   margin-top: 5px;
   font-size: 12px;
