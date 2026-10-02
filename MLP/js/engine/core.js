@@ -145,6 +145,33 @@ function numericValues(vals) {
   });
 }
 
+/* SMALLEST AND LARGEST OF A LIST OF NUMBERS
+   Looped rather than Math.min.apply(null, nums). That spreads every value as a
+   separate argument and overflows the call stack somewhere above a hundred
+   thousand of them, and this tool admits 250,000 rows in a single file, so the
+   ceiling sat inside the envelope the loader documents. What it produced was not
+   a wrong answer but a RangeError thrown out of runQuery, and a throw from a
+   click handler is swallowed by the browser: the Run button appeared to do
+   nothing. Sum, average and median were never affected, because reduce and sort
+   take the array rather than spreading it.
+
+   Both callers have already filtered to finite numbers, so there is no blank or
+   NaN to skip here. An empty list has no smallest member, and null says so
+   rather than Infinity, which would print as a value. */
+function minOf(nums) {
+  if (!nums || !nums.length) return null;
+  var acc = nums[0];
+  for (var i = 1; i < nums.length; i++) if (nums[i] < acc) acc = nums[i];
+  return acc;
+}
+
+function maxOf(nums) {
+  if (!nums || !nums.length) return null;
+  var acc = nums[0];
+  for (var i = 1; i < nums.length; i++) if (nums[i] > acc) acc = nums[i];
+  return acc;
+}
+
 function isRangeable(col) {
   if (!col) return false;
   if (col.type === COLTYPE.NUMBER) return true;

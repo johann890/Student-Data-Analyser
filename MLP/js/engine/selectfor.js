@@ -233,12 +233,14 @@ function labelsFromTable(node, lt) {
   if (!col || col.type === COLTYPE.COURSES) col = labelCols(lt)[0] || null;
   if (!col) return [];
 
+  // Prefixed so a label cannot collide with a property of Object.prototype.
+  // See applyUnique() in unique-select.js for what that collision cost.
   var i = colIndex(lt, col.key), seen = {}, out = [];
   lt.rows.forEach(function(r) {
     var v = r[i];
     if (isBlank(v)) return;
-    if (seen[String(v)]) return;
-    seen[String(v)] = true;
+    if (seen['v' + v]) return;
+    seen['v' + v] = true;
     out.push(v);
   });
   return out;
@@ -314,9 +316,13 @@ function bandsFromLabels(lt) {
   lt.rows.forEach(function(r) {
     var name = r[0], lo = Number(r[1]), hi = Number(r[2]);
     if (isBlank(name) || !isFinite(lo) || !isFinite(hi) || hi < lo) { malformed++; return; }
+    /* Prefixed for the reason labelsFromTable() gives, and it matters more here:
+       a band name is written by hand in a labels file, so "Constructor" or
+       "toString" is a name somebody could plausibly type, and the row would have
+       been counted as a duplicate of a band that was never declared. */
     var key = String(name);
-    if (seen[key]) { duplicates++; return; }
-    seen[key] = true;
+    if (seen['v' + key]) { duplicates++; return; }
+    seen['v' + key] = true;
     bands.push({ name: key, lo: lo, hi: hi });
   });
   return { bands: bands, malformed: malformed, duplicates: duplicates };
@@ -368,10 +374,11 @@ function labelsFromData(node, t) {
   var f = groupField(node, t);
   if (!f) return [];
   var seen = {}, out = [];
+  // Prefixed, as in labelsFromTable() above and for the same reason.
   function push(v) {
     if (isBlank(v)) return;
-    if (seen[String(v)]) return;
-    seen[String(v)] = true;
+    if (seen['v' + v]) return;
+    seen['v' + v] = true;
     out.push(v);
   }
 

@@ -149,11 +149,16 @@ function tableColumnKey(label, i) {
 }
 
 function uniqueColumnKeys(columns) {
+  /* Prefixed because these keys come from the header file, and `{}` already
+     answers to every property on Object.prototype: without it a column honestly
+     named "constructor" was treated as a repeat of one that did not exist and
+     renamed to "constructor_2", which then disagreed with its own label in
+     every dropdown built from it. */
   var seen = {};
   columns.forEach(function(c, i) {
     var key = c.key, n = 2;
-    while (seen[key]) { key = c.key + '_' + n; n++; }
-    seen[key] = true;
+    while (seen['v' + key]) { key = c.key + '_' + n; n++; }
+    seen['v' + key] = true;
     c.key = key;
   });
   return columns;

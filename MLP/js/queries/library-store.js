@@ -143,8 +143,11 @@ function libRead() {
   (Array.isArray(d.entries) ? d.entries : []).forEach(function(raw) {
     if (entries.length >= LIB_MAX_ENTRIES) return;
     var e = libCleanEntry(raw, null);
-    if (!e || seen[e.id]) return;
-    seen[e.id] = true;
+    // Prefixed: an id this reads from an imported file only has to match
+    // [A-Za-z0-9_-], which "constructor" does, and an unprefixed `{}` would
+    // drop that entry as a duplicate of one no file contained.
+    if (!e || seen['v' + e.id]) return;
+    seen['v' + e.id] = true;
     entries.push(e);
   });
 

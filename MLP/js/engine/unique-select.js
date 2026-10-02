@@ -76,9 +76,21 @@ function applyUnique(node, t, log) {
   var cols = col ? [col] : t.columns;
   var idxs = cols.map(function(c){ return colIndex(t, c.key); });
 
+  /* The 'v' prefix is what keeps a data value from colliding with a property
+     every object already has. `{}` inherits from Object.prototype, so a bare
+     seen['constructor'] reads back a function and is truthy before anything has
+     been stored: a column holding "constructor", "toString", "valueOf" or
+     "__proto__" had those rows dropped as duplicates of each other on the first
+     sighting. Measured on a table of eight distinct values, two came out.
+
+     It never showed on the student archive, where keys are IDs, grades and
+     course codes, and it became reachable when Source was generalised to read
+     any table: a tag or category column is ordinary English and these are
+     ordinary English words. combine.js prefixes for the same reason, and
+     rowKey() in core.js does too. */
   var seen = {}, rows = [];
   t.rows.forEach(function(r) {
-    var k = idxs.map(function(i, n) {
+    var k = 'v' + idxs.map(function(i, n) {
       return uniqueCellKey(cols[n], r[i]);
     }).join('\u0001');
     if (seen[k]) return;
