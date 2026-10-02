@@ -564,3 +564,24 @@ Helpers returned by `boot()`:
 | `entry(nodeId)` | that Output's export payload after a run |
 | `q`, `qa`, `text`, `panel`, `bigNum` | DOM queries |
 | `saved`, `copied` | captured downloads and clipboard writes |
+
+## The browser smoke test
+
+`browser/smoke.html` covers what jsdom cannot: the gestures. jsdom has no
+pointer and no layout, so snap-to-connect, marquee select, pan, wheel zoom, the
+hover affordances on a wire, the toolbar handle and the Clear dialog are all
+unreachable from `npm test`. Measured with V8 coverage, `canvas/gestures.js` sat
+at 40% and `shell/events.js` at 45% for exactly that reason.
+
+It needs no dependencies and no build. The iframe has to be same origin, so
+serve the repository rather than opening the file directly:
+
+```bash
+python3 -m http.server 8777      # from the repository root
+```
+
+Then open <http://localhost:8777/tests/browser/smoke.html>. It reports in the
+page, and leaves `window.SMOKE` and a tally in the document title for anything
+reading it automatically. It fetches the application and stamps every script and
+stylesheet URL, because without that the browser serves a cached build and the
+checks quietly test yesterday's code.

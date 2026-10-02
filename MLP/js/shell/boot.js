@@ -151,6 +151,7 @@ if (typeof window !== 'undefined' && window.__QB_TEST__) {
     NUM_OPS: NUM_OPS, ENUM_OPS: ENUM_OPS, ORDERED_OPS: ORDERED_OPS,
     MARK_OPS: MARK_OPS, CODE_OPS: CODE_OPS, opGroups: opGroups,
     isRangeable: isRangeable, numericValues: numericValues, rankerFor: rankerFor,
+    minOf: minOf, maxOf: maxOf,
     critValue: critValue, critOp: critOp, critHigh: critHigh, critRange: critRange,
     rangeKey: rangeKey, isBlank: isBlank,
     critList: critList, listKey: listKey, orderList: orderList,

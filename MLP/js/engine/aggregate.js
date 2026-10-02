@@ -84,8 +84,10 @@ function reduceValues(opKey, values) {
     var mid = sorted.length >> 1;
     return sorted.length % 2 ? sorted[mid] : (sorted[mid - 1] + sorted[mid]) / 2;
   }
-  if (opKey === 'min')     return Math.min.apply(null, nums);
-  if (opKey === 'max')     return Math.max.apply(null, nums);
+  // minOf/maxOf rather than Math.min.apply, which overflows the stack on a
+  // large column. See their definition in core.js for what that cost.
+  if (opKey === 'min')     return minOf(nums);
+  if (opKey === 'max')     return maxOf(nums);
   return null;
 }
 

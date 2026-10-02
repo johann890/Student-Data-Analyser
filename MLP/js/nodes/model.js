@@ -434,8 +434,11 @@ function critList(c, field, col) {
     var s = String(v == null ? '' : v).trim();
     // Blanks come from a trailing comma mid-typing, and a repeat changes no
     // answer (a set contains a value once), so both go quietly.
-    if (!s || seen[s]) return;
-    seen[s] = true;
+    // Prefixed because these are values the user typed, and `{}` answers to
+    // every property Object.prototype has: unprefixed, a filter on the word
+    // "constructor" dropped it as a repeat of something never entered.
+    if (!s || seen['v' + s]) return;
+    seen['v' + s] = true;
     out.push(s);
   });
   return orderList(out, col);

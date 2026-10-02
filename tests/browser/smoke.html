@@ -1,0 +1,510 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Smoke test</title>
+<!--
+  BROWSER SMOKE TEST: the part of the application jsdom cannot reach.
+
+  The main suite runs in jsdom, which has no layout and no pointer. That is the
+  right trade for the engine, which is where the answers come from, and it is
+  why coverage of js/engine and js/data sits at or near 100%. It also means a
+  whole class of code is structurally untestable there: every gesture. Measured
+  with V8 coverage, canvas/gestures.js was at 40% and shell/events.js at 45%,
+  and the functions never entered were startPan, startMarquee, nodesInWorldRect,
+  onCanvasWheel, onBarResizeDown, onBarResizeKey, showPreview, armPreviewTimer,
+  setHover, buildDeleteBadge, requestClearAll and confirmClearAll.
+
+  Those are not obscure. Snap-to-connect is how every wire in this tool is made,
+  and Clear is the one destructive action with no undo. This page drives them in
+  a real browser with real events, against the real page in an iframe.
+
+  No dependencies and no build, for the same reason the application has none.
+
+  HOW TO RUN. The iframe has to be same origin, so serve the repository and open
+  this over http rather than from the file system:
+
+      python3 -m http.server 8777          (from the repository root)
+      open http://localhost:8777/tests/browser/smoke.html
+
+  It reports in the page. It also leaves window.SMOKE = {passed, failed, results}
+  and writes the tally into document.title, so a script can read the outcome
+  without looking at the screen.
+-->
+<style>
+  :root { color-scheme: dark; }
+  body { background:#0b0b0b; color:#d8d8d8; font:13px/1.6 ui-monospace, Menlo, Consolas, monospace;
+         margin:0; padding:16px; }
+  h1 { font-size:15px; margin:0 0 4px; letter-spacing:.04em; text-transform:uppercase; color:#9a9a9a; }
+  p.lede { margin:0 0 14px; color:#8a8a8a; max-width:70ch; }
+  #tally { font-size:15px; font-weight:700; margin:10px 0 14px; }
+  .ok { color:#5ec87a; } .bad { color:#e06060; } .run { color:#e8c84a; }
+  ol { margin:0; padding-left:22px; }
+  li { margin:3px 0; }
+  li .why { color:#9a9a9a; }
+  #frameWrap { margin-top:18px; border:1px solid #1e1e1e; width:1200px; height:760px; }
+  iframe { width:1200px; height:760px; border:0; }
+  button { font:inherit; background:#141414; color:#d8d8d8; border:1px solid #2a2a2a;
+           border-radius:5px; padding:5px 12px; cursor:pointer; }
+</style>
+</head>
+<body>
+
+<h1>Student Data Analyser: browser smoke test</h1>
+<p class="lede">
+  The gestures the jsdom suite cannot reach: snapping a wire, marquee select,
+  pan, wheel zoom, the hover affordances on a wire, the toolbar handle, and the
+  Clear dialog. Driven with real pointer events against the real page below.
+</p>
+
+<div id="tally" class="run">loading the application...</div>
+<ol id="results"></ol>
+<p><button onclick="location.reload()">Run again</button></p>
+
+<div id="frameWrap"><iframe id="app" title="the application under test"></iframe></div>
+
+<script>
+(function () {
+  'use strict';
+
+  var results = [];
+  var listEl  = document.getElementById('results');
+  var tallyEl = document.getElementById('tally');
+
+  function record(name, ok, why) {
+    results.push({ name: name, ok: ok, why: why || '' });
+    var li = document.createElement('li');
+    li.innerHTML = '<span class="' + (ok ? 'ok' : 'bad') + '">' + (ok ? 'PASS' : 'FAIL') +
+      '</span> ' + name + (why ? ' <span class="why">' + why + '</span>' : '');
+    listEl.appendChild(li);
+  }
+
+  /* An expectation, written so that a failure says what was wanted and what was
+     there. Nothing here throws out of a check: one gesture that does not work
+     should not stop the rest from being tried. */
+  function expect(cond, detail) {
+    if (!cond) throw new Error(detail || 'expectation not met');
+  }
+
+  var sleep = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
+
+  var frame = document.getElementById('app');
+  var W, D;
+
+  function mouse(type, x, y, extra) {
+    var init = { clientX: x, clientY: y, bubbles: true, cancelable: true, view: W, button: 0 };
+    for (var k in (extra || {})) init[k] = extra[k];
+    return new W.MouseEvent(type, init);
+  }
+
+  function centre(el) {
+    var r = el.getBoundingClientRect();
+    return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+  }
+
+  /* A press, a few moves and a release. The moves go to the document because
+     that is where the application binds them, so that a drag survives the
+     pointer leaving the canvas. Several small steps rather than one jump: the
+     drag handlers carry state between moves and a single move would skip it. */
+  async function drag(target, from, to, opts) {
+    opts = opts || {};
+    target.dispatchEvent(mouse('mousedown', from.x, from.y, opts));
+    var steps = opts.steps || 8;
+    for (var i = 1; i <= steps; i++) {
+      D.dispatchEvent(mouse('mousemove',
+        from.x + (to.x - from.x) * i / steps,
+        from.y + (to.y - from.y) * i / steps, opts));
+      await sleep(10);
+    }
+    D.dispatchEvent(mouse('mouseup', to.x, to.y, opts));
+    await sleep(40);
+  }
+
+  function reset() {
+    W.clearAll();
+  }
+
+  // ------------------------------------------------------------------ checks
+
+  var CHECKS = [
+
+    ['a wire is made by dragging one node near another', async function () {
+      reset();
+      W.addNode('source');
+      W.addNode('filter');
+      var nodes = W.nodes;
+      expect(nodes.length === 2, 'two nodes were not added');
+      expect(W.connections.length === 0, 'they started out wired');
+
+      // Put them well apart, then carry the Filter to the Source's right.
+      nodes[0].x = 400; nodes[0].y = 300;
+      nodes[1].x = 900; nodes[1].y = 700;
+      W.render();
+
+      var shapes = D.querySelectorAll('.node .node-shape');
+      var filterShape = shapes[1];
+      var srcBox = centre(D.querySelectorAll('.node')[0].querySelector('.node-shape'));
+      await drag(filterShape, centre(filterShape), { x: srcBox.x + 150, y: srcBox.y });
+
+      var conns = W.connections;
+      expect(conns.length === 1,
+        'expected one wire after the drag, got ' + conns.length);
+      expect(conns[0].from === nodes[0].id && conns[0].to === nodes[1].id,
+        'the wire points the wrong way');
+    }],
+
+    ['dragging a box on empty canvas selects the nodes inside it', async function () {
+      reset();
+      W.addNode('source');
+      W.addNode('filter');
+      var nodes = W.nodes;
+      nodes[0].x = 500; nodes[0].y = 320;
+      nodes[1].x = 760; nodes[1].y = 320;
+      W.render();
+      W.zoomToFit();
+      await sleep(60);
+
+      var boxes = [].map.call(D.querySelectorAll('.node'), function (n) {
+        return n.getBoundingClientRect();
+      });
+      var left = Math.min(boxes[0].left, boxes[1].left) - 30;
+      var right = Math.max(boxes[0].right, boxes[1].right) + 30;
+      var top = Math.min(boxes[0].top, boxes[1].top) - 30;
+      var bottom = Math.max(boxes[0].bottom, boxes[1].bottom) + 30;
+
+      var canvas = D.getElementById('canvas');
+      await drag(canvas, { x: left, y: top }, { x: right, y: bottom });
+
+      expect(W.selection.length === 2,
+        'expected both nodes selected, got ' + W.selection.length);
+      var bar = D.getElementById('selBar');
+      expect(bar && bar.classList.contains('show'), 'the selection bar did not appear');
+    }],
+
+    ['space and drag pans the view instead of selecting', async function () {
+      reset();
+      W.addNode('source');
+      W.render();
+      var before = { x: W.view.x, y: W.view.y };
+
+      D.dispatchEvent(new W.KeyboardEvent('keydown', { key: ' ', bubbles: true }));
+      var canvas = D.getElementById('canvas');
+      await drag(canvas, { x: 700, y: 400 }, { x: 560, y: 320 });
+      D.dispatchEvent(new W.KeyboardEvent('keyup', { key: ' ', bubbles: true }));
+
+      var after = W.view;
+      expect(after.x !== before.x || after.y !== before.y,
+        'the view did not move');
+      expect(W.selection.length === 0,
+        'panning selected nodes, so it was read as a marquee');
+    }],
+
+    ['the wheel zooms the canvas', async function () {
+      reset();
+      W.addNode('source');
+      W.render();
+      var before = W.view.z;
+      var canvas = D.getElementById('canvas');
+      canvas.dispatchEvent(new W.WheelEvent('wheel', {
+        deltaY: -240, clientX: 600, clientY: 400, bubbles: true, cancelable: true, view: W
+      }));
+      await sleep(40);
+      var mid = W.view.z;
+      expect(mid > before, 'scrolling up did not zoom in (' + before + ' -> ' + mid + ')');
+
+      canvas.dispatchEvent(new W.WheelEvent('wheel', {
+        deltaY: 240, clientX: 600, clientY: 400, bubbles: true, cancelable: true, view: W
+      }));
+      await sleep(40);
+      expect(W.view.z < mid, 'scrolling down did not zoom out');
+    }],
+
+    ['resting on a wire offers the control that removes it', async function () {
+      reset();
+      W.addNode('source');
+      W.addNode('output');
+      var n = W.nodes;
+      W.connections.push({ from: n[0].id, to: n[1].id, port: 'in', color: '#ffffff' });
+      n[0].x = 500; n[0].y = 340; n[1].x = 800; n[1].y = 360;
+      W.render();
+      W.zoomToFit();
+      await sleep(60);
+
+      var hit = D.querySelector('.conn-hit');
+      expect(hit, 'the wire has no hover target');
+      var at = centre(hit);
+      hit.dispatchEvent(mouse('mousemove', at.x, at.y));
+      await sleep(60);
+
+      var badge = D.querySelector('.conn-delete');
+      expect(badge, 'resting on the wire did not offer the delete control');
+
+      badge.dispatchEvent(mouse('click', at.x, at.y));
+      await sleep(60);
+      expect(W.connections.length === 0,
+        'the wire is still there after its control was pressed');
+    }],
+
+    ['resting on a wire previews what is flowing along it', async function () {
+      reset();
+      W.addNode('source');
+      W.addNode('output');
+      var n = W.nodes;
+      W.connections.push({ from: n[0].id, to: n[1].id, port: 'in', color: '#ffffff' });
+      n[0].x = 500; n[0].y = 340; n[1].x = 820; n[1].y = 360;
+      W.render();
+      W.runQuery();
+      W.zoomToFit();
+      await sleep(80);
+
+      var hit = D.querySelector('.conn-hit');
+      expect(hit, 'the wire has no hover target');
+      var at = centre(hit);
+      hit.dispatchEvent(mouse('mousemove', at.x, at.y));
+
+      // The preview is deliberately delayed, so it has to be waited out.
+      await sleep(900);
+      var pv = D.querySelector('.edge-preview, .ep-table');
+      expect(pv, 'no preview appeared after resting on the wire');
+    }],
+
+    ['Clear asks first, and Cancel leaves the query alone', async function () {
+      reset();
+      W.addNode('source');
+      W.addNode('filter');
+      W.render();
+      var before = W.nodes.length;
+
+      D.querySelector('.clear-btn').dispatchEvent(mouse('click', 0, 0));
+      await sleep(60);
+      var dlg = D.getElementById('clearDialog');
+      expect(dlg && dlg.classList.contains('open'), 'Clear did not ask before destroying the query');
+
+      D.getElementById('clearCancel').dispatchEvent(mouse('click', 0, 0));
+      await sleep(60);
+      expect(!dlg.classList.contains('open'), 'Cancel did not close the dialog');
+      expect(W.nodes.length === before,
+        'Cancel destroyed the query anyway: ' + before + ' nodes became ' + W.nodes.length);
+    }],
+
+    ['Clear empties the canvas once it is confirmed', async function () {
+      reset();
+      W.addNode('source');
+      W.addNode('filter');
+      W.render();
+      expect(W.nodes.length === 2, 'the query was not set up');
+
+      D.querySelector('.clear-btn').dispatchEvent(mouse('click', 0, 0));
+      await sleep(60);
+      var go = D.querySelector('#clearDialog .confirm-go');
+      expect(go, 'the dialog has no confirming button');
+      go.dispatchEvent(mouse('click', 0, 0));
+      await sleep(60);
+
+      expect(W.nodes.length === 0,
+        'the canvas still holds ' + W.nodes.length + ' nodes');
+      expect(W.connections.length === 0, 'connections survived the clear');
+      expect(!D.getElementById('clearDialog').classList.contains('open'),
+        'the dialog stayed open');
+    }],
+
+    ['the toolbar handle answers the keyboard as well as the pointer', async function () {
+      reset();
+      var handle = D.getElementById('toolbarResize');
+      expect(handle, 'the toolbar has no resize handle');
+      var read = function () {
+        return Number(D.documentElement.style.getPropertyValue('--bar-s') || 1);
+      };
+
+      var before = read();
+      handle.dispatchEvent(new W.KeyboardEvent('keydown', { key: 'ArrowDown', bubbles: true }));
+      await sleep(40);
+      var afterKey = read();
+      expect(afterKey !== before, 'the arrow key did not resize the bar');
+
+      handle.dispatchEvent(new W.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+      await sleep(40);
+      expect(read() === before || read() === 1,
+        'Home did not put the bar back');
+
+      var at = centre(handle);
+      await drag(handle, at, { x: at.x, y: at.y + 40 });
+      expect(read() !== before, 'dragging the handle did not resize the bar');
+      handle.dispatchEvent(new W.KeyboardEvent('keydown', { key: 'Home', bubbles: true }));
+      await sleep(40);
+    }],
+
+    ['the node being used is drawn in front of its neighbour', async function () {
+      /* Layout, so it cannot be checked without a browser. Two wired nodes
+         always overlap, because snapping needs them within 160px and a config
+         panel is 250px wide. Whichever one is being used has to be on top. */
+      reset();
+      W.addNode('source');
+      W.addNode('output');
+      var n = W.nodes;
+      n[0].x = 500; n[0].y = 330; n[1].x = 640; n[1].y = 360;
+      W.render();
+      await sleep(60);
+
+      var els = D.querySelectorAll('.node');
+      var a = els[0].getBoundingClientRect(), b = els[1].getBoundingClientRect();
+      expect(a.left < b.right && b.left < a.right && a.top < b.bottom && b.top < a.bottom,
+        'the two nodes do not overlap, so this proves nothing');
+
+      var zOf = function (el) { return Number(W.getComputedStyle(el).zIndex) || 0; };
+      var resting = zOf(els[0]);
+      expect(resting > 0, 'a node declares no resting z-index, so stacking is document order');
+
+      /* Selection and focus are real states a script can set, so the computed
+         result is checked for both.
+
+         Hover is NOT checked here, and cannot be: CSS :hover follows the real
+         pointer and does not respond to a dispatched mouseover, so a check
+         written that way passes whatever the stylesheet says. An earlier version
+         of this check did exactly that and reported a pass with the hover rule
+         deliberately disabled. The rule itself is asserted in the jsdom suite
+         (17-shape-styling), and it is the same declaration as the two below. */
+      els[0].classList.add('selected');
+      await sleep(30);
+      var whenSelected = zOf(els[0]);
+      els[0].classList.remove('selected');
+      expect(whenSelected > resting,
+        'selecting did not bring the node forward (' + resting + ' -> ' + whenSelected + ')');
+
+      /* A visible control inside the config panel. Querying the node for any
+         button at all finds .node-remove, which is display:none until the node
+         is hovered and so cannot take focus: focus() silently did nothing and
+         the check read as a failure of the stylesheet rather than of its own
+         selector. */
+      var field = [].filter.call(
+        els[0].querySelectorAll('.node-config input, .node-config select, .node-config button'),
+        function (e) { return e.offsetParent !== null; })[0];
+      expect(field, 'the node has no visible control to focus');
+      W.focus();
+      field.focus();
+      await sleep(30);
+      var whenFocused = zOf(els[0]);
+      field.blur();
+      expect(whenFocused > resting,
+        'focusing inside the node did not bring it forward (' + resting + ' -> ' + whenFocused + ')');
+    }]
+  ];
+
+  /* WHAT THIS PAGE REACHES THAT THE JSDOM SUITE DOES NOT.
+     The functions below were measured at zero coverage by the main suite, which
+     has no pointer and no layout. Each is wrapped so the run can report whether
+     it was actually entered, rather than the page claiming to cover gestures
+     because its checks happen to pass. The application's scripts are classic and
+     share one scope, so reassigning the global is what its own callers see. */
+  var WATCHED = [
+    'startDrag', 'startPan', 'startMarquee', 'nodesInWorldRect',
+    'armPreviewTimer', 'showPreview', 'buildDeleteBadge',
+    'requestClearAll', 'closeClearDialog', 'confirmClearAll', 'onBarResizeDouble'
+  ];
+
+  /* Not on that list, and deliberately. onCanvasWheel, onBarResizeDown and
+     onBarResizeKey are handed to addEventListener by reference when the
+     application loads, so the listener holds the original function and
+     reassigning the global afterwards observes nothing: they reported as never
+     entered while their checks were passing. They are covered by the checks
+     above, which assert the effect (the zoom level changed, the bar scale
+     changed) rather than the call. */
+  var entered = Object.create(null);
+
+  function watch() {
+    WATCHED.forEach(function (name) {
+      var orig = W[name];
+      if (typeof orig !== 'function') return;
+      W[name] = function () {
+        entered[name] = (entered[name] || 0) + 1;
+        return orig.apply(this, arguments);
+      };
+    });
+  }
+
+  function reportWatched() {
+    var hit = WATCHED.filter(function (n) { return entered[n]; });
+    var missed = WATCHED.filter(function (n) { return !entered[n]; });
+    var li = document.createElement('li');
+    li.innerHTML = '<span class="' + (missed.length ? 'bad' : 'ok') + '">' +
+      hit.length + '/' + WATCHED.length + '</span> of the functions the jsdom suite ' +
+      'never enters were entered during this run' +
+      (missed.length ? ' <span class="why">(not reached: ' + missed.join(', ') + ')</span>' : '');
+    listEl.appendChild(li);
+    window.SMOKE_REACHED = { entered: entered, missed: missed };
+  }
+
+  // ------------------------------------------------------------------ runner
+
+  async function run() {
+    for (var i = 0; i < CHECKS.length; i++) {
+      var name = CHECKS[i][0], fn = CHECKS[i][1];
+      try {
+        await fn();
+        record(name, true);
+      } catch (e) {
+        record(name, false, '- ' + (e && e.message ? e.message : String(e)));
+      }
+      await sleep(20);
+    }
+
+    reportWatched();
+
+    var passed = results.filter(function (r) { return r.ok; }).length;
+    var failed = results.length - passed;
+    window.SMOKE = { passed: passed, failed: failed, results: results };
+    tallyEl.className = failed ? 'bad' : 'ok';
+    tallyEl.textContent = passed + ' passed' + (failed ? ', ' + failed + ' failed' : '');
+    document.title = 'SMOKE: ' + passed + ' passed, ' + failed + ' failed';
+  }
+
+  /* THE APPLICATION IS FETCHED AND RE-POINTED, NOT JUST LINKED.
+     Pointing the frame at index.html serves a cached application: putting the
+     clock on the page's own URL does nothing for the 50 scripts and stylesheets
+     INSIDE it, which carry no query of their own. Measured, and it is not a
+     theoretical worry: with SNAP_DIST deliberately set to 0 on disk and served
+     correctly, the frame still ran the old 160 and every check passed, so the
+     page looked incapable of failing.
+
+     So the markup is fetched, every js/ and css/ URL in it gains the same
+     stamp, and the result goes in through srcdoc with a <base> so the relative
+     paths still resolve. srcdoc keeps the frame same origin, which is what lets
+     the checks below reach into it. */
+  async function loadApp() {
+    var bust = 'smoke=' + Date.now();
+    var res = await fetch('../../MLP/index.html?' + bust, { cache: 'reload' });
+    var html = await res.text();
+    html = html.replace(/(src|href)="((?:js|css)\/[^"]+)"/g, function (m, attr, url) {
+      return attr + '="' + url + '?' + bust + '"';
+    });
+    html = html.replace(/<head([^>]*)>/i, '<head$1><base href="../../MLP/">');
+    frame.srcdoc = html;
+  }
+
+  frame.addEventListener('load', function () {
+    W = frame.contentWindow;
+    D = W.document;
+    /* Driven through the application's own globals rather than the __qb test
+       export, so this page exercises exactly what ships: the scripts are
+       classic and share one scope, so addNode, clearAll, render, nodes and
+       connections are all on the window already. Nothing here needs the page
+       to be built differently for testing. */
+    if (typeof W.addNode !== 'function' || !Array.isArray(W.nodes)) {
+      tallyEl.className = 'bad';
+      tallyEl.textContent = 'the application did not finish loading in the frame.';
+      return;
+    }
+    tallyEl.textContent = 'running...';
+    watch();
+    run();
+  });
+
+  loadApp().catch(function (e) {
+    tallyEl.className = 'bad';
+    tallyEl.textContent = 'could not load the application: ' + e.message +
+      '. This page has to be served over http, not opened from the file system.';
+  });
+})();
+</script>
+</body>
+</html>

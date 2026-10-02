@@ -113,8 +113,8 @@ function binLabel(lo, hi, w) { return fmtEdge(lo, w) + ' to ' + fmtEdge(hi, w); 
    silently building 900 bins helps nobody. */
 function binsFor(values, w) {
   if (!values.length) return null;
-  var min = Math.min.apply(null, values);
-  var max = Math.max.apply(null, values);
+  var min = minOf(values);
+  var max = maxOf(values);
   var first = Math.floor(min / w) * w;
   var last  = Math.floor((max - first) / w + HIST_EPS);
   if (last + 1 > HIST_MAX_BINS) {
@@ -182,7 +182,7 @@ function applyHistogram(node, t, log) {
   // Chosen from the values when nobody has typed one, which needs the values,
   // which is why this happens here and not in the panel.
   var w = binWidth(node);
-  if (w === null) w = autoWidth(Math.min.apply(null, values), Math.max.apply(null, values));
+  if (w === null) w = autoWidth(minOf(values), maxOf(values));
 
   var spec = binsFor(values, w);
   if (spec.error) return { error: spec.error };
