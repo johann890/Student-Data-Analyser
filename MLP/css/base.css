@@ -1,7 +1,5 @@
-/* base.css: The page itself and the toolbar, including how the toolbar scales.
-   Part of the Student Data Analyser's stylesheet. The files load in the order
-   index.html lists them, and that order is the cascade: it must not change.
-   ========================================================================== */
+/* base.css: the page shell and the toolbar, including how the toolbar scales.
+   Loaded first. index.html's link order is the cascade order, so do not reorder it. */
 * { box-sizing: border-box; margin: 0; padding: 0; }
 
 /* Without this, macOS draws form controls, scrollbars and focus rings in light
@@ -19,6 +17,11 @@ body {
 }
 
 /* TOOLBAR */
+/* The stacking order, lowest first: canvas hint 5, panel grab strip 6,
+   toolbar-resize 9, toolbar 10, port stubs 20, remove button 30, marquee 40,
+   refusal note and edge preview 50, node tip 55, selection bar and view dock
+   60, dropdown menus 200, walkthrough 250/251, help 290, save 300. Anything
+   new goes in a gap rather than on top of everything. */
 .toolbar {
   background: #181818;
   border-bottom: 1px solid #252525;
@@ -78,21 +81,17 @@ body {
 }
 .clear-btn:hover { background: #a02828; }
 
-/* ── TOOLBAR SCALE ───────────────────────────────────────
+/* ── TOOLBAR SCALE ───────────────────────────────────
    The bar can be pulled taller by the handle beneath it, and everything in it
-   grows with it: a 60px bar holding 22px buttons would read as a mistake rather
-   than as more room. One number does it. `--bar-s` multiplies every measurement
-   the bar is built from, so the controls keep their proportions to each other
-   and to the space around them at any height.
+   grows to match: a 60px bar holding 22px buttons would read as a mistake.
+   `--bar-s` multiplies every measurement the bar is built from, so the controls
+   keep their proportions at any height.
 
-   Every value below is the value that rule already had, written as a
-   multiplication instead of a constant. At --bar-s: 1 each one computes to the
-   same pixel it always did, so the default bar is unchanged by this feature
-   rather than merely close to what it was.
+   Each value below is the one that rule already had, written as a
+   multiplication. At --bar-s: 1 they compute to the same pixels as before.
 
    Scoped under .toolbar because two of these classes are shared with the save
-   dialog and the node panels, which are not part of the bar and must not move
-   when it does. */
+   dialog and the node panels, which must not move when the bar does. */
 :root { --bar-s: 1; --bar-gap: calc(8px * var(--bar-s)); --bar-fill: 0px; }
 
 .toolbar {
@@ -207,5 +206,7 @@ body {
 .toolbar-resize.dragging { background: #1e7fff66; }
 
 body.toolbar-resizing { cursor: row-resize; user-select: none; -webkit-user-select: none; }
+/* The cursor has to survive every element under the pointer during a drag,
+   including buttons that set their own, hence the sweep and the !important. */
 body.toolbar-resizing * { cursor: row-resize !important; }
 

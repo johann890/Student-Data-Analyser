@@ -1,10 +1,5 @@
-/* queries/saveload.js: A query as a file: the save dialog, writing, reading and applying.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   SAVE / LOAD
-   ============================================================================
+/* queries/saveload.js: A query as a file: the save dialog, writing, reading and applying. */
+/* SAVE / LOAD
    A query is an artefact you keep and re-run against next year's data, not
    something you rebuild each session. That is why this matters: the saved file
    describes the query, never the results, so loading it and pressing Run
@@ -61,7 +56,6 @@ function serialiseGraph() {
 }
 
 /* NAMING A SAVED QUERY
-   ---------------------------------------------------------------------------
    A saved query is kept and re-opened, so the name is how it is found again
    months later. A timestamp alone does not say whether the file is the grade
    histogram or the migration analysis, and renaming afterwards in the file
@@ -187,12 +181,11 @@ function confirmSaveGraph() {
 }
 
 /* THE SECOND DESTINATION
-   ---------------------------------------------------------------------------
    The same dialog, the same name, somewhere else to put it. Two buttons rather
    than a mode to be chosen first: there is no state the user has to get right
    before typing, and neither destination is hidden behind the other.
 
-   The library is reached from two places — here, and the grid's own footer —
+   The library is reached from two places, here and the grid's own footer,
    because "save this" and "put this in the library" are two different thoughts
    and a user arrives holding one or the other. Both end up in libAdd(), which
    is where the refusals live.                                                */
@@ -217,7 +210,7 @@ function saveHintSay(text) {
 function confirmSaveToLibrary(btn) {
   /* The extension is stripped even though the library does not use one. The
      field is shared with the file path and shows ".json" beside it, so a user
-     who types "grades.json" here has said the name is "grades" — carrying the
+     who types "grades.json" here has said the name is "grades"; carrying the
      suffix onto a card would be reading the chip back at them. Everything
      after that is libName's: a card's name is not a filename and keeps its
      punctuation. */
@@ -389,7 +382,6 @@ function mergeCfg(base, saved, type) {
   }
 
   /* AGGREGATE'S OLD SHAPE: one measure, as `op` plus `col`.
-     -------------------------------------------------------------------------
      Every query saved before the node took a list carries those two keys and
      no `stats`, and dropping them would silently turn "average GPA" into the
      default count, which is a different answer wearing the same graph. So the
@@ -478,7 +470,6 @@ function mergeCfg(base, saved, type) {
 }
 
 /* THE VARIABLES A FILE DECLARES
-   ---------------------------------------------------------------------------
    Validated to the shape, not to the content. Both fields are read straight
    back into an input's value attribute and into sentences on the panels, so an
    object where a string belongs is coerced here rather than trusted; the caps
@@ -509,7 +500,6 @@ function readVariables(raw, warnings) {
 }
 
 /* NO BINDING SURVIVES THE VARIABLE IT NAMED
-   ---------------------------------------------------------------------------
    A file can name a variable it does not declare: hand-edited, or assembled
    from two queries. Rather than leave the reference dangling and make every
    reader decide what that means, it is dropped here and the operand goes back

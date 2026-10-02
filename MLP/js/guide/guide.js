@@ -1,29 +1,21 @@
-/* guide/guide.js: The guided walkthrough. Loads a practice query, then talks
+/* guide/guide.js: the guided walkthrough. Loads a practice query, then talks
    through it.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
 
    This file names no step. It reads five field names off a step object (target,
    node, within, title, body, plus an optional onEnter) and nothing else, so all
-   of the words live in guide/steps.js.
+   the words live in guide/steps.js.
 
-   TWO PIECES OF CHROME, AND ONLY ONE OF THEM MOVES
-   ---------------------------------------------------------------------------
-   The panel is parked. It sits at the bottom of the canvas, in the same place
-   for every step, so the reader's eyes go back to one spot rather than hunting
-   for where the words went. That is the whole reason there is no placement
-   arithmetic here: a panel that chases its target has to measure, flip, clamp
-   and then get out of the way of gestures, and none of that buys anything for
-   a walkthrough that asks the reader to do nothing.
+   The panel is parked at the bottom of the canvas, in the same place for every
+   step, so the reader's eyes go back to one spot. That is why there is no
+   placement arithmetic here: a panel that chases its target has to measure,
+   flip, clamp and keep out of the way of gestures, none of which buys anything
+   for a walkthrough that asks the reader to do nothing. The ring does move,
+   since pointing is what it is for.
 
-   The ring does move, because pointing is the one thing it is for.
-
-   WHERE THIS FILE SITS IN THE LOAD ORDER
-   ---------------------------------------------------------------------------
-   Before results/panel-width.js. applyView() calls guidePlace(), and
-   panel-width.js runs wirePanelResize() as it loads, which reaches applyView()
-   before the first paint. Loaded any later, the page dies on "guidePlace is not
-   defined" before it draws anything.                                         */
+   LOAD ORDER: before results/panel-width.js. applyView() calls guidePlace(),
+   and panel-width.js runs wirePanelResize() as it loads, which reaches
+   applyView() before the first paint. Loaded any later, the page dies on
+   "guidePlace is not defined". */
 
 var GUIDE_PAD = 4;      // how far the ring stands off what it marks
 

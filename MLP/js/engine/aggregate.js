@@ -1,39 +1,30 @@
-/* engine/aggregate.js: Aggregate, Aggregate Columns and Aggregate Rows: one implementation.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   AGGREGATION
-   ============================================================================
-   Two nodes, one implementation. Both reduce a set of values to one value; they
-   differ only in which set.
+/* engine/aggregate.js: Aggregate, Aggregate Columns and Aggregate Rows: one implementation. */
+/* AGGREGATION
+   Two nodes, one implementation. Both reduce a set of values to one value and
+   differ only in which set:
 
      Aggregate         the whole table  ->  a 1x1 table
      AggregateColumns  each column      ->  one row, one value per column
 
-   The names say what survives, not what is destroyed: AggregateColumns keeps
-   the columns and collapses the rows beneath them.
+   The names say what survives: AggregateColumns keeps the columns and collapses
+   the rows beneath them.
 
-   Three decisions apply to both, and are made here rather than per node so the
-   two cannot drift apart:
+   Three decisions apply to both, made here rather than per node so the two
+   cannot drift apart:
 
-   1. The empty case is blank, not zero. The count of nothing is 0. That is a
-      true statement about an empty table. The average, minimum or maximum of
-      nothing is not 0; it does not exist. meanOf() returns 0 for an empty
-      table, which is why the existing Output card special-cases it and prints
-      an em dash. Rather than repeat that trick, these nodes emit null, which
-      fmtCell and exportCell already render as empty in both the panel and the
-      CSV.
+   1. The empty case is blank, not zero. The count of nothing is 0, which is
+      true of an empty table. The average, minimum or maximum of nothing does
+      not exist. meanOf() returns 0 for an empty table, which is why the Output
+      card special-cases it and prints a dash; these nodes emit null instead,
+      which fmtCell and exportCell already render as empty in both the panel and
+      the CSV.
 
-   2. Count means "values that are actually there". On the whole table that is
-      the row count; per column it is the number of non-blank cells, which is
-      the more useful reading and the one that differs between columns.
+   2. Count means "values that are actually there": the row count over the whole
+      table, and the number of non-blank cells per column.
 
    3. A measure that cannot apply to a column yields blank rather than dropping
-      the column. Dropping would make the output header depend on the data,
-      and matching headers is precisely what Combine will require in order to
-      stack two of these results. A header that quietly changes shape when a
-      column happens to be non-numeric would break that at the worst moment. */
+      the column. Dropping would make the output header depend on the data, and
+      Combine requires matching headers to stack two of these results. */
 
 var AGG_OPS = [
   { key:'count',   label:'Count',   verb:'Count of',   needsCol:false },
@@ -105,22 +96,20 @@ function columnValues(t, key) {
 }
 
 /* HOW MANY OF THE ROWS A MEASURE COULD ACTUALLY USE
-   ---------------------------------------------------------------------------
    reduceValues() skips a blank, which is right: a missing mark is not a mark of
    nought. What was missing is any way to tell that it happened. "average of GPA
    over 80 rows" is what the log said when thirty of those GPAs were absent and
    the mean was taken over fifty, and a single number has no blank cell in it to
-   notice, no column to add up and nothing else on screen that disagrees.
+   notice.
 
-   That is the same failure SelectFor's blankGroupRows() exists for, in the node
+   That is the failure SelectFor's blankGroupRows() exists for, in the node
    where it hides best, so it is answered the same way: the count is taken and
    the log says so whenever it differs from the rows that came in.
 
-   The test has to match reduceValues()' own, or the two would disagree about a
-   value and the log would be wrong in the one case it exists to report. Blank
-   is skipped there and here; a non-numeric string is skipped there for every
-   measure but count, and skipped here for the same ones, because this is only
-   ever asked about a measure that needs a column.                            */
+   The test has to match reduceValues()' own, or the log would be wrong in the
+   one case it exists to report. Blank is skipped in both; a non-numeric string
+   is skipped there for every measure but count, and here for the same ones,
+   because this is only asked about a measure that needs a column. */
 function usableValueCount(t, col) {
   if (!col) return 0;
   var i = colIndex(t, col.key);
@@ -134,38 +123,29 @@ function usableValueCount(t, col) {
   return n;
 }
 
-/* ---- Aggregate: whole table -> one row ------------------------------------ */
+/* Aggregate: whole table -> one row */
 
 /* IT TAKES A LIST OF MEASURES, not one.
+   With one measure per node, "what is the range of GPAs" needed two Aggregates
+   on two branches and a Combine to put them back together, which then failed
+   because neither branch had a column the join could match on.
 
-   It used to take exactly one, a measure and the column it applied to, and a
-   1x1 table came out. That made the commonest shape of question awkward in a
-   way that was easy to miss: "what is the range of GPAs" is a minimum and a
-   maximum, and with one measure per node it took two Aggregates on two
-   branches and a Combine to put them back beside each other, which then failed
-   because neither branch had a column the join could match on. Two nodes, a
-   third to reconcile them, and a refusal, for one row of two numbers.
+   The list is Select For's, unchanged: {op, col} objects under `stats`, already
+   validated on load, already added and removed by addStat and removeStat, and
+   rendered by one markup function. This node reuses measureColumns() and
+   measureValues() outright, so the two cannot drift apart about what "average
+   of GPA" means or what the column is called.
 
-   The list is not a new idea here, it is Select For's, unchanged. Its measures
-   are already {op, col} objects under `stats`, already validated on load,
-   already added and removed by addStat and removeStat, and already rendered by
-   one markup function. So this node reuses measureColumns() and
-   measureValues() outright rather than growing its own pair, and the two nodes
-   cannot drift apart about what "average of GPA" means or what the column it
-   produces is called.
+   The reading is Select For's with the grouping taken away: a Select For with
+   no groups would be this node. That is why the column keys match too,
+   `average_gpa` rather than the bare `average` this node produced before. The
+   LABEL is unchanged ("Average GPA"), so nothing on screen or in a file reads
+   differently; only a downstream node pointed at the old key has to be pointed
+   again, and each resolves a missing key by falling back rather than failing.
 
-   The reading is the same one Select For has, with the grouping taken away:
-   Select For asks the measures of each group, this asks them of the whole
-   table, and a Select For with no groups would be this node. That is why the
-   column keys match too, `average_gpa` rather than the bare `average` this
-   node produced before. The LABEL is unchanged ("Average GPA"), so nothing on
-   screen or in an exported file reads differently; only a downstream node that
-   had been pointed at the old key has to be pointed again, and every one of
-   them resolves a missing key by falling back rather than failing.
-
-   Share of total is deliberately not offered. It divides by the rows that came
-   in, which here are the rows being measured, so it could only ever answer
-   100%. See statListHTML(), which is handed AGG_OPS for this node alone.     */
+   Share of total is not offered. It divides by the rows that came in, which
+   here are the rows being measured, so it could only answer 100%. See
+   statListHTML(), which is handed AGG_OPS for this node alone. */
 
 function aggregateSchema(node, inSchema) {
   return makeTable(measureColumns(node, inSchema), []);
@@ -210,7 +190,7 @@ function applyAggregate(node, t, log) {
   return makeTable(cols, [measureValues(t, stats, scols, t.rows.length)]);
 }
 
-/* ---- AggregateColumns: many rows -> one row ------------------------------- */
+/* AggregateColumns: many rows -> one row */
 
 /* Keys and labels are preserved so the result still reads as the same table.
    That is what makes "run a histogram twice, stack them, total the columns"
@@ -265,69 +245,54 @@ function applyAggregateColumns(node, t, log) {
   return makeTable(out.columns, [row]);
 }
 
-/* ---- AggregateRows: one row -> one value, per row ------------------------- */
+/* AggregateRows: one row -> one value, per row */
 
-/* The third member of the family, and the one that runs the other way. Aggregate
-   collapses a table to a cell; AggregateColumns collapses each column to a cell
-   and emits one row; AggregateRows collapses each ROW to a cell, keeping one
-   row out for every row in:
+/* The third member of the family, and the one that runs the other way:
 
      AggregateColumns   N rows x M cols  ->  1 row  x M cols   (down each column)
      AggregateRows      N rows x M cols  ->  N rows x L+1 cols (across each row)
 
-   THE MEASURE COLUMNS ARE REPLACED. THE LABEL COLUMNS ARE CARRIED.
+   THE MEASURE COLUMNS ARE REPLACED, THE LABEL COLUMNS ARE CARRIED.
 
-   This used to replace the whole row, on the position that row aggregation
-   assumes a row of measures, so a label had no business being there and
-   narrowing to the measures first was a Select. The rule was consistent and it
-   made the node useless for the thing it is most often reached for. Averaging a
-   breakdown, one row per course, produced a column of averages with no courses
-   beside them: figures that cannot be read, exported or wired onward, because
-   nothing in the table says which row each one belongs to. Select could not
-   help, since the label has to survive the step to be in the result at all, and
-   dropping it beforehand is the very thing that loses it.
+   This used to replace the whole row, on the view that row aggregation assumes
+   a row of measures and narrowing to them first was a Select's job. That made
+   the node useless for what it is most often reached for: averaging a breakdown
+   of one row per course produced a column of averages with no courses beside
+   them, which cannot be read, exported or wired onward. Select could not help,
+   since the label has to survive the step to be in the result at all.
 
-   So the split is made here instead, and it is made by the same test that
-   already decides what the arithmetic may touch. A column that isMeasurable()
-   accepts is a measure and feeds the answer. Everything else, text, enums,
-   identifiers and the nested course column, is a label: it identifies the row
-   rather than contributing to it, and it comes out unchanged. That is why
-   nothing had to be added to say which columns are which, and why the promise
-   the old comment made about ids is still kept. An id is excluded from the sum
-   exactly as before. It is now shown next to it rather than thrown away.
+   The split is made by the same test that decides what the arithmetic may
+   touch. A column isMeasurable() accepts is a measure and feeds the answer;
+   everything else (text, enums, identifiers, the nested course column) is a
+   label and comes out unchanged. So nothing had to be added to say which
+   columns are which, and an id is still excluded from the sum, now shown beside
+   it rather than thrown away.
 
-   Count is the one measure this does not tidy up. It still asks how many values
-   a row holds and still accepts any column, so on a row with a label the label
-   is counted AND carried. That is the documented meaning of count here and
-   changing it is a separate decision, so the panel goes on naming how many
-   columns contribute, which is where a label being added into a total shows up
-   before the query is run.                                                    */
+   Count is the exception. It still asks how many values a row holds and accepts
+   any column, so on a row with a label the label is counted as well as carried.
+   That is count's documented meaning here, and the panel names how many columns
+   contribute, which is where a label in a total shows up before the run. */
 
-/* ---- The two-column measures ---------------------------------------------
-   Every measure above answers "given these values, produce one number", and
-   that is one shape: many in, one out. Difference, Ratio and Percent of are
-   the other shape, two in and one out, and it is the shape the tool had no
-   way to express. Counting the students on a course and counting the ones who
-   passed were both easy; saying what fraction passed was not reachable at all,
-   because nothing could relate two numbers the tool had already worked out.
+/* The two-column measures
+   Every measure above answers "given these values, produce one number": many
+   in, one out. Difference, Ratio and Percent of are two in and one out, a shape
+   the tool had no way to express. Counting the students on a course and
+   counting the ones who passed were both easy; saying what fraction passed was
+   not reachable, because nothing could relate two numbers already worked out.
 
    They live here rather than in a node of their own because Agg. Rows already
-   means "one value per row, worked out from that row's values", and a ratio of
-   two of that row's values is exactly that. What it needed was not a new place
-   to live but a way to say WHICH two columns, since unlike a sum these are
-   ordered: Passed over Enrolled is a pass rate and Enrolled over Passed is not
-   a number anybody wants.
+   means "one value per row, from that row's values", and a ratio of two of that
+   row's values is exactly that. What it needed was a way to say WHICH two
+   columns, since unlike a sum these are ordered: Passed over Enrolled is a pass
+   rate, Enrolled over Passed is not.
 
-   So they are picked explicitly, in two selects, rather than taken from the
-   order the columns happen to arrive in. Header order would have been fewer
-   lines and would have left the operand order invisible, controllable only
-   through Combine's Base dropdown, and silently meaningless as soon as a third
-   column appeared.
+   So they are picked explicitly in two selects rather than taken from header
+   order, which would have left the operand order invisible and silently
+   meaningless as soon as a third column appeared.
 
-   `pick` names the second select for each, so the panel reads as the operation
-   does: "Of Passed, Divided by Enrolled". `sym` is what the result column
-   calls itself, so the header says "Passed / Enrolled" and the query is
-   readable from its output alone.                                            */
+   `pick` names the second select, so the panel reads as the operation does:
+   "Of Passed, Divided by Enrolled". `sym` is what the result column calls
+   itself, so the header says "Passed / Enrolled". */
 var ROW_PAIR_OPS = [
   { key:'difference', label:'Difference', pair:true, pick:'Minus',     sym:'-',
     hint:'The first column minus the second, on every row. Use it for a change ' +
@@ -458,27 +423,23 @@ function aggregateRowsColumn(node, t) {
   return { key: op.key, label: label, type: COLTYPE.NUMBER };
 }
 
-/* The whole output header: the labels, in the order they arrived, then the
+/* The whole output header: the labels in the order they arrived, then the
    measure. The measure goes last because that is the order the result reads in,
-   label first and answer after, and because appending keeps every carried
-   column at the index it already had.
+   and because appending keeps every carried column at the index it had.
 
-   A clash is renamed rather than allowed, the way joinColumns() renames one.
-   A table whose label column is already keyed `count` would otherwise produce
-   two columns under one key, and colIndex() hands every later node the first
-   it finds, so the wrong column would feed the next step. Rare, and silent,
-   which is the combination worth spending a few lines on.
+   A clash is renamed rather than allowed, the way joinColumns() renames one. A
+   table whose label column is already keyed `count` would otherwise produce two
+   columns under one key, and colIndex() hands every later node the first it
+   finds, so the wrong column would feed the next step.
 
-   Key and label are made unique SEPARATELY because they are read by different
+   Key and label are made unique SEPARATELY, because they are read by different
    things and can clash independently. colIndex() reads the key, so a duplicate
-   key is a wiring bug. serialiseTable() writes the LABEL as the CSV header, so
-   a duplicate label is a file with two columns of the same name and no way to
-   tell them apart. A column keyed `sum` and labelled `Total` collides on one
-   and not the other, and renaming what did not clash would be noise on screen
-   for no gain.
+   key is a wiring bug; serialiseTable() writes the LABEL as the CSV header, so
+   a duplicate label is a file with two columns of the same name. A column keyed
+   `sum` and labelled `Total` collides on one and not the other.
 
    uniqueAgainst() lives in data/table.js, because Combine's join needs the same
-   rule for the same reason and one spelling of it is better than two. */
+   rule. */
 function aggregateRowsColumns(node, t) {
   var carried = aggregateRowsCarried(node, t);
   var out = aggregateRowsColumn(node, t);
@@ -513,7 +474,6 @@ function aggregateRowsIdx(node, t) {
 }
 
 /* HOW MANY OF A ROW'S CELLS THE MEASURE COULD ACTUALLY USE
-   ---------------------------------------------------------------------------
    usableValueCount() answers this down a column, for Aggregate and
    AggregateColumns. This is the same question along a row, and it exists for the
    same reason: reduceValues() skips a blank, and "average across 3 columns" is

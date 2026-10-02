@@ -1,38 +1,28 @@
-/* engine/unique-select.js: Unique, and Select.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   UNIQUE
-   ============================================================================
-   Removes duplicates. A Reduction in the supervisor's categorisation, sitting
-   beside Filter and Take: fewer rows out than in, nothing invented.
+/* engine/unique-select.js: Unique, and Select. */
+/* UNIQUE
+   Removes duplicates. A Reduction beside Filter and Take: fewer rows out than
+   in, nothing invented.
 
-   Two modes, and the second is the one his example asks for. "It could be used
-   to produce all available course labels from a multiplicity of course grade
-   rows" cannot be done by deduplicating whole rows. Every enrolment row
-   differs in its mark, so nothing would be removed. Getting course labels means
-   reducing to the course column first and then deduplicating that. So:
+   Two modes. Deduplicating whole rows cannot produce "all available course
+   labels from a multiplicity of course grade rows", because every enrolment row
+   differs in its mark and nothing would be removed. That needs the table
+   reduced to the course column first:
 
-     all columns:   A row survives if no identical row came before it. The
+     all columns:   a row survives if no identical row came before it. The
                     header is untouched.
-     one column:    The table is reduced to that column, then deduplicated. The
-                    header becomes that one column. This is the label-producing
+     one column:    the table is reduced to that column, then deduplicated. The
+                    header becomes that column. This is the label-producing
                     mode, and what makes a list of labels an ordinary table on
-                    an ordinary wire rather than a special kind of input.
+                    an ordinary wire.
 
-   Duplicate means equal values, not the same entity. rowKey() deliberately says
-   two rows are the same when they share a student id, which is right for
-   merging branches and wrong here: Unique is asked what distinct values are
-   present, and answering "these two rows are one student" would collapse a
-   student's two enrolments into one course label. Comparison is therefore on
-   the cells themselves.
+   Duplicate means equal values, not the same entity. rowKey() says two rows are
+   the same when they share a student id, which is right for merging branches
+   and wrong here: it would collapse a student's two enrolments into one course
+   label. Comparison is on the cells themselves.
 
-   First-seen order is preserved rather than sorted. The node's job is to remove
-   duplicates and nothing else; if an order is wanted, Sort is the node that
-   provides it, and preserving arrival order means a label list keeps whatever
-   order its source imposed, which a declared column order can then carry
-   through.                                                                   */
+   First-seen order is preserved rather than sorted. Sort is the node for an
+   order, and preserving arrival order lets a label list keep whatever order its
+   source imposed. */
 
 /* Columns offered as the single-column selector. A nested enrolment cell is not
    a label ("all distinct values of Courses" would be a list of arrays), so the
@@ -108,26 +98,21 @@ function applyUnique(node, t, log) {
   return makeTable(cols, rows, col ? {} : t.meta);
 }
 
-/* ============================================================================
-   SELECT: Choose which columns travel on
-   ============================================================================
+/* SELECT: choose which columns travel on.
    Aggregate used to do two things at once: measure a column, and leave that
-   column as the only one in the result. Measuring is Aggregate's job. The
+   column as the only one in the result. Measuring is Aggregate's job; the
    narrowing is not, and bundling them meant there was no way to narrow a table
    without also collapsing it to a single row.
 
-   Select is the narrowing on its own. Rows are untouched (same rows, same
-   order, same count), and only the header changes. That makes the two
+   Select is the narrowing on its own. Rows are untouched, same rows, same
+   order, same count, and only the header changes. That makes the two
    composable: Select then Aggregate measures a column of a narrowed table, and
-   Select alone answers "just show me these three columns" without summarising
-   anything.
+   Select alone answers "just show me these three columns".
 
-   Column order follows the incoming table, not the order the boxes were
-   ticked. Choosing columns and ordering them are different questions, and
-   ticking order is invisible once the panel is closed. A user who unticks a
-   box and ticks it again would otherwise find that column had silently moved to
-   the end. If column order is wanted later it should be its own control, where
-   it can be seen and changed deliberately.                                    */
+   Column order follows the incoming table, not the order the boxes were ticked.
+   Choosing columns and ordering them are different questions, and ticking order
+   is invisible once the panel is closed: a user who unticks a box and ticks it
+   again would otherwise find that column had moved to the end. */
 
 /* Resolved against the arriving table rather than trusted from config, the same
    way Aggregate resolves its measure column. A saved key outlives its column

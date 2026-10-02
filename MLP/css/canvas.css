@@ -1,7 +1,4 @@
-/* canvas.css: The canvas, a node wrapper, the node shapes and the remove button.
-   Part of the Student Data Analyser's stylesheet. The files load in the order
-   index.html lists them, and that order is the cascade: it must not change.
-   ========================================================================== */
+/* canvas.css: the canvas, the node wrapper, the node shapes and the remove button. */
 /* ── LAYOUT ──────────────────────────────────────────────── */
 .main { display: flex; flex: 1; overflow: hidden; }
 

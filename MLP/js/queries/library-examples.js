@@ -1,48 +1,27 @@
-/* queries/library-examples.js: Worked example queries, and the cards they draw.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
+/* queries/library-examples.js: worked example queries, and the cards they draw.
 
-   WHY THESE ARE NOT IN THE LIBRARY
-   ---------------------------------------------------------------------------
-   The obvious place for an example query is the library, seeded on first run.
-   Three things are wrong with that, and the third is the one that settles it.
+   These are NOT seeded into the library. There is no API that takes a graph:
+   libAdd() refuses an empty canvas and builds its entry from libEntryFor(),
+   which serialises the CURRENT canvas, so seeding would mean loading each
+   example onto the user's canvas at start-up. libCleanEntry() also returns
+   exactly { id, name, savedAt, graph }, so an entry cannot be marked built-in
+   without bumping LIB_VERSION and a migration, and seeded entries would count
+   against LIB_MAX_ENTRIES, appear in Export All, and be deletable and then
+   re-seeded on the next visit.
 
-   There is no API that takes a graph. libAdd() refuses when the canvas is empty
-   and builds its entry from libEntryFor(), which calls serialiseGraph() on the
-   CURRENT canvas. Seeding through it would mean loading each example onto the
-   user's canvas at start-up and saving it, destroying whatever was there.
+   So they live here in the page, and the dialog draws them above the user's own
+   grid. They cost no storage, never appear in an export, and improve with the
+   application rather than being frozen at whatever version wrote them. Opening
+   one goes through loadGraphFromText(), the same loader a picked file uses, so
+   the version guard, port resolution and repair all apply.
 
-   libCleanEntry() returns exactly { id, name, savedAt, graph } and drops
-   everything else, so an entry cannot be marked as a built-in without bumping
-   LIB_VERSION, writing a migration, and changing three functions that 31-library
-   pins. And seeded entries would count against LIB_MAX_ENTRIES, appear in the
-   byte figure and in Export All, be renameable, and be deletable and then
-   silently re-seeded on the next visit unless a second flag remembered that the
-   user had deleted them.
+   TO CHANGE ONE: do not hand-edit the JSON. Build the query in the running
+   application, press Save, and paste the file's contents in as `graph`,
+   removing only `savedAt`. Every graph here was produced that way by the
+   shipped serialiser at FILE_VERSION 4.
 
-   The store is the user's drawer. Writing to it unasked is the wrong default
-   whatever the contents.
-
-   So the examples live here, in the page, and the dialog draws them above the
-   user's own grid. They cost no storage, cannot be deleted or renamed, never
-   appear in an export, and they improve when the application does rather than
-   being frozen in whatever version first wrote them. Opening one goes through
-   loadGraphFromText(), the same loader a picked file goes through, so the
-   version guard, the port resolution and the repair all apply without being
-   written a second time.
-
-   HOW TO CHANGE ONE
-   ---------------------------------------------------------------------------
-   Do not hand-edit the JSON below. Build the query in the running application,
-   press Save, and paste the contents of the resulting file in as `graph`,
-   changing nothing but the removal of `savedAt` (an example is not a moment in
-   time). Every graph here was produced that way, by the shipped serialiser at
-   FILE_VERSION 4, against the real archive. Regenerating after a format change
-   is then "open it, re-save it" rather than "edit it and hope".
-
-   Each carries a `why`, which is the one thing a user-saved card does not have
-   and the reason these are worth shipping at all: the card says what the query
-   is demonstrating, not merely what it is called.                            */
+   Each carries a `why`, which is what a user-saved card does not have: the card
+   says what the query demonstrates, not just what it is called. */
 
 var LIB_EXAMPLES = [
   {

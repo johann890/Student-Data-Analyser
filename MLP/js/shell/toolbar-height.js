@@ -1,29 +1,21 @@
-/* shell/toolbar-height.js: The toolbar height, its drag handle and the scale it maps to.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   TOOLBAR HEIGHT
-   ============================================================================
-   The same bargain as the results panel, turned ninety degrees: the bar can be
-   pulled down for more room, and the room comes out of the canvas rather than
-   out of a layer floating over it.
+/* shell/toolbar-height.js: The toolbar height, its drag handle and the scale it maps to. */
+/* TOOLBAR HEIGHT
+   The same bargain as the results panel turned ninety degrees: the bar can be
+   pulled down for more room, and the room comes out of the canvas rather than a
+   layer floating over it.
 
-   What the drag sets is a scale, not a height. A bar that grew taller while its
-   buttons stayed 22px would be a band of empty grey with the same controls
-   stranded in it, which is more room for nothing. One multiplier drives every
-   measurement in the stylesheet instead, so the bar keeps its proportions and
-   the controls grow into the height the user asked for.
+   The drag sets a scale, not a height. A bar that grew taller while its buttons
+   stayed 22px would be a band of empty grey with the controls stranded in it.
+   One multiplier drives every measurement in the stylesheet instead, so the bar
+   keeps its proportions.
 
-   The default is the floor. Pulling up goes back to the bar as designed and
-   stops there, because below it the labels start colliding and there is nothing
-   to be gained that zooming the browser does not already do better. The ceiling
-   is whichever comes first: a scale the controls still look deliberate at, or
-   the point where the canvas has shrunk to CANVAS_MIN_H and giving away more
-   would leave nowhere to build a query.
+   The default is the floor: pulling up goes back to the bar as designed and
+   stops, because below it the labels collide and browser zoom already does that
+   job better. The ceiling is whichever comes first, a scale the controls still
+   look deliberate at, or the canvas shrinking to CANVAS_MIN_H.
 
-   Stored with the panel width and for the same reason: it is a fact about this
-   person's screen, not about the query, and a saved .json carries neither. */
+   Stored with the panel width and for the same reason: a fact about this
+   person's screen, not about the query. */
 
 var BAR_S_MIN    = 1;     // the bar as designed, and the smallest it goes
 var BAR_S_MAX    = 2.4;   // past this the controls read as a mistake rather than a choice

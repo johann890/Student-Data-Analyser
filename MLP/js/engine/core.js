@@ -1,26 +1,6 @@
-/* engine/core.js: The query walk, the operators it dispatches to, and Filter.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   ENGINE: Evaluation, the nodes that transform a Table, and their specs
-   ============================================================================
-   The query engine and every operation it dispatches to: Compare, Unique,
-   Select, Project, Output, Aggregation, Combine, then the node specifications
-   that describe them to the editor. Zero DOM references, by rule now rather
-   than by habit: if a function in this file needs an element, it is in the
-   wrong file.
-   ============================================================================
-   Part of the query builder. LOAD ORDER MATTERS, and the order is the script
-   list at the foot of index.html. These are deliberately NOT ES modules; the tool is
-   opened from Finder at file://, where module scripts are fetched with CORS
-   against an opaque origin and refused. Classic scripts sharing one global
-   scope are what works there, which is why nothing here is wrapped in an IIFE
-   and why a name declared in one file is visible in the next.                */
-
-/* ============================================================================
-   QUERY ENGINE
-   ============================================================================ */
+/* engine/core.js: The query walk, the operators it dispatches to, and Filter. */
+/* Nothing in engine/ touches the DOM. A function here that needs an element is
+   in the wrong file. */
 
 var OP_FNS = {
   gt:  function(a,b){ return a >  b; },
@@ -110,30 +90,24 @@ var MARK_OPS = ['gt','gte','lt','lte','eq','ne','between'];
 var CODE_OPS = ['eq','matches','in'];
 
 /* THE PATTERN OPERATOR
-   ---------------------------------------------------------------------------
-   The supervisor's last note: "using 'SWEN*' for 'course' would select the
-   subject 'SWEN' and using '*4..' would select 400-level courses", and the
-   point behind it, that patterns "would result in fewer filter nodes being
-   required". They do more than that. Took subject and Took level exist because
-   a course code has a subject and a level buried in it and no other way to ask
-   about either; one pattern over the code reaches both, so the two convenience
-   fields become a convenience rather than the only route.
+   'SWEN*' selects the subject SWEN and '*4..' selects 400-level courses, which
+   means fewer Filter nodes. It does more than that: Took subject and Took level
+   exist only because a course code has a subject and a level buried in it with
+   no other way to ask about either. One pattern over the code reaches both.
 
-   WILDCARDS RATHER THAN REGULAR EXPRESSIONS, which is a smaller thing than he
-   asked for and deliberate. His own first example is already a wildcard, and he
-   observed that academics reach for that form first. The other two translate by
-   one character: '*4..' is '*4??' and 'SWEN3..' is 'SWEN3??'.
+   WILDCARDS RATHER THAN REGULAR EXPRESSIONS, deliberately. Academics reach for
+   the wildcard form first, and the regex examples translate by one character:
+   '*4..' is '*4??' and 'SWEN3..' is 'SWEN3??'.
 
-   What that buys is that there is no such thing as an invalid pattern here. A
-   user typing a bracket or a backslash gets a search for a bracket or a
-   backslash, not a syntax error in a language nobody said they were writing,
-   and the compiled pattern contains no construct that can backtrack. Full
-   regular expressions are this function with the escaping removed, on the day
-   somebody wants them.
+   That buys there being no such thing as an invalid pattern. A user typing a
+   bracket or a backslash gets a search for one, not a syntax error in a
+   language nobody said they were writing, and the compiled pattern contains
+   nothing that can backtrack. Full regular expressions are this function with
+   the escaping removed, the day somebody wants them.
 
-   Anchored, because "SWEN" as a pattern means the code SWEN and not every code
-   containing it. Case-insensitive, because a course code is written in capitals
-   and typing it in lower case is not a different question. */
+   Anchored, because "SWEN" means the code SWEN and not every code containing
+   it. Case-insensitive, because a course code is written in capitals and typing
+   it lower case is not a different question. */
 function globToRegExp(pattern) {
   var p = String(pattern), out = '';
   for (var i = 0; i < p.length; i++) {
@@ -149,19 +123,19 @@ function globToRegExp(pattern) {
 
 /* WHICH COLUMNS CAN CARRY A RANGE
    A range needs a meaningful order, and "has a declared list of values" is not
-   the same thing as "is ordered". Sort treats any ENUM's declared values as an
-   order, which is defensible there. Some order beats lexical order, and the
-   user can see the result. A range is a claim: "between Cybersecurity and Data
-   Science" would look like a question and mean nothing, because the order it
-   ranges over is the order somebody happened to type the list in.
+   the same as "is ordered". Sort treats any ENUM's declared values as an order,
+   which is defensible there: some order beats lexical order and the user can
+   see the result. A range is a claim, and "between Cybersecurity and Data
+   Science" would mean nothing, because the order it ranges over is the order
+   somebody happened to type the list in.
 
    So a range is offered where the order is real:
      - a number, which is ordered by being a number;
      - a column with an explicit `order`, which is a deliberate statement about
        ranking (letterGrade declares GRADE_ORDER, best to worst);
-     - an ENUM whose values are all numeric, which is how Year arrives. The
-       supervisor's use cases group by year ranges, and Year is an ENUM because
-       its values are a small fixed set, not because they are unordered.
+     - an ENUM whose values are all numeric, which is how Year arrives. Year is
+       an ENUM because its values are a small fixed set, not because they are
+       unordered.
 
    Gender and Specialisation therefore have no range, and gain one the day
    somebody declares what their order means. */
@@ -242,34 +216,25 @@ function logText(e) {
 }
 
 /* WHAT A ROW IS, CHOSEN ON THE SOURCE
-   ---------------------------------------------------------------------------
-   This setting existed once and was removed. The removal note is still in
-   applyProject() below and it is worth reading before touching this, because
-   the objection was never to the feature: it was that "a granularity switch
-   hidden in a dropdown made 'count students' wrong by a factor of eight with
-   nothing on screen to say so."
+   This setting existed once and was removed; the removal note is in
+   applyProject() below. The objection was never to the feature but to "a
+   granularity switch hidden in a dropdown [making] 'count students' wrong by a
+   factor of eight with nothing on screen to say so". The supervisor asked for
+   it back on 2026-09-24, wanting the choice available.
 
-   The supervisor asked for it back by email on 2026-09-24, having found the
-   nesting unexpected and wanting the choice: "I think it should be possible to
-   select whether a Source node performs this transformation or not."
+   So it is the switch without the hiding. Four things say which grain a Source
+   is emitting, and the first two before the panel is opened:
 
-   Both are right, so what comes back is the switch WITHOUT the hiding. Four
-   things say which grain a Source is emitting, and the first two are on screen
-   before the panel is even opened:
-
-     1. the node on the canvas carries the words "one row per enrolment"
-        whenever it is not emitting students (shapeHTML);
-     2. the panel states the multiplication, the way Project's panel does;
-     3. the query log records it as its own step, with the row counts either
+     1. the node carries the words "one row per enrolment" whenever it is not
+        emitting students (shapeHTML);
+     2. the panel states the multiplication, as Project's does;
+     3. the query log records it as its own step with the row counts either
         side, so a count that looks eight times too large has an explanation a
         line above it;
-     4. the header changes, and `id` becomes `Student`, which is the same
-        rename Project makes and for the same reason.
+     4. the header changes and `id` becomes `Student`, the same rename Project
+        makes.
 
-   The unfold itself is applyProject(), called rather than reimplemented. Two
-   copies of this transformation would be two things to keep in step, and the
-   comment on projectColumns() already explains what happens when a row builder
-   and the column list it claims to produce are allowed to drift. */
+   The unfold is applyProject(), called rather than reimplemented. */
 /* The label is the whole of what each option says. A parenthetical gloss was
    tried and removed: it pushed the option past the width of the select and was
    cut mid-word, and the hint under the control already says the same thing in
@@ -435,26 +400,22 @@ function courseFields() {
 
 /* A column can opt out of being filterable with `filter: false`. Year used to:
    the Source already scopes the population by year, and offering it twice
-   invited a graph that says 2022 in one place and 2023 in another.
+   invited a graph saying 2022 in one place and 2023 in another.
 
-   That reasoning no longer holds. Grouping by a column means filtering on it
-   once per label ("how many in 2022, how many in 2023" is a filter for each
-   year), so a column that cannot be filtered cannot be grouped on either. Year
+   That no longer holds. Grouping by a column means filtering on it once per
+   label, so a column that cannot be filtered cannot be grouped on either. Year
    is the column four of the supervisor's use cases group by: enrolment trend
    for a course, average enrolment over several years, historical enrolment for
-   a major, and grade trend for a student. Withholding it from Filter withheld
-   it from all of them.
+   a major, and grade trend for a student.
 
-   The double-specification worry is answered by precedence rather than by
-   removal: the Source's year setting scopes the population and a Filter narrows
-   what the Source produced, so a graph saying 2022 at the Source and 2023 at a
-   Filter yields nothing, which is the honest answer to a contradictory query,
-   and visible in the log, where both entries appear in order.
+   The double-specification worry is answered by precedence instead. The
+   Source's year setting scopes the population and a Filter narrows what the
+   Source produced, so 2022 at the Source and 2023 at a Filter yields nothing,
+   which is the honest answer to a contradictory query and visible in the log.
 
-   The opt-out itself stays. It is a property of a column rather than a rule
-   about years, and the next column that has no sensible filter (a nested or
-   derived one) declares it without any code changing. Nothing declares it
-   today. */
+   The opt-out stays. It is a property of a column rather than a rule about
+   years, and the next column with no sensible filter declares it without any
+   code changing. Nothing declares it today. */
 function filterFields(schema) {
   var out = [];
   schema.columns.forEach(function(c) {

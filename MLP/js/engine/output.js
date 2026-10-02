@@ -1,10 +1,5 @@
-/* engine/output.js: Output, and Project.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   OUTPUT
-   ============================================================================
+/* engine/output.js: Output, and Project. */
+/* OUTPUT
    Every Output emits a table, including Count. A scalar is a 1x1 table. That
    is what lets one renderer and one CSV writer serve every result shape instead
    of a branch per output type.
@@ -77,23 +72,20 @@ function normaliseShow(node) {
 }
 
 /* COLUMN SELECTION ON AN OUTPUT
-   ---------------------------------------------------------------------------
-   A deliberate duplication of what Select does, and worth being explicit about
-   why, because the Output's other shortcuts were removed for being exactly
-   this. Average and the course breakdown were removed because they COMPUTED.
-   They hid steps that changed the answer, and hid them somewhere the query log
-   could not describe. Choosing which columns to look at changes no answer. It
-   is a property of the view, which is what an Output is.
+   A deliberate duplication of what Select does. The Output's other shortcuts
+   were removed for looking like this, but Average and the course breakdown were
+   removed because they COMPUTED: they hid steps that changed the answer,
+   somewhere the query log could not describe them. Choosing which columns to
+   look at changes no answer. It is a property of the view, which is what an
+   Output is.
 
-   The supervisor put it as a question: one could always wire a Select in front,
-   but so many Outputs would need the pair that the duplication earns its place.
-   Both routes stay open, and they compose. A Select upstream narrows what
-   arrives, this narrows what is shown of it.
+   One could always wire a Select in front, but so many Outputs would need the
+   pair that the duplication earns its place. Both routes compose: a Select
+   upstream narrows what arrives, this narrows what is shown of it.
 
    Applied to the row view alone. A count is a count of rows however many
-   columns are on them, and a Compare's summary already has the measure
-   checkboxes on the Compare itself; offering a second way to hide those would
-   be the duplication that is not worth it. */
+   columns they carry, and a Compare's summary already has measure checkboxes on
+   the Compare itself. */
 function outputCols(node, t) {
   return selectedCols(node, t);
 }
@@ -119,42 +111,31 @@ function outputTable(node, t) {
   }));
 }
 
-/* ============================================================================
-   PROJECT: Unfold the nested enrolments into rows of their own
-   ============================================================================
-   The one node that makes a row mean something different on the way out than it
-   meant on the way in. Everywhere else a row is a student; after a Project a row
-   is a single enrolment, so one student becomes eight rows and a count counts
-   course registrations rather than people.
+/* PROJECT: unfold the nested enrolments into rows of their own.
+   The one node that changes what a row means. Everywhere else a row is a
+   student; after a Project a row is a single enrolment, so one student becomes
+   eight rows and a count counts registrations rather than people.
 
    That used to be a setting on the Source ("one per student" or "one per
-   enrolment"), and it was removed because a granularity switch hidden in a
-   dropdown made "count students" wrong by a factor of eight with nothing on
-   screen to say so. app.js:238 recorded what should replace it:
+   enrolment"), removed because a granularity switch hidden in a dropdown made
+   "count students" wrong by a factor of eight with nothing on screen to say so.
+   Making it a node is what puts the change where it can be seen:
 
-     Nothing unfolds nested enrolments into their own rows any more. If that is
-     wanted later it should be a node on the canvas, where the change in row
-     identity is visible, rather than a setting hidden on the Source.
+     - the step appears on the canvas and in the query log;
+     - it has its own colour and menu group, because it is not the same kind of
+       operation as the ones that narrow or reorder;
+     - it renames `id` to `studentId`, since after the unfold that column no
+       longer identifies a row;
+     - its panel states the multiplication and what it does to a count.
 
-   This is that node, and "where the change is visible" is its whole design
-   brief rather than a nicety:
-     - it is a node, so the step appears on the canvas and in the query log;
-     - it has its own colour and its own group in the menu, because it is not
-       the same kind of operation as the ones that narrow or reorder;
-     - it renames `id` to `studentId`, because after the unfold that column no
-       longer identifies a row. The same student now owns eight of them;
-     - its panel states the multiplication, and says what it does to a count.
+   Without it nothing can reach a mark or a grade in a particular course as a
+   VALUE. Filter can ask "did this student take SWEN421" because it reads inside
+   the nesting, but the mark itself never becomes a column, so a distribution of
+   grades in one course is unaskable. That is use case (f), and (g) on top of it.
 
-   Without it, nothing in the tool can reach a mark or a grade in a particular
-   course as a VALUE. Filter can already ask "did this student take SWEN421",
-   because it reads inside the nesting, but the mark itself can never become a
-   column, so a distribution of grades in one course is unaskable. That is use
-   case (f), and (g) on top of it.
-
-   The header is a function of the incoming header alone (the enrolment columns
-   are fixed, and which student columns come across is decided by their keys),
-   so computeSchemas answers without seeing a single row, and the registry
-   invariant holds with no special case.                                        */
+   The header is a function of the incoming header alone, so computeSchemas
+   answers without seeing a row and the registry invariant holds with no special
+   case. */
 
 /* The columns an enrolment contributes. Fixed, because an enrolment has the
    shape the data file gives it. */
@@ -202,20 +183,19 @@ function canProject(t) { return coursesColIndex(t) !== -1; }
    nested column itself and does not collide with a column the enrolment is
    about to supply.
 
-   ONE COLLISION EXISTS, and it is worth naming rather than leaving to be
-   rediscovered. `letterGrade` is a key on both sides: the student's overall
-   grade for the year, and the letter awarded for one course. The enrolment's
-   wins, which is right, because after this step a row IS an enrolment and the
-   grade that belongs to it is the course's.
+   ONE COLLISION EXISTS. `letterGrade` is a key on both sides: the student's
+   overall grade for the year, and the letter awarded for one course. The
+   enrolment's wins, which is right, because after this step a row IS an
+   enrolment.
 
    What made that a trap was the display name. Both were called "Grade", so the
-   column appeared to continue across the step while quietly changing meaning.
-   The student's is now called "Overall grade" and the enrolment's is still
-   "Grade", so the substitution is visible in the header rather than implied.
+   column appeared to continue across the step while changing meaning. The
+   student's is now "Overall grade" and the enrolment's is still "Grade", so the
+   substitution is visible in the header.
 
-   GPA does NOT collide and so rides along, which is the reason the two are not
-   treated alike: after a Project a row carries the student's GPA and the
-   course's Grade, and those really are facts about different things. */
+   GPA does NOT collide and rides along: after a Project a row carries the
+   student's GPA and the course's Grade, which are facts about different
+   things. */
 function projectCarried(t) {
   var taken = {};
   enrolmentColumns().forEach(function(c){ taken[c.key] = true; });

@@ -160,7 +160,7 @@ module.exports = ({ describe, test }) => {
       h.set(f.id, 'crit.0.value:gpa', '500');   // matches nobody
       h.set(a.id, 'stat.0.op', 'average');
       h.w.runQuery();
-      assert.equal(h.bigNum(), '\u2014', 'showing 0 would assert something false about the data');
+      assert.equal(h.bigNum(), '\u2013', 'showing 0 would assert something false about the data');
     });
 
     test('count of zero rows really is zero', () => {

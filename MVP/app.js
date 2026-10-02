@@ -28,10 +28,10 @@ var connections = []; // [{from: nodeId, to: nodeId, color: '#...'}]
 var idCtr = 0;
 var drag = null;
 var lastResults = {}; // nodeId -> {count, avg, etc} for inline display
-var SNAP_DIST = 160; // px proximity threshold — measured between shape edges
+var SNAP_DIST = 160; // px proximity threshold, measured between shape edges
 var hoverConn = null; // connKey() of the connection currently hovered, or null
 var exportData = {};  // outputNodeId -> {index, ot, log:[plain lines], data:[...]}
-var resultsFresh = false; // false once the graph changes after a run — blocks export
+var resultsFresh = false; // false once the graph changes after a run; blocks export
 
 function uid() { return ++idCtr; }
 
@@ -128,7 +128,7 @@ function onMove(e) {
   drag.node.x = Math.max(0, Math.min(rect.width-100, e.clientX-rect.left-drag.ox));
   drag.node.y = Math.max(0, Math.min(rect.height-100, e.clientY-rect.top-drag.oy));
 
-  // Find closest node that could form a valid connection — measure port-to-port distance
+  // Find closest node that could form a valid connection: measure port-to-port distance
   var dn = drag.node;
   var best = null, bestDist = SNAP_DIST;
   nodes.forEach(function(n) {
@@ -263,7 +263,7 @@ function render() {
     el.style.left = node.x+'px';
     el.style.top  = node.y+'px';
 
-    // Inline result only shown on output nodes for count/avg — but per feedback, suppress entirely
+    // Inline result only shown on output nodes for count/avg, but per feedback suppress entirely
     var inline = '';
     el.innerHTML = shapeHTML(node, inline) + configHTML(node);
     cv.appendChild(el);
@@ -515,7 +515,7 @@ function buildDeleteBadge(conn, pathEl) {
 
 /* EDGE DATA PREVIEW
    After a deliberate dwell over a connection, show up to 5 rows of the dataset
-   flowing along it — the output of the edge's upstream (from) node, recomputed
+   flowing along it: the output of the edge's upstream (from) node, recomputed
    live so it's always current, even mid-edit before any run. A plausibility
    aid: the "of N" total is the real signal; the rows are dataset-ordered
    texture, not a representative sample. */
@@ -552,7 +552,7 @@ function hidePreview() {
 // The dataset on the wire = the from-node's emitted output. evaluateGraph()
 // computes this for every node; we just read the right one back.
 // saveState() first so an unsaved config edit (e.g. a criterion value typed but
-// not yet run) is reflected — only render()/runQuery persist otherwise, so
+// not yet run) is reflected, because only render()/runQuery persist otherwise, so
 // without this the preview would show pre-edit data until the next run.
 function edgeData(conn) {
   saveState();
@@ -579,16 +579,16 @@ function showPreview(conn, pathEl) {
   var body;
 
   if (res.error) {
-    body = '<div class="ep-note">Can\'t preview — '+
+    body = '<div class="ep-note">Can\'t preview: '+
       (res.error.indexOf('Circular') === 0 ? 'circular connection.' : 'graph unresolved.')+'</div>';
   } else if (res.incomplete) {
-    body = '<div class="ep-note">No data on this edge yet — upstream isn\'t connected to a Source.</div>';
+    body = '<div class="ep-note">No data on this edge yet: upstream isn\'t connected to a Source.</div>';
   } else {
     var n = res.data.length;
     var shown = Math.min(5, n);
     var count = '<div class="ep-count"><span class="ep-num">'+n+'</span> record'+(n===1?'':'s')+' on this edge</div>';
     if (n === 0) {
-      body = count + '<div class="ep-note">Empty stream — nothing passes this point.</div>';
+      body = count + '<div class="ep-note">Empty stream: nothing passes this point.</div>';
     } else {
       body = count + previewTableHTML(res.data) +
         '<div class="ep-foot">showing '+shown+' of '+n+', in dataset order</div>';
@@ -598,7 +598,7 @@ function showPreview(conn, pathEl) {
 
   // Anchor to the curve midpoint, offset upward so the preview floats clear
   // above the delete badge. Both reference the same point, so curvature is
-  // irrelevant — they stay stacked however the arrow bows.
+  // irrelevant: they stay stacked however the arrow bows.
   var mid = pathEl._mid || { x: 0, y: 0 };
   el.style.display = 'block';
 
@@ -637,11 +637,11 @@ function drawArrows() {
     svg.appendChild(g);
     var pathEl = drawArrow(g, p0, tip, conn.color, '0.9', false);
 
-    // No hover affordances mid-drag — the pointer is busy moving a node
+    // No hover affordances mid-drag, because the pointer is busy moving a node
     if (drag) return;
 
     // Invisible fat stroke so the thin 2px line is comfortably hoverable.
-    // Extended to the true tip so the arrowhead counts as part of the line —
+    // Extended to the true tip so the arrowhead counts as part of the line;
     // the drawn path stops short of it to make room for the polygon.
     var hit = svgEl('path');
     hit.setAttribute('d', pathEl.getAttribute('d') + ' L ' + tip.x + ' ' + tip.y);
@@ -663,7 +663,7 @@ function drawArrows() {
     }
 
     // mousemove (not just mouseenter) so hover still engages if the SVG was
-    // rebuilt underneath a stationary cursor — mouseenter would never fire there
+    // rebuilt underneath a stationary cursor, so mouseenter would never fire there
     hit.addEventListener('mousemove', function() { setHover(true); });
     g.addEventListener('mouseleave', function() {
       setHover(false);
@@ -671,7 +671,7 @@ function drawArrows() {
       hidePreview();
     });
 
-    // Data preview after a deliberate dwell — a quick pass to reach the delete
+    // Data preview after a deliberate dwell, so a quick pass to reach the delete
     // badge won't summon it. Anchored to the curve midpoint, not the cursor.
     hit.addEventListener('mousemove', function() { armPreviewTimer(conn, pathEl); });
 
@@ -744,7 +744,7 @@ function unionOf(lists) {
 /* QUERY LOG
    Entries are structured, not pre-baked HTML, so the same entry can render as
    markup for the panel and as plain text for export. Building HTML first and
-   stripping tags later loses operators like "<" — they are indistinguishable
+   stripping tags later loses operators like "<": they are indistinguishable
    from markup once concatenated. */
 
 function logEntry(kw, parts) { return { kw: kw, parts: parts }; }
@@ -813,7 +813,7 @@ function applyFilter(node, data, log) {
 function evaluateGraph() {
   var order = topoSort();
   if (order.length < nodes.length) {
-    return { error: 'Circular connection detected — remove an arrow that loops back on itself.' };
+    return { error: 'Circular connection detected. Remove an arrow that loops back on itself.' };
   }
 
   var res = {};
@@ -906,7 +906,7 @@ function runQuery() {
     var body;
 
     if (!r.hasSource) {
-      body = '<div class="error-box">Not connected to a Source — this Output has no data path.</div>';
+      body = '<div class="error-box">Not connected to a Source: this Output has no data path.</div>';
     } else {
       var ot = onode._outputType || 'count';
       lastResults[onode.id] = outputValue(ot, r.data);
@@ -958,7 +958,7 @@ function markStale() {
   if (!pb.querySelector('.stale-note')) {
     var note = document.createElement('div');
     note.className = 'stale-note';
-    note.textContent = 'Graph changed since this run — re-run the query to export.';
+    note.textContent = 'Graph changed since this run. Re-run the query to export.';
     pb.insertBefore(note, pb.firstChild);
   }
 }
@@ -980,14 +980,14 @@ function csvCell(v) {
   return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
 }
 
-// Tab-separated — pastes straight into Excel/Sheets as columns
+// Tab-separated, so it pastes straight into Excel/Sheets as columns
 function tsvFor(e) {
   return [EXPORT_COLS.join('\t')]
     .concat(e.data.map(function(s){ return rowOf(s).join('\t'); }))
     .join('\n');
 }
 
-// Clean data only — no provenance rows, so imports don't need cleaning up
+// Clean data only: no provenance rows, so imports don't need cleaning up
 function csvFor(e) {
   return [EXPORT_COLS.join(',')]
     .concat(e.data.map(function(s){ return rowOf(s).map(csvCell).join(','); }))
@@ -1006,7 +1006,7 @@ function resultLine(e) {
 // Readable text carrying the query that produced the number
 function scalarText(e) {
   return [
-    'Student Data Analyser — Output ' + e.index,
+    'Student Data Analyser: Output ' + e.index,
     'Generated: ' + timeStamp(false),
     '',
     'Query:',
@@ -1045,7 +1045,7 @@ function flashBtn(btn, msg) {
   }, 1500);
 }
 
-// execCommand fallback — navigator.clipboard needs a secure context, which
+// execCommand fallback, because navigator.clipboard needs a secure context, which
 // isn't guaranteed when the page is opened straight off the filesystem
 function legacyCopy(text) {
   try {

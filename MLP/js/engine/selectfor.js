@@ -1,68 +1,40 @@
-/* engine/selectfor.js: Select For: a group-by whose groups are named rather than wired.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   SELECT FOR: A group-by whose groups are named rather than wired
-   ============================================================================
-   The node Compare was always standing in for. Compare makes the user build one
-   Filter chain per group and wire each of them in by hand; this names the
-   column to split on and does it once per value.
+/* engine/selectfor.js: Select For, a group-by whose groups are named rather
+   than wired. Compare makes the user build one Filter chain per group and wire
+   each one in; this names the column to split on and does it once per value.
 
-   Placed here, after the aggregation section, because that is where the parts
-   it is assembled from are: AGG_OPS, reduceValues and measurableCols all come
-   from Aggregate, and a `var` list built by concatenating one of them has to
-   run after it. Reading order agrees with that. A group-by is an aggregation
-   with a label, and it is next to the two Branches nodes it shares a menu and
-   a colour with.
+   Loaded after the aggregation files, because AGG_OPS, reduceValues and
+   measurableCols all come from Aggregate and the `var` lists here concatenate
+   them.
 
-   The definition it is built from is one already written down, at the top of
-   filterFields():
+   A group is the rows a Filter would keep for one value, so the matching is
+   applyCriterion's, with the value coming from a label instead of a text box.
+   Nothing here reimplements what it means to match: not string versus number
+   comparison, not the nested "took this course" test, not the COURSES column.
+   That is why it can group by things that are not columns.
 
-     "Grouping by a column means filtering on it once per label. How many in
-      2022, how many in 2023 is a filter for each year."
+   TWO PORTS
+   `data` is the table being summarised. `labels` is one row per group to report
+   on, and leaving it empty means "use the values in the data". The labels port
+   buys three things a column alone cannot:
 
-   Taken literally, that is the whole implementation. A group is the rows a
-   Filter would keep for one value, so the matching is applyCriterion's, with
-   the value coming from a label instead of from a text box. Nothing here
-   reimplements what it means to match: not string versus number comparison,
-   not the nested "took this course" test, not the COURSES column at all. That
-   is why a node covering four of the supervisor's use cases is this short, and
-   why it groups by things that are not columns. "Took course" is a predicate
-   Filter already owns, and a predicate is all a group needs.
+     1. Zero-count groups survive. Grouping data by its own values cannot
+        produce a row for a course nobody took. Wire the 2022 course list into
+        `labels` and it comes out as 0.
+     2. The groups can come from a different query than the rows: "for each
+        course that ran in 2022, how many took it in 2024" is two branches.
+     3. The label set can be narrowed or ordered by ordinary nodes. A Sort and a
+        Take in front of the labels port is "the ten biggest".
 
-   TWO PORTS, AND WHY THE SECOND IS OPTIONAL
-   `data` is the table being summarised. `labels` is one row per group to
-   report on, and leaving it empty means "use the values that are in the data".
+   OUTPUT
+   One row per group: a label column, then one per measure. That is Compare's
+   shape on purpose, so downstream nodes have one case to handle rather than
+   two. The per-group tables ride in meta.branches in Compare's format as well,
+   which is what gives the Output its detail cards and the long-form CSV export
+   without either knowing this node exists.
 
-   Three things the labels port buys that a column alone cannot:
-
-     1. Zero-count groups survive. Grouping the data by its own values cannot
-        produce a row for a course nobody took. The interesting zero is the
-        one value that is missing. Wire the 2022 course list into `labels` and
-        it comes out as 0.
-     2. The groups can come from a different query than the rows. "For each
-        course that ran in 2022, how many took it in 2024" is two branches, and
-        no single table holds both halves.
-     3. The label set can be narrowed, widened or ordered by ordinary nodes.
-        A Sort and a Take in front of the labels port is "the ten biggest",
-        built out of the same nodes as everything else.
-
-   WHAT COMES OUT
-   One row per group: a label column, then one column per measure. That is
-   Compare's shape, deliberately. A node meant to replace Compare that emitted
-   something else would leave every downstream node with two cases to handle.
-   The per-group tables ride in meta.branches in Compare's format too, which is
-   what gives the Output its per-group detail cards and the long-form CSV
-   export without either of them learning this node exists.
-
-   WHAT IS DELIBERATELY NOT HERE
-   No ordering control, though Compare has one. Groups come out in the label
-   set's own order (the labels table's row order, or the grouping column's own
-   comparator when the values come from the data), and anything else is a Sort.
-   Compare's Order setting predates Compare being allowed to feed Sort; an
-   in-node copy of a node that is one wire away is the shortcut this tool keeps
-   deleting, most recently the Output's Average.                              */
+   There is no ordering control. Groups come out in the label set's order, or
+   the grouping column's own comparator when the values come from the data;
+   anything else is a Sort. */
 
 /* The fields it can group by are the fields a Filter can test, minus the one
    that needs a second value to mean anything: "grade in course" is a course
@@ -273,43 +245,33 @@ function labelsFromTable(node, lt) {
 }
 
 /* NAMED BANDS ON THE LABELS PORT
-   ---------------------------------------------------------------------------
-   The supervisor's generalisation, in his words and his format:
+   A labels table of the shape
 
        binName    binMinValue    binMaxValue
 
-   The labels port already answers "which groups exist". This lets a group be a
-   RANGE with a name of its own rather than a value, which is the one thing the
-   port could not express. A file of four rows is a grading scheme; the same
-   four rows next year are the same scheme, which is the property Histogram's
-   auto-derived widths cannot have and the reason he asked for this instead.
+   lets a group be a named RANGE rather than a value. Four rows are a grading
+   scheme, and the same four rows next year are the same scheme, which is what
+   Histogram's auto-derived widths cannot be.
 
-   WHY A SHAPE AND NOT A SETTING, AND WHY A SETTING AS WELL
    A table whose second and third columns are numbers is read as bands without
-   being told to. That is his own principle about the Source applied one node
-   further along: the node adapts to the format it is handed.
+   being told to, the same way a Source adapts to the file it is handed. Shape
+   alone is not quite enough, though: a Histogram with two measures emits
+   [group, count, average] and matches that test exactly. So the reading is
+   always stated in the panel and the query log, and `labelsAs` can pin it.
 
-   Shape alone is not quite enough to be silent about, though. A Histogram with
-   two measures emits [group, count, average] and matches that test exactly, so
-   auto-detection can be wrong, and wrong in the way this tool keeps warning
-   about: a plausible number rather than an error. So the reading is always
-   STATED in the panel and in the query log, and `labelsAs` can pin it. Auto is
-   the default and covers every case anyone will type by hand.
+   THE BOUNDARY RULE
+   Histogram's note applies word for word. `between` includes both ends, so a
+   value on a shared edge would land in two bands and the bands would stop
+   summing to the rows. Bands are matched half-open, [lo, hi), and a value is
+   tried against the closed form only when no half-open band took it.
 
-   THE BOUNDARY RULE, WHICH IS THE PART THAT GOES WRONG
-   Histogram's note applies here word for word: the `between` operator includes
-   both ends, which is right for a filter and fatal for a distribution, where a
-   value on a shared edge lands in two bands and the bands stop summing to the
-   rows. So bands are matched half-open, [lo, hi), and a value is tried against
-   the closed form only when no half-open band took it.
-
-   That second pass is not a fudge, it is what someone writing
+   That second pass is what someone writing
 
        Fail 0 4 / Pass 4 6 / Merit 6 8 / Excellent 8 9
 
    means by the last row. Contiguous bands never double-count, because the
-   half-open pass always claims the value first; the closed pass only ever
-   catches a value sitting on the outer edge of the range the bands cover. */
+   half-open pass claims the value first; the closed pass only catches a value
+   on the outer edge of the range the bands cover. */
 var SELECTFOR_BAND_ARITY = 3;
 
 /* Read off the header alone, so the schema walk can ask it too. Which reading
@@ -373,34 +335,26 @@ function bandIndexOf(bands, v) {
 }
 
 /* ROWS NO GROUP CAN EVER HOLD
-   ---------------------------------------------------------------------------
-   A blank is not a label. labelsFromData() will not make a group out of one and
-   labelsFromTable() drops it from a wired label set, which is right both times:
-   a group named "" is a group nothing can refer to. The consequence is that a
-   row whose grouping value is missing belongs to no group, and before this it
-   left without a word. A grade distribution over the 2024 archive came out as
-   eleven groups totalling 1892 of the 1927 enrolments that went in, and the
-   thirty-five that vanished were the withdrawals: the rows most likely to be
-   the point of the question.
+   A blank is not a label: labelsFromData() will not make a group of one and
+   labelsFromTable() drops it from a wired label set. So a row whose grouping
+   value is missing belongs to no group, and used to leave without a word. A
+   grade distribution over the 2024 archive came out as eleven groups totalling
+   1892 of the 1927 enrolments that went in, and the thirty-five missing were
+   the withdrawals.
 
-   The bands path two functions up already counts this and says so ("no Grade
-   and are in no band"). The same loss on the group-by-value path went unsaid,
-   and Histogram makes bins-summing-to-the-rows an invariant with a test behind
-   it, so the silence was this node disagreeing with itself.
+   The bands path already counts this and says so ("no Grade and are in no
+   band"), and Histogram makes bins-summing-to-the-rows an invariant with a test
+   behind it, so the silence here was the node disagreeing with itself.
 
-   This is NOT the same thing as a narrowed label set. A user who wires ten
-   courses into the labels port has chosen to leave the rest out, and saying so
-   would be noise. A blank cannot be chosen: no label set, wired or derived,
-   can hold it. So it is counted whether the labels came from the data or from a
-   branch, and it is reported separately from the labels that could not be
-   matched, because the fix is different. A blank means the data is incomplete;
-   an unmatchable label means the labels branch is wrong.
+   This is NOT a narrowed label set. A user who wires ten courses into the
+   labels port has chosen to leave the rest out. A blank cannot be chosen by any
+   label set, so it is counted either way, and reported separately from labels
+   that could not be matched because the fix differs: a blank means the data is
+   incomplete, an unmatchable label means the labels branch is wrong.
 
    Only the column case has an answer here. A course predicate reads the nested
-   column, where a row's value is a SET of enrolments rather than one cell, so
-   "this row has no value" is not a case that shape has: a student with no
-   enrolments is in no group because they took nothing, which is a true
-   statement about them rather than a gap in the file. */
+   column, where a row's value is a SET of enrolments, so "this row has no
+   value" is not a case that shape has. */
 function blankGroupRows(f, t) {
   if (!f || !f.column) return 0;
   var i = colIndex(t, f.key);

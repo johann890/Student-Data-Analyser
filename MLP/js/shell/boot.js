@@ -1,8 +1,5 @@
 /* shell/boot.js: What the inline handlers call, the test hook, and the first paint.
-   Loads last, because it paints.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
+   Loads last, because it paints. */
 /* GLOBALS: Referenced by inline onclick handlers in the toolbar and panels */
 window.addNode = addNode;
 window.addProcNode = addProcNode;

@@ -1,29 +1,23 @@
-/* data/table.js: The Table type every wire carries, and how one of its cells is
-   read and formatted.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   TABLE: The single data type carried on every wire
-   ============================================================================
-   Before this refactor a wire carried one of two incompatible things: an array
-   of student objects, or a bespoke Compare table. Every node that wanted to
-   handle both had to fork on `if (r.table)`, and a Compare result could not be
-   processed any further, which is why "count per year, then average those
-   counts" was unbuildable.
+/* data/table.js: the Table type every wire carries, and how one of its cells
+   is read and formatted. It is the single data type on every wire.
 
-   Now there is one shape:
+   A wire used to carry one of two incompatible things: an array of student
+   objects, or a bespoke Compare table. Every node handling both had to fork on
+   `if (r.table)`, and a Compare result could not be processed further, which is
+   why "count per year, then average those counts" was unbuildable.
+
+   One shape now:
      columns : [{ key, label, type, ... }]   the header
      rows    : [[v, v, ...]]                 aligned to columns by position
      meta    : {}                            optional extras (Compare branches)
 
-   A student list is a table. A histogram is a table. A count is a 1x1 table.
-   Nodes are written once and work on all of them.
+   A student list is a table, a histogram is a table, a count is a 1x1 table, so
+   nodes are written once and work on all of them.
 
-   Rows are arrays rather than objects deliberately: it is the same shape as a
-   CSV, so export is a direct write, and column order is data rather than
-   insertion-order luck. Access goes through cellAt()/colIndex() so nothing
-   depends on a hardcoded position.                                           */
+   Rows are arrays rather than objects: it is the same shape as a CSV, so export
+   is a direct write, and column order is data rather than insertion-order luck.
+   Access goes through cellAt()/colIndex() so nothing depends on a hardcoded
+   position. */
 
 var COLTYPE = {
   NUMBER:  'number',  // right-aligned, averageable, comparable with < > =
@@ -91,31 +85,22 @@ var STUDENT_COLUMNS = [
   { key:'degree',         label:'Degree',         type:COLTYPE.ENUM,   values:DEGREES },
   { key:'specialisation', label:'Specialisation', type:COLTYPE.ENUM,   values:SPECS },
   { key:'gpa',            label:'GPA',            type:COLTYPE.NUMBER, def:'5' },
-  /* "Overall grade", not "Grade", and the rename is the whole of it.
-     ---------------------------------------------------------------------
-     This column and the one a Project puts on an enrolment were both called
-     Grade, and they are not the same fact. This is the student's standing for
-     the year: their GPA, rounded to the nearest letter by gradeFromGpa(). The
-     other is the letter actually awarded for one course. A student whose GPA
-     is 6.4 shows B+ here without ever having been given a B+.
+  /* "Overall grade", not "Grade". This column and the one a Project puts on an
+     enrolment were both called Grade and are not the same fact. This is the
+     student's standing for the year: their GPA rounded to the nearest letter by
+     gradeFromGpa(). The other is the letter actually awarded for one course. A
+     student whose GPA is 6.4 shows B+ here without ever having been given one.
 
-     Worse than ambiguous, the two shared a name across a step that swaps one
-     for the other. They also share a KEY, so projectCarried() drops this one
-     and the enrolment's takes its place: before a Project the column called
-     Grade meant the year, after it the column called Grade meant the course,
-     and nothing on screen marked the change. Two names is what makes that
-     visible. The keys are deliberately left alone, so every saved query, every
-     filter and every export keeps working; only what is displayed changes.
-
-     The supervisor asked for this the other way round, thinking GPA was a
-     numeric grade and this the letter form of it. GPA is a real average, so
-     its name was right; the collision was here. */
+     They also share a KEY, so projectCarried() drops this one and the
+     enrolment's takes its place: before a Project the column called Grade meant
+     the year, after it the course, with nothing on screen marking the change.
+     Two names make that visible. The keys are left alone, so every saved query,
+     filter and export keeps working; only the display changes. */
   { key:'letterGrade',    label:'Overall grade',  type:COLTYPE.TEXT,   order:GRADE_ORDER },
   { key:'courses',        label:'Courses',        type:COLTYPE.COURSES }
 ];
 
 /* A NAME THAT IS NOT ALREADY TAKEN
-   ---------------------------------------------------------------------------
    `taken` is a map of the names already in use, `want` the one being asked for,
    and `join` what separates the name from the number when one has to be added:
    `_` for a key, which has to stay selector-safe, and a space for a label,

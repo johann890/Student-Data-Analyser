@@ -1,20 +1,13 @@
-/* library.css: The query library dialog.
-   Part of the Student Data Analyser's stylesheet. The files load in the order
-   index.html lists them, and that order is the cascade: it must not change.
-   ========================================================================== */
-/* ═══════════════════════════════════════════════════════════
-   QUERY LIBRARY
-   Appended block. Nothing above this line is modified.
+/* library.css: the query library dialog. */
 
-   The backdrop is .save-dialog's, reused rather than restated: it already
+/* The backdrop is .save-dialog's, reused rather than restated: it already
    centres a card over the canvas at the right z-index and is dismissed by the
    same rules. Only the card is new, because this one holds a grid.
 
    Border colours are written long rather than as a `border:` shorthand, for
    the reason recorded against .shape-histogram: a shorthand carrying a colour
    wins on source order over a rule meant to set it, and that is how a node
-   once shipped in the wrong family's colour with the suite green.
-   ═══════════════════════════════════════════════════════════ */
+   once shipped in the wrong family's colour with the suite green. */
 
 .lib-card-frame {
   width: 940px;
@@ -96,21 +89,13 @@
   line-height: 1.55;
   color: var(--band-sub);
 }
-/* The warning, set apart from the description above it rather than run on from
-   it. Same size, because it is the half people most need to read.
-
-   Amber text alone was not enough. On a near white band a dark amber is close
-   enough to the paragraph above it that the warning read as one more sentence
-   of description, and the one thing a warning cannot be is another paragraph.
-   So the colour is carried by the surface instead of the letters: a block of
-   highlighter yellow the eye lands on before it reads a word of it, with the
-   text set dark enough on that surface to stay comfortable to read. The bar
-   down the left edge gives the block a side to start from, which is what keeps
-   it looking marked up rather than merely shaded.
-
-   The block shrink-wraps the sentence rather than running the panel's full
-   width: a highlight that reached both edges would read as a section of the
-   dialog, and this is a remark about the one above it. */
+/* The warning, set apart from the description above rather than run on from it.
+   Amber text alone was not enough: on a near white band a dark amber reads as
+   one more sentence of description. The colour is carried by the surface
+   instead, a block of highlighter yellow with dark text on it and a bar down
+   the left edge, so it looks marked up rather than merely shaded. It
+   shrink-wraps the sentence, because a highlight reaching both edges would read
+   as a section of the dialog rather than a remark about the line above. */
 .lib-caveat {
   width: fit-content;
   margin-top: 11px;
@@ -206,17 +191,14 @@
   outline: none;
 }
 
-/* Two columns of two, not a wrapping row. As a row the four buttons fell wherever
-   the card's width left room for them, so Delete dropped to a second line on its
-   own while Rename and Export stayed up with Open, and the odd one out was the
-   only one that destroys anything. A fixed pair of columns puts the two that act
-   on this query on the left and the two that produce a copy of it on the right,
-   and it holds that arrangement at every card width instead of rearranging
-   itself as the grid reflows.
+/* Two columns of two, not a wrapping row. As a row the buttons fell wherever
+   the card's width left room, so Delete dropped to a line of its own and the
+   odd one out was the only one that destroys anything. The fixed pair puts the
+   two that act on this query on the left and the two that copy it on the right,
+   at every card width.
 
-   The source order is Open, Rename, Delete, Export, which is this layout read
-   row by row, so tabbing through a card follows what is on the screen rather
-   than an order the CSS invented. */
+   Source order is Open, Rename, Delete, Export, which is this layout read row
+   by row, so tabbing follows what is on screen. */
 .lib-actions {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -372,20 +354,15 @@
   margin-bottom: 12px;
 }
 
-/* One button instead of four, so the card is shorter than a saved one and the
-   sentence has somewhere to go. The tint is what says "not yours" at a glance,
-   without a badge to read.
-
-   The border is a muted gold rather than a bright yellow: it has to read as a
-   deliberate marking from across the grid while sitting next to white text on
-   near-black, and a saturated yellow at this weight glows and pulls the eye off
-   the name it is meant to be framing.
+/* One button instead of four, so an example card is shorter than a saved one
+   and its sentence has somewhere to go. The tint says "not yours" without a
+   badge. Muted gold rather than bright yellow: it has to read as deliberate
+   from across the grid, and a saturated yellow at this weight glows and pulls
+   the eye off the name it frames.
 
    The hover rule is not decoration. `.lib-card:hover` is a class plus a
-   pseudo-class and so outranks `.lib-example` on its own, which meant hovering
-   an example repainted its border the ordinary grey and threw away the one
-   thing marking it as not the reader's. This matches that specificity and
-   lifts the gold instead. */
+   pseudo-class, so it outranks `.lib-example` on its own and repainted the
+   border ordinary grey. This matches that specificity and lifts the gold. */
 .lib-example { background: #14171c; border-color: #8c7430; }
 .lib-example:hover { border-color: #b39a45; }
 .lib-why {

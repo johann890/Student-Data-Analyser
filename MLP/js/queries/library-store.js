@@ -1,42 +1,29 @@
-/* queries/library-store.js: The query library in browser storage: the store and its rules.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   THE QUERY LIBRARY: THE STORE
-   ============================================================================
-   Save and Load above write and read a file. The library keeps the same queries
-   in the browser instead, so a query built once is one click away next term
-   rather than something to go and find in a folder.
+/* queries/library-store.js: The query library in browser storage: the store and its rules. */
+/* THE QUERY LIBRARY: THE STORE
+   Save and Load write and read a file; the library keeps the same queries in
+   the browser instead.
 
-   WHAT IS STORED IS THE FILE FORMAT, UNCHANGED.
-
-   An entry's `graph` is exactly what serialiseGraph() writes and exactly what
-   deserialiseGraph() reads, byte for byte. That is the whole design, and it is
-   worth being explicit about why, because a store with its own shape would have
-   been easy to write and wrong:
+   WHAT IS STORED IS THE FILE FORMAT, UNCHANGED. An entry's `graph` is exactly
+   what serialiseGraph() writes and deserialiseGraph() reads, byte for byte:
 
      - the guarantee that a saved query carries the NAMES of the data files and
        never their contents is a property of serialiseGraph(), asserted in
-       07-saveload. A second way of writing a query down is a second place for
-       student records to escape to, and the one that nobody would think to
-       check is the one in browser storage that never appears as a file;
-     - the version guard, the port resolution, the repair of a graph whose node
-       types have since changed — all of it lives in deserialiseGraph(), and all
-       of it applies just as much to an entry saved last year as to a file. Two
-       implementations would drift, and the drift would show up as a query that
-       opens from a file but not from the library.
+       07-saveload. A second way of writing a query down would be a second place
+       for student records to escape to, and browser storage never appears as a
+       file for anyone to check;
+     - the version guard, the port resolution and the repair of a graph whose
+       node types have changed all live in deserialiseGraph(), and apply as much
+       to an entry saved last year as to a file.
 
    So loading an entry goes back out through the same door it came in:
    JSON.stringify the graph and hand it to loadGraphFromText(). Re-serialising
-   something that was just parsed looks wasteful and is: a few kilobytes and a
-   millisecond, in exchange for there being exactly one loader.
+   something just parsed costs a few kilobytes and a millisecond, in exchange
+   for there being exactly one loader.
 
-   WHAT THIS IS NOT. It is not a backup and must never be described as one.
-   Clearing site data removes it, a private window never sees it, and it does
-   not travel to another machine or another browser. That is what Export is for.
-   It is also not private on a shared staff machine: storage belongs to the
-   browser profile, not to the person sitting at it.                          */
+   This is not a backup. Clearing site data removes it, a private window never
+   sees it, and it does not travel to another machine. That is what Export is
+   for. It is not private on a shared machine either: storage belongs to the
+   browser profile, not the person sitting at it. */
 
 var LIB_STORE       = 'sda.library.v1';
 var LIB_KIND        = 'student-data-analyser-library';
@@ -45,17 +32,16 @@ var LIB_NAME_MAX    = 80;
 var LIB_MAX_ENTRIES = 200;
 
 /* Failing to remember the panel width is a minor loss, and the guards around
-   those reads say so by returning silently. Failing to save a query is not: the
-   user has just spent twenty minutes building it and pressed a button that says
-   Save. So every failure here comes back as a code and a sentence for the UI to
-   show, rather than being swallowed.
+   those reads return silently. Failing to save a query is not: the user has
+   spent twenty minutes building it and pressed a button that says Save. So
+   every failure here comes back as a code and a sentence for the UI to show:
 
      nostore     the browser refuses storage entirely. A private window, or
                  file:// with site data blocked. The property access throws
                  rather than returning null, which is why it is inside the try
      unreadable  something is in the slot but it is not JSON
      alien       it is JSON, but not this tool's library
-     newer       written by a later version of this tool than this one
+     newer       written by a later version of this tool
      full        the library is at its entry ceiling
      quota       the browser will not accept any more bytes
      empty       there is no graph on the canvas to save
@@ -117,8 +103,8 @@ function libName(raw) {
 
 /* Read the whole store, every time, rather than keeping it in a variable.
 
-   Two windows open on the same tool is an ordinary thing to do — one to build a
-   query, one to check an old one — and they share the storage. A copy held in
+   Two windows open on the same tool is an ordinary thing to do (one to build a
+   query, one to check an old one), and they share the storage. A copy held in
    memory goes stale the moment the other window saves, and writing that stale
    copy back would delete whatever the other window had just added, with no
    error and nothing to notice. Re-reading costs a parse of a few kilobytes. */
@@ -148,7 +134,7 @@ function libRead() {
      deserialiseGraph() does to a graph, and for a reason: a graph with a broken
      edge is still recognisably the query somebody built, while an entry with no
      usable graph is not a saved query at all and there is nothing in it to
-     keep. The graph itself is NOT validated here beyond its kind — that is
+     keep. The graph itself is NOT validated here beyond its kind; that is
      deserialiseGraph()'s job and it happens when the entry is opened, so a
      query that can no longer be loaded still appears on its card and can still
      be exported, rather than vanishing from the library without explanation. */
@@ -223,8 +209,8 @@ function libEntryFor(name) {
 
      - if the store could not be READ, nothing is written. A write here would
        replace a library that is merely unreadable by this code with one holding
-       a single query, and whatever was in there — possibly a term's work,
-       possibly recoverable by hand from the browser's storage inspector — would
+       a single query, and whatever was in there (possibly a term's work,
+       possibly recoverable by hand from the browser's storage inspector) would
        be gone. The caller is told which problem it was and can offer to start a
        new library deliberately, with `replaceStore`;
      - a name that is already taken comes back as a `conflict` rather than
@@ -293,7 +279,7 @@ function libRemove(id) {
   return w.ok ? { ok: true, error: null, entry: gone } : w;
 }
 
-/* ----------------------------------------------------------- EXPORT / IMPORT
+/* EXPORT / IMPORT
 
    The library lives in one browser on one machine, which makes a file the only
    way a query gets to a colleague, to a laptop, or through a cleared cache.
@@ -305,7 +291,7 @@ function libRemove(id) {
 var MAX_LIB_FILE_BYTES = 8 * 1024 * 1024;
 
 /* One entry, cleaned. Shared by the store's read and the importer, because the
-   two are asking the same question — is this an entry — of inputs that are
+   two are asking the same question (is this an entry) of inputs that are
    equally untrusted. Storage can be edited by hand; a file arrived from
    somewhere else entirely.
 
@@ -345,7 +331,7 @@ function libExportPayload(entries) {
 
 /* Import MERGES, and never replaces.
 
-   The alternative — a file overwriting the library — is one click between a
+   The alternative, a file overwriting the library, is one click between a
    colleague's set of standard queries and a term of somebody's own work. So an
    entry whose name is already in the library is left alone and counted, and the
    user is told exactly what happened rather than being asked to trust a
@@ -433,7 +419,7 @@ function libImportSummary(r) {
 
 /* The two checks a file gets before a byte of it is read, the same pair and in
    the same order as a picked query file gets. Neither is the last line of
-   defence — libImportText refuses anything that is not a library — but by the
+   defence (libImportText refuses anything that is not a library), but by the
    time that runs an arbitrary file is in memory and all it can report is that
    the contents were wrong, which is a poor description of picking the wrong
    file out of a folder. */
@@ -451,7 +437,7 @@ function libFileProblem(file) {
 /* An entry as the loader wants it. The round trip through text is the point
    rather than an oversight: see the note at the top of this section. Loading is
    wired up with the rest of the library UI, which needs a confirmation in front
-   of it — a grid of one-click cards replaces the canvas far more easily than a
+   of it: a grid of one-click cards replaces the canvas far more easily than a
    two-step file picker does, and applyGraph() has no undo. */
 function libGraphText(id) {
   var e = libGet(id);

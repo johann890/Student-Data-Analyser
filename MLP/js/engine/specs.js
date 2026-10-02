@@ -1,10 +1,4 @@
-/* engine/specs.js: One specification per node type, for the two graph walks.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   NODE SPECIFICATIONS
-   ============================================================================
+/* engine/specs.js: one specification per node type, for the two graph walks.
    One entry per node type, declaring the two things the graph walks need to
    know: what shape comes out, and how the rows are computed.
 
@@ -20,25 +14,20 @@
                 (no inputs), Combine and Compare (many).
 
    `merges` is gone. It meant "union this node's inputs before running it", and
-   that union is what a wire into an occupied port now prevents: a single-input
-   node has one table, so there is nothing to reconcile and no way for rows to
-   disappear into a silent deduplication. Nodes that genuinely take several
-   tables declare a multi port and read them through ctx.
+   a wire into an occupied port now prevents that: a single-input node has one
+   table, so no rows can disappear into a silent deduplication. Nodes that
+   genuinely take several tables declare a multi port and read them through ctx.
 
-   Why a registry rather than branches in two functions: schema propagation and
-   evaluation must agree about every node, and until now they agreed by
-   coincidence. Filter, Sort and Take leave the header alone, so schema
-   propagation could get away with `out[node.id] = ins[0]`. A pass-through
-   that is simply wrong for every node still to be built. Histogram, Aggregate
-   and Project all rewrite the header, and each would have needed a branch in
-   computeSchemas() and another in evaluateGraph(), in two places that no
-   mechanism keeps in step.
+   A registry rather than branches in two functions, because schema propagation
+   and evaluation have to agree about every node. Filter, Sort and Take leave
+   the header alone, so propagation could get away with `out[node.id] = ins[0]`,
+   but Histogram, Aggregate and Project all rewrite it and would each need a
+   branch in computeSchemas() and another in evaluateGraph().
 
-   Declaring both against one type means a new node is one entry here plus its
-   implementation, and the invariant that ties the pair together
-   (headerOnly(rows(node, t)) equals schema(node, headerOnly(t))) is a property
-   of the registry that can be tested across every type at once, rather than
-   remembered.                                                                */
+   Declaring both against one type makes a new node one entry here plus its
+   implementation, and lets the invariant that ties the pair together
+   (headerOnly(rows(node, t)) equals schema(node, headerOnly(t))) be tested
+   across every type at once. */
 
 function passthroughSchema(node, inSchema) { return inSchema; }
 
@@ -179,21 +168,19 @@ var NODE_SPEC = {
 
   selectFor: {
     /* The first node with two DIFFERENT ports rather than one port taking many
-       wires, and it needed nothing added to the port model to have them. The
-       entry in NODE_PORTS is the whole declaration, which is what the comment
-       there predicted when it named this node.
+       wires, and it needed nothing added to the port model: the entry in
+       NODE_PORTS is the whole declaration.
 
        schema reads the data port for the measures and the labels port for ONE
        fact: whether the groups are values or named bands. That used to be true
-       of the data port alone, and the note here said so, because what the
-       labels supplied was only which groups exist, and that is rows.
+       of the data port alone, because what the labels supplied was only which
+       groups exist, and that is rows.
 
        Bands changed it. A band is named text where a value carries its own
        column's type, so the reading decides the TYPE of the group column, and a
        type is header. It is still only the labels HEADER that is read, never
        its rows, so a half-built graph still describes itself and the schema
-       walk stays a walk over headers. labelsAreBands() takes a header for
-       exactly this reason. */
+       walk stays a walk over headers. */
     schema: function(node, inSchema, ctx) {
       return makeTable(selectForColumns(node, inSchema, ctx.at('labels')[0]), []);
     },
@@ -224,25 +211,23 @@ var NODE_SPEC = {
   },
 
   output: {
-    /* An Output is now chainable, and this is the entry the old comment here
-       said would have to grow up when that happened.
+    /* An Output is chainable, and this is the entry that had to grow up when
+       that happened.
 
-       The rule it settles: what an Output SHOWS is what it passes on. The view
-       is part of the graph rather than a coat of paint applied at render time,
-       so a node wired after an Output receives the table the user is looking
-       at, and the screen and the dataflow can never disagree about what came
-       out of it. A Count emits its one-row count; a row view narrowed to three
-       columns emits three columns.
+       The rule: what an Output SHOWS is what it passes on. The view is part of
+       the graph rather than a coat of paint applied at render time, so a node
+       wired after an Output receives the table the user is looking at. A Count
+       emits its one-row count; a row view narrowed to three columns emits three
+       columns.
 
        The header therefore depends on the view AND on the column selection,
        which is why this is a real schema rather than passthroughSchema: a
        Filter wired after a narrowed Output must offer the columns that survive
        it, not the ones that arrived.
 
-       meta survives exactly where it is needed. outputTable() returns its input
-       untouched for the summary and lists views, which are the only views a
-       branch table ever reaches, and drops meta only when narrowing a row view,
-       which is what Select does for the same reason. */
+       meta survives where it is needed. outputTable() returns its input
+       untouched for the summary and lists views, the only ones a branch table
+       reaches, and drops meta only when narrowing a row view. */
     schema: function(node, inSchema) {
       return makeTable(outputTable(node, inSchema).columns, []);
     },

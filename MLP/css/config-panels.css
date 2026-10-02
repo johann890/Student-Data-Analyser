@@ -1,8 +1,5 @@
-/* config-panels.css: What a config panel looks like: criteria rows, range and list bands,
-   and the data files on a Source.
-   Part of the Student Data Analyser's stylesheet. The files load in the order
-   index.html lists them, and that order is the cascade: it must not change.
-   ========================================================================== */
+/* config-panels.css: a config panel's criteria rows, its range and list bands,
+   and the data files listed on a Source. */
 /* FILTER CRITERIA ROWS */
 .criteria-list {
   display: flex;
@@ -247,17 +244,14 @@ select option {
 }
 
 
-/* ── THE DATA FILES ON A SOURCE PANEL ─────────────────────────────────────────
-   Two numbered rows, in the order the two steps have to happen in, each showing
-   what the Source is currently holding rather than only offering a button.
+/* ── THE DATA FILES ON A SOURCE PANEL ───────────────────────
+   Two numbered rows, in the order the steps have to happen in, each showing
+   what the Source currently holds rather than only offering a button.
 
-   The step numbers are not decoration. A year file cannot be parsed without the
-   column list that names its fields, so the second button is disabled until the
-   first has succeeded, and a numbered pair is the cheapest way to say "these
-   are ordered" before the user discovers it by finding a control greyed out.
-
-   Green when loaded, matching the Source's own colour, so the panel and the
-   circle on the canvas agree at a glance about whether this node can run. */
+   The numbers are not decoration: a year file cannot be parsed without the
+   column list that names its fields, so the second button stays disabled until
+   the first succeeds. Green when loaded, matching the Source's own colour, so
+   the panel and the circle agree about whether this node can run. */
 .src-files {
   display: flex;
   flex-direction: column;
@@ -446,19 +440,14 @@ select option {
 .src-notice.ok  { border-left-color: #2d6640; color: #78a888; }
 .src-notice.bad { border-left-color: #7a2a2a; color: #e08080; }
 
-/* A Source holding no files, on the canvas. The circle keeps its shape and its
-   colour (it is still a Source), and states the difference in its outline: a
-   dashed ring in a paler green than the solid one a loaded Source wears.
+/* A Source holding no files. The circle keeps its shape and colour, and states
+   the difference in its outline: a dashed ring in a paler green than the solid
+   one a loaded Source wears.
 
-   Green rather than amber because nothing is wrong. The node is unfinished, and
-   colouring it as a warning would put it in the same register as an error while
-   the graph around it is still perfectly worth drawing. Lighter rather than
-   darker for the same reason: unfinished, not disabled.
-
-   The state is carried by the border alone, with no badge in the corner. A dot
-   there shared the spot with the delete button, which made it read as something
-   to click; the outline says the same thing around the whole shape and leaves
-   that corner to the one control that belongs in it. */
+   Green rather than amber because nothing is wrong; the node is unfinished, not
+   in error. Lighter rather than darker for the same reason. The state is
+   carried by the border alone: a corner dot shared the spot with the delete
+   button and read as something to click. */
 .shape-source.no-data {
   border-style: dashed;
   border-color: #6aa87e;

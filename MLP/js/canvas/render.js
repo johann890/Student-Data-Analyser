@@ -1,7 +1,4 @@
-/* canvas/render.js: The repaint, dragging a node, and making or removing a connection.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
+/* canvas/render.js: The repaint, dragging a node, and making or removing a connection. */
 function render() {
   /* Every shape element is about to be thrown away, and a tip armed against
      one of them would fire against something detached. Cleared before the

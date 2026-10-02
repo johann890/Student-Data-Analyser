@@ -1,24 +1,18 @@
-/* nodes/markup.js: The markup for a node: its config panel, its ports and its shape.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
+/* nodes/markup.js: The markup for a node: its config panel, its ports and its shape. */
 /* THE LIST OF MEASURES
-   ---------------------------------------------------------------------------
    One row per measure: what to work out, which column to work it out over, and
-   an x to drop it. Three nodes ask this now (Select For, Histogram and
-   Aggregate), and the markup was already written out twice before the third
-   arrived, so it is written once here instead.
+   an x to drop it. Three nodes ask this (Select For, Histogram and Aggregate),
+   and the markup was written out twice before the third arrived.
 
    `ops` is a parameter because the three do NOT offer the same set. Select For
    and Histogram add "Share of total", which divides by the rows that came in;
    on a whole-table Aggregate that divides the rows by themselves and is always
-   100%, so Aggregate is handed AGG_OPS and the option is simply not there. A
-   measure that can only ever give one answer is not a choice.
+   100%, so Aggregate is handed AGG_OPS and the option is not there.
 
-   The column select appears only for the measures that take one, so a Count
-   row does not carry a control that means nothing for it. The first row has no
-   x: a node with no measures produces a table of nothing, and removeStat()
-   puts one back if it ever gets there.                                       */
+   The column select appears only for measures that take one, so a Count row
+   does not carry a control that means nothing for it. The first row has no x: a
+   node with no measures produces a table of nothing, and removeStat() puts one
+   back if it ever gets there. */
 function statListHTML(id, node, schema, ops) {
   var list = ops || SELECTFOR_OPS;
   return '<div class="cfg-label">Measure</div><div class="stat-list">' +
@@ -153,7 +147,7 @@ function configHTML(node, schemas) {
     }
     /* The columns named here follow the tick boxes immediately, which is what
        makes the boxes legible: a run is not needed to see what they do. */
-    html += '<div class="cmp-hint">Out: one row per branch \u2014 ' +
+    html += '<div class="cmp-hint">Out: one row per branch, with ' +
       compareColumns(measuresOf(node)).map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(', ') +
       '.</div>';
   }
@@ -270,7 +264,7 @@ function configHTML(node, schemas) {
        node emitted bands, which is the one thing a panel that exists to state
        the output shape may not get wrong. */
     html += '<div class="cmp-hint">Out: one row per ' + (bands ? 'band' : 'group') +
-      ' \u2014 ' +
+      ', with ' +
       selectForColumns(node, schema, lschema).map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(', ') +
       '. Not ordered; put a <b>Sort</b> after it.</div>';
   }
@@ -312,7 +306,7 @@ function configHTML(node, schemas) {
 
     html += statListHTML(id, node, schema, SELECTFOR_OPS);
 
-    html += '<div class="cmp-hint">Out: one row per band \u2014 ' +
+    html += '<div class="cmp-hint">Out: one row per band, with ' +
       histogramColumns(node, schema).map(function(c){ return '<b>' + esc(c.label) + '</b>'; }).join(', ') +
       '. Empty bands are kept, as zero.</div>';
   }
@@ -408,7 +402,6 @@ function configHTML(node, schemas) {
   }
 
   /* THE WHOLE-TABLE AGGREGATE, which takes a LIST of measures.
-     -------------------------------------------------------------------------
      It used to take one, through a Measure select and an "Of column" select
      beside it, and answering "what is the range of GPAs" therefore meant two
      Aggregates on two branches and a Combine to put them back together. The

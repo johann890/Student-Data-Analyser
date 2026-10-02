@@ -1,49 +1,31 @@
-/* vars/dock.js: The toolbar menu the variables live in, and the two repaints
+/* vars/dock.js: the toolbar menu the variables live in, and the two repaints
    it needs.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   THE VARIABLES MENU
-   ============================================================================
-   A dropdown in the toolbar. It was a panel pinned to the top left of the
-   canvas first, and that was the wrong place for it: a variable is set before a
-   run and then left alone, so a panel showing them permanently spends canvas on
-   something nobody is looking at. Behind a button it costs nothing until it is
-   asked for, and the canvas is left to the query.
 
-   The separation the supervisor asked for is stronger here rather than weaker.
-   His constraint was that the variables must not read as part of the graph, and
-   the toolbar is not the graph at all: the query is the method, the toolbar
-   holds what is declared about it. A dropdown cannot be dragged into the middle
-   of a dataflow, which a placeable panel eventually would be.
+   A dropdown rather than a panel pinned to the canvas: a variable is set before
+   a run and then left alone, so a permanent panel spends canvas on something
+   nobody is looking at. It also keeps the variables out of the graph, which was
+   the supervisor's constraint, and a dropdown cannot be dragged into the middle
+   of a dataflow the way a placeable panel eventually would be.
 
-   WHAT A CLOSED MENU STILL SAYS
-   ---------------------------------------------------------------------------
-   The count, on the button. That is the whole of what is lost by hiding the
-   list, and it is the part that matters: somebody opening a query written by
-   somebody else has to know it is parameterised before they run it. The load
-   message names the variables for the same reason, and a bound operand is
-   yellow on the panel whether this menu is open or not.
+   A closed menu still shows the count on the button, which is the part that
+   matters: somebody opening a query written by somebody else needs to know it
+   is parameterised before they run it. The load message names the variables for
+   the same reason, and a bound operand is yellow whether the menu is open or
+   not.
 
    The machinery is .proc-menu's, which the node menus already use: opening one
-   closes the others, a click anywhere else closes them all, and the markup
-   stops a click inside from reaching that listener, so typing in a field cannot
-   dismiss the menu the field is in.
+   closes the others, a click elsewhere closes them all, and a click inside is
+   stopped so typing in a field cannot dismiss the menu the field is in.
 
    TWO REPAINTS, NOT ONE
-   ---------------------------------------------------------------------------
-   renderVariables() rebuilds the chips and is called when the LIST changes:
-   added, removed, loaded, cleared. syncVarUsage() rewrites only the lines that
-   describe usage and is called when the GRAPH changes, from render(), because
-   deleting a node changes what a variable is used by without changing the
-   variable.
+   renderVariables() rebuilds the chips and runs when the LIST changes: added,
+   removed, loaded, cleared. syncVarUsage() rewrites only the usage lines and
+   runs when the GRAPH changes, from render(), because deleting a node changes
+   what a variable is used by without changing the variable.
 
    They are separate for the same reason syncSelectionUI() is separate from
-   render(): a rebuild destroys the input the user is typing in. Every chip
-   holds two text fields, and the value in one of them is read by node panels
-   that repaint on every keystroke. Repainting the chips as well would take the
-   field away mid-word.                                                       */
+   render(): a rebuild destroys the input the user is typing in. Each chip holds
+   two text fields, and node panels repaint on every keystroke. */
 
 /* Which delete button has been pressed once and is waiting to be pressed again.
    Held here rather than on the button so that any other edit clears it: a
@@ -209,7 +191,6 @@ function syncVarUsage() {
 }
 
 /* REMOVING ONE, WITH A QUESTION FIRST WHEN IT IS IN USE
-   ---------------------------------------------------------------------------
    An unused variable is nothing to lose, so it goes on the first press. One
    that three nodes are reading is three settings about to change at once, and
    there is no undo, so the press asks first and the note says what it would

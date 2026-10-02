@@ -1,28 +1,18 @@
-/* guide.css: The guided walkthrough's ring and its parked panel.
-   Part of the Student Data Analyser's stylesheet. The files load in the order
-   index.html lists them, and that order is the cascade: it must not change.
-
-   Last in the list on purpose. The walkthrough draws over the whole page,
-   including over the toolbar and the results panel, so every rule here has to
-   win against whatever it is standing on top of. Being last is cheaper than a
-   fight with specificity in nine other files.
-   ========================================================================== */
+/* guide.css: the guided walkthrough's ring and its parked panel.
+   Loaded last on purpose: the walkthrough draws over the toolbar and the
+   results panel, so its rules need to win without a specificity fight. */
 
 /* THE RING
    ---------------------------------------------------------------------------
-   One element does both jobs. The ring marks the thing being talked about, and
-   the 9999px shadow spreading out from it is the dim over everything else, so
-   the hole in the dim can never drift out of register with the ring: they are
-   the same box.
+   One element does both jobs: the ring marks what is being talked about, and
+   the 9999px shadow spreading from it is the dim over everything else. The hole
+   in the dim cannot drift out of register with the ring because they are the
+   same box.
 
-   pointer-events: none because the reader is not shut out of the tool while
-   this is up. The walkthrough asks nothing of them, but somebody who wants to
-   press something anyway should be able to.
-
-   The transition is on the box rather than on opacity, so moving between two
-   steps reads as one light travelling across the page rather than one light
-   going out and another coming on. 0.12s is what the toolbar buttons use for
-   their hover, and the shortest time that still reads as movement. */
+   pointer-events: none so the reader is not shut out of the tool while this is
+   up. The transition is on the box rather than on opacity, so moving between
+   steps reads as the ring travelling rather than fading out and in. 0.12s
+   matches the toolbar buttons' hover. */
 .guide-spot {
   position: fixed;
   z-index: 250;
@@ -41,20 +31,18 @@
 
 /* THE PANEL
    ---------------------------------------------------------------------------
-   Parked. Same place every step, so the reader's eyes go back to one spot
-   instead of hunting for where the words went. This is the whole reason there
-   is no placement arithmetic in guide/guide.js.
+   Parked in one place for every step, so the reader's eyes go back to one spot
+   instead of hunting. That is why guide/guide.js has no placement arithmetic.
 
-   Bottom centre, which is the one part of the canvas that is reliably empty:
-   the zoom dock is bottom left, the results panel is right, and zoomToFit()
-   centres the practice query vertically. Raised far enough to clear the dock.
+   Bottom centre is the one reliably empty part of the canvas: the zoom dock is
+   bottom left, the results panel is right, and zoomToFit() centres the practice
+   query vertically. Raised far enough to clear the dock.
 
-   251 so it sits in front of its own dim, which covers the whole viewport.
-   Both numbers are above everything on the canvas and the toolbar (the highest
-   of those is the config panel dropdown at 200) and below the help dialog at
-   290 and the save dialog at 300. So opening Help covers the walkthrough, which
-   is the right way round and is what makes the Escape order in shell/events.js
-   correct: the dialog is peeled off first, the walkthrough second. */
+   z-index 251 puts it in front of its own dim, above the canvas and toolbar
+   (highest there is the config panel dropdown at 200) and below the help dialog
+   at 290 and the save dialog at 300. Help therefore covers the walkthrough,
+   which is what makes the Escape order in shell/events.js correct: dialog
+   first, walkthrough second. */
 .guide-panel {
   position: fixed;
   z-index: 251;

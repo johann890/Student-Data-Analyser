@@ -95,16 +95,14 @@
   </div>
   <!-- The third menu. Neither node here is Reshape (they do not keep the rows)
        and neither is one of Processing's three families: they do not multiply
-       rows, collapse them to one, or join branches. They answer a different kind
-       of question, "how are these spread out", and a menu of its own is how the
-       toolbar says so.
+       rows, collapse them to one, or join branches. They answer "how are these
+       spread out", and a menu of its own is how the toolbar says so.
 
-       Select For sits here rather than under Branches, which is where it was
-       first put because it shares a second input with Compare. Having two ports
-       is not what the node is FOR: it produces one row per group with a measure
-       beside it, which is the same answer Histogram gives over ranges instead of
-       values. The supervisor asked the question directly and it is the right
-       one. Percentiles and cumulative counts belong here too if wanted. -->
+       Select For sits here rather than under Branches, where it was first put
+       because it shares a second input with Compare. Two ports is not what the
+       node is for: it produces one row per group with a measure beside it,
+       which is what Histogram gives over ranges instead of values. Percentiles
+       and cumulative counts would belong here too. -->
   <div class="proc-wrap">
     <button class="add-btn distribution" onclick="toggleProcMenu(event, 'distMenu')">Distribution <span class="caret">&#9662;</span></button>
     <div class="proc-menu" id="distMenu" onclick="event.stopPropagation()">
@@ -120,21 +118,18 @@
   </div>
   <!-- VARIABLES
        With the node buttons rather than with Save and Load, and last before
-       Output because that is the order a query is built in: the parts, then
+       Output, because that is the order a query is built in: the parts, then
        the values they are parameterised by, then where the answer comes out.
 
-       An .add-btn like its three neighbours, wearing its own colour the way
-       Reshape and Distribution wear theirs, because it is the same control:
-       a coloured button promising the colour behind it. The group's label
-       stays true, since adding a variable is what the menu is for. What it
-       adds is not a node, which is what the yellow says: no other node on the
-       canvas is yellow, and every operand that can take a variable is.
+       An .add-btn like its neighbours, wearing its own colour the way Reshape
+       and Distribution wear theirs. Yellow because what it adds is not a node:
+       no node on the canvas is yellow, and every operand that can take a
+       variable is.
 
-       It reuses .proc-menu, the toolbar's own dropdown: opening one closes the
-       others, a click anywhere else closes them all, and a click INSIDE is
-       stopped here so typing in a field cannot dismiss the menu it is in. The
-       count beside the label is what a closed menu still says, so a query that
-       carries parameters says so without being opened. -->
+       It reuses .proc-menu, the toolbar's own dropdown, so opening one closes
+       the others. A click inside is stopped here, or typing in a field would
+       dismiss the menu it is in. The count beside the label is what a closed
+       menu still says. -->
   <div class="proc-wrap">
     <button class="add-btn var-btn" id="varBtn" onclick="toggleVarMenu(event)"
             aria-haspopup="true" aria-expanded="false" aria-controls="varDock"
@@ -156,12 +151,11 @@
   <button class="add-btn output" onclick="addNode('output')">Output</button>
   </div>
   <!-- Where the bar breaks when it needs a second row, rather than wherever the
-       row happens to run out. Left to flex, the break lands on whichever control
-       crosses the edge first, so growing the bar walks through states like Run
-       Query alone on a line with everything else above it. This puts the break
-       in one place: Add on the first row, everything from Query onwards on the
-       second. It is a full-width flex item with no height, inert until the bar
-       is stacked. -->
+       row runs out. Left to flex, the break lands on whichever control crosses
+       the edge first, so growing the bar walks through odd states such as Run
+       Query alone on a line. This fixes it in one place: Add on the first row,
+       Query onwards on the second. A full-width flex item with no height, inert
+       until the bar is stacked. -->
   <div class="tbreak" aria-hidden="true"></div>
   <div class="sep"></div>
   <div class="tgroup">
@@ -178,23 +172,21 @@
   <!-- The two data pickers, shared by every Source on the canvas: which node
        asked is carried on the element by pickHeadersFile()/pickYearFiles().
 
-       `accept` is a courtesy to the dialog and is trusted by nothing. The year
-       input carries none at all, because the archive's year files have no
-       extension for a filter to match on, which is precisely why the name
-       rules live in js/data/loading.js, where the file is actually taken, rather than in an
-       attribute a rename walks straight past. -->
+       `accept` only hints to the file dialog and nothing here trusts it. The
+       year input has none, because the archive's year files have no extension
+       to match on. That is why the name rules live in js/data/loading.js, where
+       the file is actually read, rather than in an attribute a rename defeats. -->
   <input type="file" id="headersFile" accept="text/plain,.txt" hidden>
   <input type="file" id="yearFiles" multiple hidden>
   </div>
   <div class="sep"></div>
   <div class="tgroup">
   <button class="clear-btn" onclick="requestClearAll(this)">Clear</button>
-  <!-- Help sits with Clear at the end of the left-hand run of controls. Both are
-       things you reach for occasionally rather than while building, so they read
-       as one group. Run Query alone is pushed to the right edge by its auto
-       margin, anchoring the corner where the eye finishes, and the empty gap in
-       between keeps the destructive Clear well away from the button people press
-       constantly. -->
+  <!-- Help sits with Clear at the end of the left-hand run of controls: both
+       are reached for occasionally rather than while building, so they read as
+       one group. Run Query is pushed to the right edge by its auto margin, and
+       the gap between keeps the destructive Clear away from the button that
+       gets pressed constantly. -->
   <button class="help-btn" onclick="openHelp(this)" title="How to use this tool  ( ? )" aria-label="Help">?</button>
   </div>
   <button class="run-btn" onclick="runQuery()">Run Query</button>
@@ -222,10 +214,9 @@
 
     <div class="sel-bar" id="selBar">
       <span class="sel-count" id="selCount">0 selected</span>
-      <!-- Before Delete, in both source and reading order. They are the two
-           things this bar does to a selection and one of them is reversible;
-           the reversible one is met first, which is the order a user who wants
-           a node out of the way should encounter them in. -->
+    <!-- Before Delete, in both source and reading order. They are the two
+           things this bar does to a selection, and the reversible one is met
+           first. -->
       <button class="sel-off" id="selOff" onclick="toggleSelectionOff()"
               title="Pass data straight through these nodes, without deleting them  ( M )">Switch off</button>
       <button class="sel-del" onclick="deleteSelection()" title="Delete selected nodes  ( Delete )">Delete</button>
@@ -233,13 +224,11 @@
 
     <!-- The view controls sit on the thing they act on. In the bar they were
          filed with Save and Load, which are about the query; zoom and Fit are
-         about nothing but this canvas, and are the one group whose effect is
-         entirely visible from where they now are.
+         about this canvas only.
 
-         Bottom left, because bottom centre is the selection bar's and the two
-         must never cover each other: that bar appears exactly when nodes are
-         selected, which is exactly when someone is likely to be zooming to
-         look at them. -->
+         Bottom left, because bottom centre belongs to the selection bar and the
+         two must not cover each other: that bar appears when nodes are
+         selected, which is when someone is most likely to be zooming. -->
     <div class="view-dock" id="viewDock" aria-label="View controls">
       <div class="zoom-group">
         <button class="zoom-btn" onclick="zoomOut()" title="Zoom out  ( -  or scroll )">&minus;</button>
@@ -249,23 +238,16 @@
       <button class="file-btn" onclick="zoomToFit()" title="Fit every node on screen  ( F )">Fit</button>
     </div>
   </div>
-  <!-- The panel is open by default. It is where the tool's answers appear, and
-       a feature that is not on screen when the application is first opened is a
-       feature someone has to be told about: shut, the panel would rest on a
-       reader noticing a 34px strip and guessing what was behind it. Open, it
-       explains itself, and closing it is then a thing done knowingly.
+  <!-- The panel is open by default: it is where the tool's answers appear, and
+       a feature that is not on screen when the application opens is one somebody
+       has to be told about. Shut it is a 34px strip rather than nothing, so
+       there is always a way back that does not need a shortcut.
 
-       Shut is a strip and not nothing, for the same reason: a panel that
-       disappears leaves no way back that does not involve knowing a shortcut or
-       guessing that the window edge can be dragged.
-
-       Open and shut is one control and width is another, and they do not
-       overlap. Hide and Show are the only way in and out by hand. The handle
-       sets a width and stops at the ends of its range: it cannot shut the panel
-       and it is not there to drag one open, because a drag that runs out of
-       room and a drag meaning "close this" look identical while they happen.
-       Run Query opens it, because the panel is where the answer it asks for
-       appears. The reasoning is in results/panel-width.js. -->
+       Open/shut and width are separate controls. Hide and Show are the only way
+       in and out by hand; the handle sets a width and stops at the ends of its
+       range, because a drag that runs out of room and a drag meaning "close
+       this" look identical while they happen. Run Query opens the panel. The
+       reasoning is in results/panel-width.js. -->
   <div class="panel-resize" id="panelResize" role="separator" aria-orientation="vertical"
        tabindex="0" aria-label="Resize the results panel"
        title="Drag to resize the results panel  ( double-click to reset )"></div>
@@ -292,15 +274,14 @@
 
 
 <!-- HELP DIALOG
-     Content lives here in markup rather than in a JavaScript string, so it can
-     be read, corrected and translated without touching the application logic.
-     The script only opens, closes and scrolls it.
+     Content is markup here rather than a JavaScript string, so it can be read
+     and corrected without touching the application logic. The script only
+     opens, closes and scrolls it.
 
-     The figures are drawn, not captured. Each is inline SVG in the interface's
-     own palette, which means it scales with the page, needs no image files
-     alongside the HTML, and cannot rot into a stale screenshot of an older
-     build the way a PNG would. Numbered badges on the drawing key into the
-     numbered list beneath it, so the explanations stay selectable text. -->
+     The figures are inline SVG in the interface's own palette, so they scale
+     with the page, need no image files, and cannot rot into a screenshot of an
+     older build. Numbered badges key into the list beneath, which keeps the
+     explanations as selectable text. -->
 <div class="help-dialog" id="helpDialog" role="dialog" aria-modal="true" aria-labelledby="helpTitle">
   <div class="help-card">
 
@@ -328,16 +309,15 @@
       <div class="help-body" id="helpBody">
 
         <!-- ── GUIDED WALKTHROUGH ──────────────────────────── -->
-        <!-- First, because everything below it is reference: written to be
-             looked up by somebody who already knows what they are looking for.
-             This is the only part of the dialog that works for somebody who
-             does not, and it is the answer to the two weakest scores in the
-             usability test, learnability and confidence.
+        <!-- First, because everything below is reference: written to be looked
+             up by somebody who already knows what they want. This section is
+             the only part that works for somebody who does not, and answers the
+             two weakest scores in the usability test, learnability and
+             confidence.
 
-             It asks nothing of the reader. The practice query is already built
-             when the walkthrough starts, so every step is about something that
-             is on the screen rather than something the reader has to make
-             appear first. See js/guide/steps.js. -->
+             The practice query is already built when the walkthrough starts, so
+             every step is about something on screen rather than something the
+             reader has to make appear. See js/guide/steps.js. -->
         <section id="help-guide">
           <h3>Guided walkthrough</h3>
           <p>A short walk around a query that is already built, so you can see what the parts
@@ -1431,7 +1411,7 @@
              <b>Save as file</b> writes the whole graph to a <code>.json</code> file, meaning every
              node, its settings and every wire. The <code>.json</code> ending is fixed, so a saved
              query is always one the tool can open again. <b>Save to library</b> keeps the same
-             query in this browser instead &mdash; see <b>The query library</b> below. Pressing
+             query in this browser instead. See <b>The query library</b> below. Pressing
              <kbd>Enter</kbd> writes the file, which is what it has always done.</p>
           <p>Save a second time and it offers the name you used before, so revising a query
              does not scatter near-identical files around.</p>
@@ -1459,8 +1439,8 @@
              <b>in this browser</b> instead, so a query built once is one click away next term
              rather than something to go and find in a folder.</p>
 
-          <p>It opens as a grid of cards. Each card shows a small picture of the query &mdash; the
-             nodes and the wires between them &mdash; because the shape is what you built and what
+          <p>It opens as a grid of cards. Each card shows a small picture of the query (the
+             nodes and the wires between them), because the shape is what you built and what
              you will recognise. Type in the search box to narrow the grid by name.</p>
 
           <table class="help-keys">
@@ -1468,8 +1448,8 @@
                 something there it asks once, on the button, because there is no undo.</td></tr>
             <tr><td><b>Rename</b></td><td>Edits the name in place. <kbd>Enter</kbd> keeps it,
                 <kbd>Esc</kbd> abandons it.</td></tr>
-            <tr><td><b>Export</b></td><td>Writes that one query out as a <code>.json</code> file
-                &mdash; the same file <b>Save</b> writes and <b>Load</b> reads. This is how you
+            <tr><td><b>Export</b></td><td>Writes that one query out as a <code>.json</code> file,
+                the same file <b>Save</b> writes and <b>Load</b> reads. This is how you
                 send a query to a colleague, and how you keep a copy that survives the
                 browser.</td></tr>
             <tr><td><b>Delete</b></td><td>Removes it. Asks once, on the button, and there is no
@@ -1490,12 +1470,12 @@
              it skipped. Your own queries cannot be overwritten by somebody else&rsquo;s file. If
              you do want their version of a query you already have, rename yours first and import
              again.</p>
-          <p>Import also accepts a single saved query &mdash; the kind <b>Save as file</b> writes
-             &mdash; and files it under the file&rsquo;s own name. The two look the same in a
+          <p>Import also accepts a single saved query (the kind <b>Save as file</b> writes)
+             and files it under the file&rsquo;s own name. The two look the same in a
              folder, so there is nothing to get wrong.</p>
 
           <div class="help-tip">
-            <b>A card holds the question, not the answer</b> &mdash; exactly like a saved file.
+            <b>A card holds the question, not the answer</b>, exactly like a saved file.
             No student, no grade and no course code is ever kept in the library. Opening a card
             gives you the graph back with every Source empty, and each Source then names the files
             it was built against.
@@ -1505,13 +1485,13 @@
           <p><b>It is not a backup.</b> It lives in this browser on this machine. Clearing site
              data removes it, a private window never sees it, and it does not follow you to another
              computer or another browser. Anything you would be sorry to lose should be
-             <b>exported</b> to a file as well &mdash; one card at a time with <b>Export</b>, or
+             <b>exported</b> to a file as well: one card at a time with <b>Export</b>, or
              the lot with <b>Export library</b>.</p>
           <p><b>It is not private on a shared computer.</b> The library belongs to the browser
              profile, not to the person sitting at it, so whoever uses this machine next sees the
              same cards. That is safe as far as the data goes, because no records are in there,
              but a query&rsquo;s own settings can name a specific student if you typed one into a
-             Filter &mdash; and that would sit on a card until somebody deletes it.</p>
+             Filter, and that would sit on a card until somebody deletes it.</p>
           <p>There is a limit on how much a browser will store, and on how many queries the
              library will hold. If either is reached the tool says so and refuses the save rather
              than dropping it quietly; export a few and delete them to make room.</p>
@@ -1575,7 +1555,7 @@
     <div class="save-hint" id="saveHint"></div>
 
     <p class="save-where">
-      <b>Library</b> keeps it in this browser, where it is one click away &mdash; but a cleared
+      <b>Library</b> keeps it in this browser, where it is one click away, but a cleared
       browser loses it. <b>File</b> writes it to disk, to keep or to send.
     </p>
 
@@ -1593,15 +1573,14 @@
 
 <!-- CLEAR CONFIRMATION
      The save dialog's card, reused rather than rebuilt: both are one fixed
-     shape the toolbar raises over the canvas, and a second mechanism for the
-     same thing is one more to keep in step. Only the accent differs, because
-     the confirming button here throws work away rather than writing it out.
+     shape raised over the canvas. Only the accent differs, because the
+     confirming button here throws work away rather than writing it out.
 
-     role="alertdialog" rather than "dialog": the screen reader should read the
-     question on open, not wait to be asked what the card says.
+     role="alertdialog" rather than "dialog", so a screen reader reads the
+     question on open instead of waiting to be asked.
 
-     The checkbox is answered in js/nodes/model.js and lasts the session. Nothing about it
-     is written to disk. -->
+     The checkbox is answered in js/nodes/model.js and lasts the session.
+     Nothing about it is written to disk. -->
 <div class="save-dialog confirm-dialog" id="clearDialog">
   <div class="save-card" role="alertdialog" aria-modal="true"
        aria-labelledby="clearTitle" aria-describedby="clearSub">
@@ -1622,13 +1601,12 @@
 
 <!-- QUERY LIBRARY
      The save dialog's backdrop with a card of its own, wide enough for a grid.
-     Static markup for the same reason the others are: one fixed shape, visible
-     to anyone reading the page rather than assembled out of sight in a script.
+     Static markup like the other dialogs: one fixed shape, visible to anyone
+     reading the page rather than assembled out of sight in a script.
 
      The pictures on the cards are drawn into #libBody by renderLibrary(), from
-     the graphs themselves. There is no <img> anywhere in here and no thumbnail
-     is stored: see libThumb() in js/queries/library-thumb.js for why a screenshot would have been
-     the wrong answer. -->
+     the graphs themselves. There is no <img> in here and no thumbnail is
+     stored: libThumb() in js/queries/library-thumb.js says why. -->
 <div class="save-dialog lib-dialog" id="libDialog">
   <div class="lib-card-frame" role="dialog" aria-modal="true" aria-labelledby="libTitle">
 
@@ -1684,10 +1662,10 @@
   </div>
 </div>
 
-<!-- The application, as classic scripts and not as modules. The tool is opened
+<!-- The application, as classic scripts rather than modules. The tool is opened
      from Finder at file://, where a module script is fetched with CORS against an
-     opaque origin and refused; classic scripts sharing one global scope are what
-     works there, which is why a name declared in one file is visible in the next.
+     opaque origin and refused. Classic scripts share one global scope, which is
+     why a name declared in one file is visible in the next.
 
      THIS ORDER IS LOAD-BEARING and this list is where it is decided. data/
      declares the archive and the Table type, engine/ evaluates a query, canvas/
@@ -1696,13 +1674,9 @@
      shell/boot.js is last because it ends by publishing the inline handlers and
      painting the first frame, which needs everything above it.
 
-     The folders group the files; they do not set the order, and the order is not
-     the folders' either. canvas/gestures.js loads below shell/toolbar-menus.js
-     because that is where it has always loaded and there was no reason to find
-     out what moving it would cost. Read this list top to bottom, not folder by
-     folder.
-
-     The test harness reads this list rather than keeping a copy of it. -->
+     The folders group the files, they do not set the order. Read this list top
+     to bottom, not folder by folder. The test harness reads it rather than
+     keeping a copy. -->
 <script src="js/data/registries.js"></script>
 <script src="js/data/loading.js"></script>
 <script src="js/data/sources.js"></script>

@@ -1,12 +1,4 @@
-/* canvas-navigation.css: Panning, zooming, the marquee and a selected node.
-   Part of the Student Data Analyser's stylesheet. The files load in the order
-   index.html lists them, and that order is the cascade: it must not change.
-   ========================================================================== */
-
-/* ═══════════════════════════════════════════════════════════
-   CANVAS NAVIGATION + MULTI-SELECT
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* canvas-navigation.css: panning, zooming, the marquee and a selected node. */
 
 /* ── SCALED WORLD LAYER ──────────────────────────────────── */
 /* The world is a fixed logical area, larger than any viewport, and the whole
@@ -103,25 +95,14 @@
 }
 
 /* ── SWITCHED-OFF NODE ───────────────────────────────────── */
-/* Three signals, because one is not enough for a state that changes what the
-   query answers while saying nothing when it is wrong.
+/* A switched-off node says so three ways, because one signal is not enough for
+   a state that changes what the query answers.
 
-   Colour is drained rather than replaced. The shape keeps its own hue coding,
-   which is how node type is read at a glance, and loses the saturation that
-   makes it a live part of the graph; a switched-off Filter still reads as a
-   Filter. Dimming alone was not enough on a dark canvas, where a node a third
-   of the way down its brightness is simply a node further from the light.
-
-   So the border goes dashed as well, the same language the empty Source wears,
-   and for the same reason: the shape says its own state rather than carrying a
-   badge in a corner that reads as something to click. Between them the node is
-   legible as off when zoomed out, in a screenshot, and to someone who did not
-   press the key themselves.
-
-   The config panel is dimmed further than the shape and left readable. Its
-   settings are exactly what the switch preserves, and a panel blanked out would
-   suggest they had been lost, which is the thing the user is being promised
-   has not happened. */
+   Colour is drained rather than replaced, so a switched-off Filter still reads
+   as a Filter. Dimming alone was not enough on a dark canvas, where a dimmer
+   node just looks further from the light, so the border goes dashed as well,
+   the same language an empty Source wears. The config panel is dimmed further
+   but left readable: its settings are exactly what the switch preserves. */
 .node-off .node-shape { border-style: dashed !important; }
 
 /* The drain is scoped away from a selected node, and has to be. A CSS filter
@@ -139,16 +120,14 @@
   opacity: 0.55;
 }
 .node-off.selected .node-config { opacity: 0.75; }
-/* Italic and faded, which is the typographic voice for a word that is about the
-   thing rather than part of its name. The Source's grain label set the pattern
-   for a qualifier on a shape and this follows it: smaller, not uppercase, not
+/* Italic and faded, the voice for a word about the thing rather than part of
+   its name. Follows the Source's grain label: smaller, not uppercase, not
    letter-spaced, so it reads as a note and never as a second name.
 
    Out of the flow, at the foot of the shape. In the flow it would push a
-   centred name upward and split a glyph from its label, which would mean every
-   shape changed size and arrangement at the moment it was switched off. Its
-   pointer events go to the shape beneath it so the word is not a small dead
-   patch in the middle of something you drag by. */
+   centred name upward and split a glyph from its label, so every shape would
+   change size the moment it was switched off. Pointer events go through to the
+   shape beneath, so the word is not a dead patch in something you drag by. */
 .node-off-tag {
   position: absolute;
   left: 0; right: 0; bottom: 5px;
@@ -163,15 +142,13 @@
   pointer-events: none;
 }
 /* ── SELECTION ACTION BAR ────────────────────────────────── */
-/* ── VIEW DOCK ───────────────────────────────────────────
-   Zoom and Fit, docked on the canvas rather than filed in the toolbar. Same
-   treatment as the selection bar, because they are the same kind of thing: a
-   small panel floating over the canvas rather than part of the page around it,
-   and reading as one family is what stops the second one looking like a
-   mistake. More rounded than the bar's controls, because a floating panel with
-   square corners reads as a fragment of the layout that has come loose.
+/* ── VIEW DOCK ─────────────────────────────────
+   Zoom and Fit, docked on the canvas rather than in the toolbar. Same treatment
+   as the selection bar, since both are small panels floating over the canvas.
+   More rounded than the toolbar's controls, so a floating panel does not read
+   as a loose fragment of the layout.
 
-   Bottom left is the only free corner. Bottom centre belongs to the selection
+   Bottom left is the only free corner: bottom centre belongs to the selection
    bar, and the two appear together more often than not. */
 .view-dock {
   position: absolute;
@@ -280,20 +257,16 @@
 .canvas.selecting,
 .canvas.selecting * { user-select: none; -webkit-user-select: none; }
 
-/* ── WHAT THIS NODE DOES ─────────────────────────────────
-   The panel that appears after a rest on a node's shape. Its two closest
-   relatives are .conn-note and .edge-preview, which are filed with the results
-   panel; this one is canvas furniture like the docks above, and all three are
-   absolutely positioned siblings of the scaled layer for the same reason: they
-   have to stay readable when the canvas is zoomed out.
+/* ── WHAT THIS NODE DOES ────────────────────────
+   The panel shown after a rest on a node's shape. Like .conn-note and
+   .edge-preview (filed with the results panel), it is an absolutely positioned
+   sibling of the scaled layer, so it stays readable when the canvas is zoomed
+   out.
 
-   Neutral, and the only overlay on the canvas that is. The refusal note is
-   amber because something did not happen, and every node shape wears its
-   family's colour; this serves all sixteen of them and picking one family's
-   hue would say the wrong thing about the other fifteen.
-
-   Above the arrows and the shapes, below the docks: it is transient and must
-   never cover a control that is permanently there. */
+   Neutral, and the only canvas overlay that is: it serves all sixteen node
+   families, so picking one family's hue would say the wrong thing about the
+   other fifteen. Above the arrows and shapes, below the docks, since it is
+   transient and must not cover a permanent control. */
 .node-tip {
   position: absolute;
   z-index: 55;

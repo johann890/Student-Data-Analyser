@@ -1,39 +1,27 @@
-/* results/export.js: Copy, download and the one serialiser behind both.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   EXPORT: One serialiser, because there is one data shape
-   ============================================================================ */
+/* results/export.js: Copy, download, and the one serialiser behind both,
+   because there is one data shape. */
 
 /* THE PANEL NEVER OUTLIVES THE GRAPH IT DESCRIBES
-   ---------------------------------------------------------------------------
-   Deleting nodes used to leave whatever was in the results panel exactly where
-   it was. A tester loaded a saved query, deleted every node, and was left with
-   "Loaded 4 nodes and 3 connections. ... Press Run Query to evaluate it."
-   beside a canvas reading "Add nodes using the toolbar above": the two halves
-   of the screen disagreeing about whether there was a query at all, and the
-   half that was wrong being the one holding the instruction.
+   Deleting nodes used to leave the results panel untouched. A tester loaded a
+   saved query, deleted every node, and was left with "Loaded 4 nodes and 3
+   connections. ... Press Run Query to evaluate it." beside a canvas reading
+   "Add nodes using the toolbar above".
 
-   markStale() could not catch it. It returns early once the results are already
-   stale, which is the right shortcut for the note it adds and the wrong one for
-   everything else in the panel. A load message was never fresh to begin with,
-   so nothing was watching it.
+   markStale() could not catch it: it returns early once the results are already
+   stale, which is right for the note it adds and wrong for everything else in
+   the panel. A load message was never fresh, so nothing was watching it.
 
-   Two rules, both about ownership rather than about staleness:
+   Two rules, both about ownership rather than staleness:
 
      A block belongs to an Output. When that Output is gone the block is an
      answer attributed to a node that does not exist, so it goes, and its export
-     entry goes with it: Copy and Save must not write out a table whose node was
-     deleted.
+     entry with it: Copy and Save must not write out a deleted node's table.
 
-     An empty canvas has no query to be stale about. There is nothing left to
-     re-run, so the panel goes back to the line it opens with rather than asking
-     for a run that cannot happen.
+     An empty canvas has no query to be stale about, so the panel goes back to
+     the line it opens with rather than asking for a run that cannot happen.
 
-   A graph that still has nodes in it keeps its message. "Loaded 4 nodes" is a
-   statement about something that happened, and deleting one of them afterwards
-   does not make it untrue.                                                   */
+   A graph that still has nodes keeps its message. "Loaded 4 nodes" is a
+   statement about something that happened. */
 var PANEL_START = 'Run a query to see results';
 
 function panelStartHTML() { return '<div class="placeholder">' + PANEL_START + '</div>'; }
@@ -108,24 +96,20 @@ function timeStamp(fileSafe) {
 }
 
 /* QUOTING IS DECIDED AGAINST THE SEPARATOR, NOT AGAINST A COMMA
-   ---------------------------------------------------------------------------
    This used to test for a comma whatever it was separating with, which was
    right for the file and wrong for the clipboard. Copy writes tab separated
-   text, so a cell containing a TAB split into two cells and a cell containing a
-   newline split into two rows, and the paste landed in Excel or Word one column
-   out from there on with nothing to show why.
+   text, so a cell containing a TAB split into two cells and one containing a
+   newline split into two rows, and the paste landed in Excel or Word a column
+   out from there on.
 
-   It is reachable without any odd data: an input name is typed into a text box
-   and becomes a column header, and a name pasted in from somewhere else can
-   carry a tab. A three-column table came out with rows of four, one and three
-   fields.
+   It is reachable without odd data: an input name is typed into a text box and
+   becomes a column header, and a name pasted from elsewhere can carry a tab. A
+   three-column table came out with rows of four, one and three fields.
 
    So the rule is RFC 4180's, asked about whatever is actually dividing the
    cells: quote when the cell holds the separator, a quote mark or a line break,
    and double the quote marks inside. A cell with none of those is untouched,
-   which is nearly all of them, so an ordinary copy is byte for byte what it was.
-   Excel, Word and Numbers all honour quotes in pasted text, so the quoting
-   survives the one trip it has to. */
+   which is nearly all of them. */
 function quotedCell(v, sep) {
   var s = String(v);
   var needs = s.indexOf(sep) !== -1 || s.indexOf('"') !== -1 ||
@@ -138,7 +122,6 @@ function quotedCell(v, sep) {
 function csvCell(v) { return quotedCell(v, ','); }
 
 /* THE BYTE ORDER MARK, AND WHY ONLY THE CSV GETS ONE
-   ---------------------------------------------------------------------------
    Excel on Windows reads a .csv as the machine's own code page unless the file
    says otherwise, and the only thing it accepts as saying otherwise is a UTF-8
    BOM. Without one, a name carrying a macron or an accent arrives mojibaked,
@@ -162,36 +145,27 @@ function serialiseTable(t, sep, quote) {
     .join('\n');
 }
 
-/* ============================================================================
-   THE FORMATS A RESULT CAN LEAVE IN
-   ============================================================================
+/* THE FORMATS A RESULT CAN LEAVE IN
    One table, four rows, because the four differ only in how a table becomes
    text. Everything else about exporting (which table, what it is called, the
-   staleness guard, the clipboard's two attempts) is already written once and
-   does not want a copy per format.
+   staleness guard, the clipboard's two attempts) is written once elsewhere.
 
-   WHY MORE THAN CSV
-   CSV reaches Excel, and Excel was the whole requirement. The other two are the
-   tools a result actually ends up in afterwards, each of which CSV reaches badly:
+   CSV reaches Excel, which was the requirement. The other two are where a
+   result usually ends up, and CSV reaches both badly:
 
      PowerPoint has no "convert text to table", so pasted tab separated text
-     lands as a text box and the table has to be rebuilt by hand, or routed
-     through Excel first. An HTML table pastes AS a table, because that is the
+     lands as a text box. An HTML table pastes AS a table, because that is the
      flavour PowerPoint and Word look for first.
 
-     LaTeX cannot read a CSV without a package, and worse, the characters this
-     tool puts in its own headers are active there. Escaping at the point of
-     export is the only place that can be got right: a CSV cannot be escaped for
-     LaTeX without breaking it for Excel, which is why this is a format rather
-     than a change to the existing one.
+     LaTeX cannot read a CSV without a package, and the characters this tool
+     puts in its own headers are active there. A CSV cannot be escaped for LaTeX
+     without breaking it for Excel, which is why this is a separate format.
 
    `flavour` is the clipboard type the text should be offered as. Only the HTML
-   format has one worth naming; the rest are plain text, and a receiving
-   application that wanted something cleverer would have asked for it.
+   format has one worth naming.
 
-   `filePrefix` exists for exactly one member. See UTF8_BOM: the marker belongs
-   on a file and not on a clipboard, and this is the field that says so rather
-   than a branch at the call site.                                            */
+   `filePrefix` exists for one member: see UTF8_BOM, where the marker belongs on
+   a file and not on a clipboard. */
 var EXPORT_FORMATS = [
   { key:'tsv',   label:'Text (tabs)',  ext:'.tsv',
     text: function(t){ return serialiseTable(t, '\t', true); } },
@@ -250,31 +224,25 @@ function htmlTable(t) {
 }
 
 /* LATEX, WHERE EVERY CHARACTER THIS TOOL WRITES HAS TO BE ACCOUNTED FOR
-   ---------------------------------------------------------------------------
    Ten characters are active in LaTeX, and this tool generates three of them in
-   its own column headers without anybody typing one: `#` from a node's name, `%`
-   from a measure (spelled out now, for the version of this problem that could
-   not be escaped at all) and `_` from a column key. Student data supplies more:
-   an ampersand in a course title would end a cell early.
+   its own column headers without anybody typing one: `#` from a node's name,
+   `%` from a measure (spelled out now) and `_` from a column key. Student data
+   supplies more: an ampersand in a course title would end a cell early.
 
    The backslash is taken out first and put back last, through a placeholder,
    which is the only ordering that works. Replacing it in place with
-   `\textbackslash{}` straight away looks right and is not: the brace pass that
-   follows then escapes the braces that replacement just introduced, and the
-   output reads `\textbackslash\{\}`, which typesets as a stray "{}" instead of a
-   backslash. Any NUL already in the text is dropped first so it cannot be
-   mistaken for the placeholder; the loader refuses control characters anyway, so
-   this is a guard rather than a case.
+   `\textbackslash{}` means the brace pass that follows escapes the braces that
+   replacement just introduced, and the output typesets as a stray "{}". Any NUL
+   already in the text is dropped first so it cannot be mistaken for the
+   placeholder.
 
-   Two characters are not active but are not ASCII either, and both come from
-   this tool: the middot in a joined column's name and the division sign in the
-   ratio measure's. They are mapped to the maths this document can typeset
-   whatever its input encoding, which is what makes the output here plain ASCII
-   and so compilable in a setup that predates utf8 being the default.
+   Two characters are not active but are not ASCII either, both from this tool:
+   the middot in a joined column's name and the division sign in the ratio
+   measure's. They are mapped to maths the document can typeset whatever its
+   input encoding, which keeps the output plain ASCII.
 
-   A newline inside a cell becomes a space. A plain `tabular` cell cannot hold a
-   line break without a p-column, and a file that will not compile is worse than
-   one that reads a little flatter.                                           */
+   A newline inside a cell becomes a space, since a plain `tabular` cell cannot
+   hold a line break without a p-column. */
 var LATEX_BACKSLASH = '\u0000';
 
 function latexEscape(v) {
@@ -403,7 +371,6 @@ function legacyCopy(text) {
 }
 
 /* COPYING AS SOMETHING OTHER THAN PLAIN TEXT
-   ---------------------------------------------------------------------------
    An application decides what a paste becomes by asking the clipboard which
    flavours it holds. PowerPoint and Word ask for text/html first, which is the
    whole reason the HTML format exists: the same table pasted as text/plain
@@ -452,36 +419,29 @@ function writeClipboard(text, btn, html) {
 }
 
 /* WRITING A FILE FROM A PAGE THAT IS NOT BEING SERVED.
-
-   This tool is opened from a file:// URL with no build step, and that makes
-   saving harder than it looks. Three separate things went wrong here, and the
-   first two fixes each traded one failure for another:
+   The tool is opened from a file:// URL with no build step. Three things went
+   wrong here, and the first two fixes each traded one failure for another:
 
    1. The anchor was removed and the object URL revoked 1s after .click().
       WebKit starts a download asynchronously and reads the blob AFTER the
-      handler returns, so a revoke on a timer is a race against the browser.
-      Losing it produces exactly "WebKitBlobResource error 1" on a blob:null
-      URL:  The blob is not missing because the origin is opaque, it is missing
-      because we threw it away while WebKit was still fetching it.
+      handler returns, so a revoke on a timer races the browser. Losing that
+      race gives "WebKitBlobResource error 1" on a blob:null URL.
 
-   2. Swapping the blob for a data: URI avoided the race but introduced a size
-      ceiling. A saved query is 2-10KB and rode under it; a CSV export of a year
-      file is ~320KB, and ~460KB once percent-encoded into a URL. That is why
-      Save Query worked and Save CSV did not. The same code, told to carry
-      fifty times as much.
+   2. A data: URI avoided the race but introduced a size ceiling. A saved query
+      is 2-10KB and rode under it; a CSV export of a year file is ~320KB, and
+      ~460KB once percent-encoded. That is why Save Query worked and Save CSV
+      did not.
 
    3. A CSV announced as text/csv is something Safari knows how to display, so
-      it displays it: the tab fills with rows and no file is written. WebKit
-      weighs its own idea of the type against the download attribute and wins.
+      it displays it: the tab fills with rows and no file is written.
 
    So: a blob, which has no size ceiling and does not inflate; typed as
-   application/octet-stream, which leaves nothing to render, so a download is
-   the only thing left to do with the bytes; and torn down long after the click
-   rather than in a race with it. The 40 second delay is what FileSaver.js
-   settled on for the same reason.
+   application/octet-stream, which leaves nothing to render; and torn down long
+   after the click rather than in a race with it. The 40 seconds is what
+   FileSaver.js settled on for the same reason.
 
    Nothing downstream reads that type. The extension on the download attribute
-   decides the file on disk and what opens it, and that is still .csv. */
+   decides the file on disk, and that is still .csv. */
 var FORCE_DOWNLOAD_TYPE = 'application/octet-stream';
 var DOWNLOAD_TEARDOWN_MS = 40000;
 

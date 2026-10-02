@@ -1,12 +1,5 @@
-/* node-colours.css: The rest of the node shapes, the input ports, and the colour each
-   processing family is drawn in.
-   Part of the Student Data Analyser's stylesheet. The files load in the order
-   index.html lists them, and that order is the cascade: it must not change.
-   ========================================================================== */
-/* ═══════════════════════════════════════════════════════════
-   AGGREGATE / AGGREGATE COLUMNS
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* node-colours.css: the remaining node shapes, the input ports, and the colour
+   each processing family is drawn in. */
 
 /* ── PROCESSING MENU GROUPS ──────────────────────────────── */
 /* Five flat items in one dropdown is a list to read; three labelled groups is
@@ -83,10 +76,7 @@
   background: #b48ce0; margin-top: 1px;
 }
 
-/* ═══════════════════════════════════════════════════════════
-   COMBINE
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── COMBINE ────────────────────────────────────────────── */
 
 .shape-combine {
   width: 106px; height: 72px;
@@ -131,10 +121,7 @@
 }
 .cmb-check input { width: auto; margin: 0; cursor: pointer; }
 
-/* ═══════════════════════════════════════════════════════════
-   UNIQUE NODE
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── UNIQUE NODE ────────────────────────────────────────── */
 
 /* Geometry only. The colour comes from the PROCESSING CATEGORY COLOURS block at
    the foot of this file, where Unique is grouped with Sort and Take as a
@@ -168,10 +155,7 @@
 }
 .shape-select:active { cursor: grabbing; }
 
-/* ═══════════════════════════════════════════════════════════
-   INPUT PORTS
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── INPUT PORTS ────────────────────────────────────────── */
 
 /* Drawn only on nodes with more than one input, where the user has to be able
    to tell them apart. The markers sit on the shape's left edge at the same
@@ -233,18 +217,11 @@
 .cmp-measure.locked { opacity: 0.75; cursor: default; }
 .cmp-measure.locked input { cursor: default; }
 
-/* ═══════════════════════════════════════════════════════════
-   PROCESSING CATEGORY COLOURS
-   Appended block. Nothing above this line is modified.
-   ═══════════════════════════════════════════════════════════ */
+/* ── PROCESSING CATEGORY COLOURS ────────────────────────── */
 
-/* Until now every processing node was one violet, and the glyph carried the
-   whole burden of telling them apart. That worked while there were four; with
-   seven it does not, and it also threw away information the toolbar already
-   knows. The menu has grouped these nodes for some time, and the canvas said
-   nothing about it.
-
-   Colour now carries the category and the glyph carries the node:
+/* Colour carries the category, the glyph carries the node. Seven processing
+   nodes in one violet was too many to tell apart by glyph alone, and the
+   dropdown had already grouped them by what they do to the table's shape:
 
      Reshape rows  violet   Sort, Take, Unique
                             same rows or fewer, header untouched
@@ -253,14 +230,8 @@
      Branches      rose     Combine, Compare
                             several tables in, one out
 
-   The split is by what a node does to the shape of the table, which is the
-   axis the supervisor proposed and the one the dropdown groups already follow.
-   A reader who learns the three colours once can then read an unfamiliar graph
-   at a glance: where it narrows, where it collapses, where branches meet.
-
-   Only the palette lives here. The shapes themselves keep their own geometry
-   and glyphs above, so recolouring a category is three values in one place and
-   adding a node to one is a class, not a new block. */
+   Only the palette is here. The shapes keep their geometry and glyphs above, so
+   recolouring a category is three values, and adding a node to one is a class. */
 
 /* ── RESHAPE ROWS ── violet ─────────────────────────────── */
 .shape-sort,

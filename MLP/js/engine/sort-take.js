@@ -1,23 +1,13 @@
-/* engine/sort-take.js: Sort, Reverse and Take: the three pure row operations.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   SORT, REVERSE, TAKE
-   ============================================================================
+/* engine/sort-take.js: Sort, Reverse and Take, the three pure row operations.
    Three nodes that reorder or shorten the rows and hand on the columns they
-   were given. Because none of them changes the header, computeSchemas() needs
-   no case for any of them.                                                    */
-/* SORT
-   Reorders rows by one or more columns with a priority, the way Excel's sort
-   dialog does: the first key decides, the second breaks its ties, and so on.
-   Like Take it is a pure row operation (same columns out as in), so
-   computeSchemas() needs no case for it either.
+   were given. None changes the header, so computeSchemas() needs no case for
+   any of them.
 
-   This is the first node that visibly earns the uniform table model. It sorts
-   a student list, an enrolment list and (once Histogram lands) a histogram
-   with no knowledge of any of them: it asks the incoming table for its columns
-   and their types, and everything else follows from that. */
+   SORT reorders rows by one or more columns with a priority, the way Excel's
+   sort dialog does: the first key decides, the second breaks its ties, and so
+   on. It is the first node that visibly earns the uniform table model, sorting
+   a student list, an enrolment list or a histogram with no knowledge of any of
+   them: it asks the incoming table for its columns and their types. */
 
 // COURSES cells hold an array of enrolment objects. There is no defensible
 // ordering on "eight courses". By count? by first code?, so the column is
@@ -159,24 +149,20 @@ function applySort(node, t, log) {
 }
 
 /* REVERSE
-   Flips row order. Its reason for existing is Take: Take deliberately keeps the
-   FIRST N rows and does not rank, so "the last N" and "the bottom 10" had no
-   expression at all. Sort, Reverse, Take says it in three nodes that each do
-   one thing, rather than growing Take a direction setting that would duplicate
-   what Sort already decides.
+   Flips row order. It exists because of Take: Take keeps the FIRST N rows and
+   does not rank, so "the last N" and "the bottom 10" had no expression. Sort,
+   Reverse, Take says it in three nodes that each do one thing, rather than
+   growing Take a direction setting that duplicates what Sort decides.
 
-   Sort with the direction flipped covers most of the same ground, but not all
-   of it: reversing needs no column, so it works on a table whose order came
-   from somewhere other than a sort. The order rows arrived from a Combine, or
+   Sort with the direction flipped covers most of the same ground but not all:
+   reversing needs no column, so it works on a table whose order came from
+   somewhere other than a sort, such as the order rows arrived from a Combine or
    the order a Compare's branches were wired in. Those have no key to sort on.
 
-   Like Take it is a pure row operation: no column is added, removed, renamed or
-   retyped, so the outgoing header is the incoming header and the schema pass
-   needs nothing but passthroughSchema.
-
-   meta is carried through for the same reason Sort and Take carry it. The rows
-   are the same rows in a different order, so whatever a producer upstream
-   recorded about them is still true.                                          */
+   Like Take it is a pure row operation, so the outgoing header is the incoming
+   header and the schema pass needs only passthroughSchema. meta is carried
+   through: the rows are the same rows in a different order, so whatever a
+   producer upstream recorded about them is still true. */
 function applyReverse(node, t, log) {
   var n = t.rows.length;
   log.push(logEntry('REVERSE', n

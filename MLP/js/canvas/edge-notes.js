@@ -1,25 +1,18 @@
 /* canvas/edge-notes.js: The note that says why a drop did not wire, the edge preview, and
-   drawing the wires.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
+   drawing the wires. */
 /* THE REFUSAL NOTE
-   ---------------------------------------------------------------------------
    Shown at the drop, not during the drag. A node being moved around a wired
-   graph passes close to its own neighbours constantly, and a note that appeared
-   on approach would spend most of its life explaining something the user was
-   not asking about. The moment the expectation breaks is the release: that is
-   when a wire was supposed to be there and is not.
+   graph passes close to its neighbours constantly, and a note that appeared on
+   approach would spend most of its life explaining something nobody asked
+   about. The moment the expectation breaks is the release.
 
-   A sibling of the scaled layer rather than a child of it, for the same reason
-   the edge preview is one: it has to stay readable when the canvas is zoomed
-   out, which is exactly when nodes are dropped near each other by accident.
+   A sibling of the scaled layer rather than a child, for the same reason the
+   edge preview is one: it has to stay readable when the canvas is zoomed out,
+   which is exactly when nodes are dropped near each other by accident.
    role="status" so it is announced rather than only drawn.
 
-   Five seconds, because the longest of these sentences is about twenty five
-   words and a note that leaves before it has been read is the same as no note.
-   It goes early anyway on the next gesture, which is the reading that matters:
-   a user who has moved on does not have to wait for it.                      */
+   Five seconds, because the longest of these sentences runs to about
+   twenty-five words. It goes early on the next gesture anyway. */
 var CONN_NOTE_MS = 5200;
 var connNoteEl = null, connNoteAnchor = null, connNoteTimer = null;
 

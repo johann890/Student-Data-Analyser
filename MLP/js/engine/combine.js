@@ -1,34 +1,22 @@
-/* engine/combine.js: Combine: two or more tables with matching headers into one.
-   Part of the Student Data Analyser. A classic script, not a module: the order
-   these load in is set by the list at the foot of index.html and is load-bearing.
-   ========================================================================== */
-/* ============================================================================
-   COMBINE
-   ============================================================================
-   Two or more tables with matching headers into one. Modes: merge, intersect,
-   difference. The supervisor's suggestion that "set ops" is not a node but a
-   setting on Combine.
+/* engine/combine.js: Combine. Two or more tables with matching headers into
+   one. Modes: merge, intersect, difference. Set operations are a setting on
+   this node rather than a node of their own.
 
    Combine reads its inputs separately rather than letting the graph merge them
    first, for the same reason Compare does: it has to know which table is which.
-   That is also what keeps it clear of the implicit multi-wire union, which
-   matters more than it sounds:
+   That also keeps it clear of the implicit multi-wire union.
 
-   MERGE CONCATENATES; IT DOES NOT DEDUPLICATE BY DEFAULT.
-   The implicit union deduplicates by rowKey(), and for merging two student
-   lists that is right. Student 1042 appearing in both branches is one
-   student. For stacking two result tables it is wrong, and wrong in a way that
-   produces a plausible number rather than an error. Take the supervisor's own
-   worked example: run a Histogram once per year, stack the two rows, total the
-   columns. rowKey() has no id column to work with there, so it falls back to
-   joining the whole row, and if 2022 and 2023 happen to produce identical
-   counts, the two rows are identical, one is discarded, and the sum silently
-   halves. The failure is invisible precisely when the data is unremarkable.
+   MERGE CONCATENATES; IT DOES NOT DEDUPLICATE BY DEFAULT. The implicit union
+   deduplicates by rowKey(), which is right for merging two student lists, where
+   student 1042 in both branches is one student. It is wrong for stacking two
+   result tables, and wrong in a way that produces a plausible number rather
+   than an error: run a Histogram once per year and stack the rows, and rowKey()
+   has no id column to work with, so it joins the whole row. If 2022 and 2023
+   produce identical counts, one row is discarded and the total silently halves.
 
-   So row identity is a choice the user makes, not one the tool makes for them:
-   merge concatenates, and dropping duplicates is a tick box. That also gives a
-   true set union (merge + drop duplicates) alongside intersect and difference,
-   which is what "set ops" meant in the first place.                          */
+   So row identity is the user's choice: merge concatenates, and dropping
+   duplicates is a tick box. That also gives a true set union (merge plus drop
+   duplicates) alongside intersect and difference. */
 
 /* Merge adds vertically: more rows, same columns. Join adds horizontally: same
    rows or fewer, more columns. Intersect and difference are the set operations
@@ -105,25 +93,21 @@ function combineOrder(node, inIds) {
 }
 
 /* WHAT AN INPUT IS CALLED
-   ---------------------------------------------------------------------------
-   A joined column has to say which input it came from, and until now the only
-   name available was the node's own: "Select For #5". That is an accurate
-   answer to a question nobody asked. Three branches joined to compare 2022,
-   2023 and 2024 produced "Count", "Count · Select For #5" and
-   "Count · Select For #7", so the one thing the columns would not tell you
-   was which year each was, and the id is an implementation detail that changes
-   if the query is rebuilt.
+   A joined column has to say which input it came from, and the only name
+   available used to be the node's own: "Select For #5". Three branches joined
+   to compare 2022, 2023 and 2024 produced "Count", "Count · Select For #5" and
+   "Count · Select For #7", so the one thing the columns would not tell you was
+   which year each was, and the id changes if the query is rebuilt.
 
-   So an input can be named, in the same shape Compare already names a branch:
-   a map on the node keyed by the INPUT'S node id, written through the same
-   `label:<id>` control key, falling back to the automatic name when empty.
-   Compare's precedent is followed deliberately rather than a second convention
-   invented, down to the placeholder that says the automatic name is still
-   there.
+   So an input can be named, in the same shape Compare names a branch: a map on
+   the node keyed by the INPUT'S node id, written through the same `label:<id>`
+   control key, falling back to the automatic name when empty. Compare's
+   precedent is followed rather than a second convention invented, down to the
+   placeholder saying the automatic name is still there.
 
-   Keyed by id and not by position because a wire can be removed: naming the
-   second input and then deleting the first would otherwise silently move the
-   name onto a table it was never about. */
+   Keyed by id and not by position, because a wire can be removed: naming the
+   second input and then deleting the first would otherwise move the name onto a
+   table it was never about. */
 var COMBINE_LABEL_MAX = 40;
 
 /* The name the user gave this input, or '' for none. Trimmed and capped HERE
@@ -149,40 +133,36 @@ function combineInputLabel(node, id) {
   })();
 }
 
-/* ---- Join: the horizontal combination ------------------------------------ */
+/* Join: the horizontal combination */
 
-/* The joined header. The base contributes every column it has. Each other input
-   contributes everything except the key, which is shared rather than repeated.
+/* The joined header. The base contributes every column it has; each other
+   input contributes everything except the key, which is shared rather than
+   repeated.
 
-   A clash is renamed rather than overwritten: two branches off one Source both
-   carry Year, and silently dropping the second would lose data while silently
-   overwriting the first would lose different data. The incoming key gets a
-   suffix and the label says which node it came from, so the header stays unique,
-   which matters beyond the screen, since these become CSV column names.
+   A clash is renamed rather than overwritten, because two branches off one
+   Source both carry Year and dropping or overwriting either loses data. The
+   incoming key gets a suffix and the label says which node it came from, so the
+   header stays unique. That matters beyond the screen: these become CSV column
+   names.
 
    NAMING AN INPUT CHANGES WHAT ITS COLUMNS ARE CALLED, and nothing else. An
-   input nobody has named behaves exactly as it always did, which is what keeps
-   every existing query reading the same: the automatic name appears only on a
-   column whose key had to be renamed to avoid a clash.
+   input nobody has named behaves as it always did, so existing queries read the
+   same: the automatic name appears only on a column renamed to avoid a clash.
 
-   A NAMED input is different in two ways, and both are the point of naming one.
-   Its columns always carry the name, whether or not anything clashed, because
-   the user named it in order to tell it apart. And when it contributes exactly
-   one column, the name IS that column's label rather than a suffix on it:
-   three branches named 2022, 2023 and 2024 produce a header reading
-   "Took course, 2022, 2023, 2024", which is the table the question was asked
-   about. Two or more columns cannot share one header, so there the name is
-   appended to each: "Count \u00b7 2023", "Average \u00b7 2023".
+   A named input differs in two ways. Its columns always carry the name, whether
+   or not anything clashed. And when it contributes exactly one column, the name
+   IS that column's label rather than a suffix: three branches named 2022, 2023
+   and 2024 give "Took course, 2022, 2023, 2024". Two or more columns cannot
+   share one header, so there the name is appended to each: "Count · 2023",
+   "Average · 2023".
 
-   The SHARED KEY column is never renamed by any of this. It belongs to no one
-   input, so putting one input's name on it would be a false claim about where
-   it came from.
+   The shared key column is never renamed, since it belongs to no one input.
 
-   Labels are made unique as well as keys. Two inputs named the same thing, or a
-   name that matches a column already in the header, would otherwise produce two
-   columns a reader cannot tell apart, and a CSV with two identical headers.
+   Labels are made unique as well as keys, or two inputs named the same thing
+   would produce columns a reader cannot tell apart and a CSV with two identical
+   headers.
 
-   Derived from headers alone so the schema pass and the evaluator can call the
+   Derived from headers alone, so the schema pass and the evaluator call the
    same function and cannot disagree about the result's shape. */
 function joinColumns(node, heads, labels, ids) {
   if (!heads.length) return [];
@@ -305,22 +285,17 @@ function joinTables(node, tables, labels, log, ids) {
   }
 
   /* WHEN THE HEADER CANNOT SAY WHICH INPUT A COLUMN CAME FROM
-     -------------------------------------------------------------------------
      Three per-year branches joined on course give three columns that all began
-     life as Count. The header keeps them apart, because it has to, but it keeps
-     them apart asymmetrically: the base's stays bare Count while the others pick
-     up the automatic name of the node they came from. Nothing in
-     "Count, Count · Select For #5, Count · Select For #7" says which year is
-     which, and the reader most likely to need that is the one reading the CSV a
-     week later.
+     as Count. The header keeps them apart asymmetrically: the base's stays bare
+     Count while the others pick up the automatic name of the node they came
+     from, so "Count, Count · Select For #5, Count · Select For #7" says nothing
+     about which year is which.
 
-     Named rather than fixed, deliberately. Renaming the base's column would make
-     the three symmetric, and would also change the header of every saved query
-     that ever joined unnamed inputs; an input nobody named behaving exactly as
-     it always did is the guarantee this whole naming feature was built around.
-     So the log says what the header cannot, and points at the control that does
-     fix it. An input the user HAS named needs none of this, which is why only
-     the unnamed ones are counted.                                            */
+     Named rather than fixed, deliberately. Renaming the base's column would
+     make the three symmetric, and would also change the header of every saved
+     query that ever joined unnamed inputs. So the log says what the header
+     cannot and points at the control that does fix it. An input the user HAS
+     named needs none of this, which is why only unnamed ones are counted. */
   var sharedFrom = {};
   tables.forEach(function(t, i) {
     var named = !!(ids && ids.length > i && combineLabelOf(node, ids[i]));
@@ -422,7 +397,6 @@ function combineTables(node, tables, log, labels, ids) {
     {s:'→'}, {c:'val', s:out.length}, {s:'of'}, {c:'val', s:base.rows.length}, {s:'base rows'}]));
 
   /* HOW MANY THINGS, AS AGAINST HOW MANY ROWS
-     -------------------------------------------------------------------------
      The line above counts rows, which is what came out, and says nothing about
      how many distinct keys those rows cover. Where the base holds one row per
      key the two numbers are the same and this says nothing.
